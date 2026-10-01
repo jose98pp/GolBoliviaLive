@@ -1,0 +1,18 @@
+{
+  "name": "GolBolivia Live — Transmisión en Vivo del Fútbol Boliviano",
+  "short_name": "GolBolivia",
+  "description": "Plataforma oficial de streaming en vivo de la División Profesional de Bolivia, chat en directo, estadísticas y OBS Studio.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070b14",
+  "theme_color": "#070b14",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

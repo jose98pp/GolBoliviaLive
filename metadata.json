@@ -1,6 +1,6 @@
 {
-  "name": "GolBolivia Live - Streaming del Fútbol Boliviano",
-  "description": "Plataforma de live streaming del fútbol boliviano con chat en tiempo real, soporte multiresolución, integración con OBS Studio, estadísticas en vivo y contenido exclusivo de clubes.",
+  "name": "GolBolivia Live — Transmisión en Vivo del Fútbol Boliviano",
+  "description": "Mira la División Profesional del Fútbol Boliviano en vivo en HD con chat en tiempo real, múltiples resoluciones, estadísticas oficiales, OBS Studio y contenido VIP exclusivo.",
   "requestFramePermissions": [
     "camera",
     "microphone",
