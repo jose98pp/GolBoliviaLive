@@ -8,7 +8,6 @@ import {
   Minimize2,
   Settings,
   Tv,
-  Camera,
   Layers,
   Radio,
   Share2,
@@ -17,7 +16,6 @@ import {
   Check,
   Zap,
   Mic,
-  Monitor
 } from 'lucide-react';
 import { StreamResolution, StreamSettings } from '../types/football';
 import { RESOLUTIONS, BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
@@ -59,11 +57,6 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   const [audioTrack, setAudioTrack] = useState<'oficial' | 'radio' | 'ambiente'>('oficial');
   const [cameraAngle, setCameraAngle] = useState<'principal' | 'arco' | 'tactica' | 'ras_piso'>('principal');
 
-  // Broadcast source: 'simulation' | 'webcam' | 'screen'
-  const [broadcastSource, setBroadcastSource] = useState<'simulation' | 'webcam' | 'screen'>('simulation');
-  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
-  const [mediaError, setMediaError] = useState<string | null>(null);
-
   // Live telemetry (real-time stream stats)
   const [bitrateTelemetry, setBitrateTelemetry] = useState<number>(5940);
   const [fpsTelemetry, setFpsTelemetry] = useState<number>(59.9);
@@ -93,66 +86,9 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     }
   };
 
-  // Start direct webcam/OBS virtual cam capture
-  const handleStartWebcam = async () => {
-    try {
-      setMediaError(null);
-      if (mediaStream) {
-        mediaStream.getTracks().forEach((track) => track.stop());
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1920, height: 1080, frameRate: 60 },
-        audio: true,
-      });
-      setMediaStream(stream);
-      setBroadcastSource('webcam');
-      if (userVideoRef.current) {
-        userVideoRef.current.srcObject = stream;
-        userVideoRef.current.play();
-      }
-    } catch (err) {
-      setMediaError('No se pudo acceder a la cámara o dispositivo OBS virtual.');
-      console.warn('Webcam capture error', err);
-    }
-  };
-
-  // Screen share capture for OBS desktop streaming
-  const handleStartScreenShare = async () => {
-    try {
-      setMediaError(null);
-      if (mediaStream) {
-        mediaStream.getTracks().forEach((track) => track.stop());
-      }
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 60 },
-        audio: true,
-      });
-      setMediaStream(stream);
-      setBroadcastSource('screen');
-      if (userVideoRef.current) {
-        userVideoRef.current.srcObject = stream;
-        userVideoRef.current.play();
-      }
-      stream.getVideoTracks()[0].onended = () => {
-        setBroadcastSource('simulation');
-      };
-    } catch (err) {
-      setMediaError('Permiso de captura de pantalla cancelado o no disponible.');
-      console.warn('Screen share error', err);
-    }
-  };
-
-  const handleSwitchToSimulation = () => {
-    if (mediaStream) {
-      mediaStream.getTracks().forEach((track) => track.stop());
-      setMediaStream(null);
-    }
-    setBroadcastSource('simulation');
-  };
-
   // Canvas-based football match broadcast simulation
   useEffect(() => {
-    if (broadcastSource !== 'simulation') return;
+    if (streamSettings?.customVideoUrl) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -336,7 +272,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [broadcastSource, isPlaying, cameraAngle]);
+  }, [streamSettings?.customVideoUrl, isPlaying, cameraAngle]);
 
   // Dynamic telemetry fluctuation
   useEffect(() => {
@@ -377,8 +313,8 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         isTheaterMode ? 'w-full aspect-[16/9] max-h-[85vh]' : 'w-full aspect-[16/9]'
       }`}
     >
-      {/* Video Content: Custom Stream URL, Canvas Simulation, or Live MediaStream Video */}
-      {streamSettings?.customVideoUrl && broadcastSource === 'simulation' ? (
+      {/* Video Content: Custom Video/HLS Stream or Interactive Match Simulation */}
+      {streamSettings?.customVideoUrl ? (
         <video
           src={streamSettings.customVideoUrl}
           autoPlay
@@ -387,20 +323,12 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
           muted={isMuted}
           className="w-full h-full object-cover select-none bg-black"
         />
-      ) : broadcastSource === 'simulation' ? (
+      ) : (
         <canvas
           ref={canvasRef}
           width={854}
           height={480}
           className="w-full h-full object-cover select-none"
-        />
-      ) : (
-        <video
-          ref={userVideoRef}
-          autoPlay
-          playsInline
-          muted={isMuted}
-          className="w-full h-full object-cover select-none bg-black"
         />
       )}
 
@@ -437,14 +365,6 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
 
       {/* 2. Top Right Broadcast Live Badge & Ingest Indicator */}
       <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
-        {/* Source indicator tag */}
-        {broadcastSource !== 'simulation' && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-950/80 border border-indigo-700/80 text-indigo-300 text-[11px] font-semibold backdrop-blur-md">
-            {broadcastSource === 'webcam' ? <Camera className="w-3.5 h-3.5" /> : <Monitor className="w-3.5 h-3.5" />}
-            <span>{broadcastSource === 'webcam' ? 'OBS Cam / WebRTC' : 'Pantalla OBS'}</span>
-          </div>
-        )}
-
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-600/90 text-white text-[11px] font-bold tracking-wider uppercase shadow-lg shadow-red-950/50">
           <span className="w-2 h-2 rounded-full bg-white animate-ping" />
           <span>EN VIVO</span>
@@ -496,14 +416,6 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
               <span className="text-slate-300">H.264 / AVC1 (NVENC)</span>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Notification error banner */}
-      {mediaError && (
-        <div className="absolute top-14 left-3 z-30 bg-red-950/90 border border-red-700 text-red-200 text-xs px-3 py-1.5 rounded-lg flex items-center gap-2">
-          <span>{mediaError}</span>
-          <button onClick={() => setMediaError(null)} className="underline text-white font-bold">Cerrar</button>
         </div>
       )}
 
@@ -734,41 +646,8 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
             </div>
           </div>
 
-          {/* Right Controls: Ingest Switch, Resolutions Menu, Theater, Fullscreen */}
+          {/* Right Controls: Resolutions Menu, Theater, Fullscreen */}
           <div className="flex items-center gap-2">
-            {/* Quick OBS / Ingest broadcast options */}
-            <div className="flex items-center gap-1 bg-slate-900/90 p-0.5 rounded-lg border border-slate-700/80 text-[10px] sm:text-[11px]">
-              <button
-                onClick={handleSwitchToSimulation}
-                className={`px-2 py-1 rounded transition-colors cursor-pointer ${
-                  broadcastSource === 'simulation' ? 'bg-emerald-600 text-black font-semibold' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Ver animación de cancha"
-              >
-                Cancha
-              </button>
-              <button
-                onClick={handleStartWebcam}
-                className={`px-2 py-1 rounded transition-colors flex items-center gap-1 cursor-pointer ${
-                  broadcastSource === 'webcam' ? 'bg-red-600 text-white font-bold animate-pulse' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Conectar cámara web o cámara virtual OBS Studio"
-              >
-                <Camera className="w-3 h-3" />
-                <span>{broadcastSource === 'webcam' ? 'En Vivo (OBS)' : 'OBS Cam'}</span>
-              </button>
-              <button
-                onClick={handleStartScreenShare}
-                className={`px-2 py-1 rounded transition-colors flex items-center gap-1 cursor-pointer ${
-                  broadcastSource === 'screen' ? 'bg-red-600 text-white font-bold animate-pulse' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Compartir pantalla o ventana de OBS Studio"
-              >
-                <Monitor className="w-3 h-3" />
-                <span>{broadcastSource === 'screen' ? 'En Vivo (Pantalla)' : 'Pantalla'}</span>
-              </button>
-            </div>
-
             {/* Resolution Selector Button & Menu */}
             <div className="relative">
               <button

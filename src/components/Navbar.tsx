@@ -2,8 +2,8 @@ import React from 'react';
 import { Radio, Bell, Tv, ShieldCheck, Video, Menu, X, Lock } from 'lucide-react';
 
 interface NavbarProps {
-  activeTab: 'stream' | 'stats' | 'exclusive' | 'obs' | 'admin';
-  setActiveTab: (tab: 'stream' | 'stats' | 'exclusive' | 'obs' | 'admin') => void;
+  activeTab: 'stream' | 'stats' | 'exclusive' | 'obs' | 'admin' | string;
+  setActiveTab: (tab: any) => void;
   openObsModal: () => void;
   openPushModal: () => void;
   unreadNotificationsCount: number;
@@ -79,25 +79,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <span>Zona Clubes VIP</span>
-          </button>
-          <button
-            onClick={openObsModal}
-            className={`transition-colors flex items-center gap-1.5 hover:text-white cursor-pointer ${
-              activeTab === 'obs' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400 pb-0.5' : ''
-            }`}
-          >
-            <Video className="w-4 h-4 text-yellow-400" />
-            <span>OBS Studio Hub</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('admin')}
-            className={`transition-colors flex items-center gap-1.5 hover:text-white cursor-pointer ${
-              activeTab === 'admin' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400 pb-0.5' : 'text-slate-400'
-            }`}
-            title="Panel de Configuración Exclusivo del Transmisor"
-          >
-            <Lock className="w-3.5 h-3.5 text-amber-400" />
-            <span>Panel Transmisor</span>
           </button>
         </nav>
 
@@ -189,28 +170,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <span>Zona Clubes Exclusiva (Camerinos/Drones)</span>
             <ShieldCheck className="w-4 h-4 text-amber-400" />
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('admin');
-              setMobileMenuOpen(false);
-            }}
-            className={`px-3 py-2 text-left text-sm rounded-lg flex items-center justify-between ${
-              activeTab === 'admin' ? 'bg-amber-950/40 text-amber-400 font-semibold border border-amber-500/40' : 'text-slate-300'
-            }`}
-          >
-            <span>Panel Transmisor (Solo Acceso Propietario)</span>
-            <Lock className="w-4 h-4 text-amber-400" />
-          </button>
-          <button
-            onClick={() => {
-              openObsModal();
-              setMobileMenuOpen(false);
-            }}
-            className="px-3 py-2 text-left text-sm rounded-lg flex items-center justify-between text-yellow-400 bg-yellow-950/20 border border-yellow-900/30"
-          >
-            <span>Configuración OBS Studio & RTMP Key</span>
-            <Video className="w-4 h-4" />
           </button>
           <button
             onClick={() => {

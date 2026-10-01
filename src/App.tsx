@@ -9,22 +9,45 @@ import { StreamPlayer } from './components/StreamPlayer';
 import { LiveChat } from './components/LiveChat';
 import { MatchStats } from './components/MatchStats';
 import { ExclusiveClubZone } from './components/ExclusiveClubZone';
-import { ObsStudioModal } from './components/ObsStudioModal';
 import { PushNotificationModal } from './components/PushNotificationModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { ToastNotification } from './components/ToastNotification';
 import { FloatingReactions, FloatingItem } from './components/FloatingReactions';
 import { NotificationItem, StreamSettings, MatchEvent, LivePoll, ChatMessage } from './types/football';
 import { BOLIVIAN_CLUBS, INITIAL_EVENTS, INITIAL_POLL } from './data/bolivianFootballData';
-import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin, Lock } from 'lucide-react';
-import { AdminPanel } from './components/AdminPanel';
+import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin } from 'lucide-react';
+import { SecretLoginPage } from './components/SecretLoginPage';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'stream' | 'stats' | 'exclusive' | 'obs' | 'admin'>('stream');
+  const [activeTab, setActiveTab] = useState<'stream' | 'stats' | 'exclusive'>('stream');
   const [mobileViewMode, setMobileViewMode] = useState<'stream' | 'chat'>('stream');
   const [isTheaterMode, setIsTheaterMode] = useState(false);
-  const [isObsModalOpen, setIsObsModalOpen] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
+
+  // Secret /login route detection
+  const [isLoginRoute, setIsLoginRoute] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const path = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
+    return path === '/login' || path.startsWith('/login') || hash === '#/login';
+  });
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const path = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      setIsLoginRoute(path === '/login' || path.startsWith('/login') || hash === '#/login');
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
+
+  const handleReturnToPublic = () => {
+    setIsLoginRoute(false);
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.pushState({}, '', '/');
+    }
+  };
 
   // Broadcaster & Page Settings
   const [streamSettings, setStreamSettings] = useState<StreamSettings>({
@@ -170,6 +193,36 @@ export default function App() {
     } catch {}
   };
 
+  // If user navigated to /login or #/login, render Secret Login Page exclusively
+  if (isLoginRoute) {
+    return (
+      <SecretLoginPage
+        streamSettings={streamSettings}
+        onUpdateStreamSettings={handleUpdateStreamSettings}
+        homeScore={homeScore}
+        awayScore={awayScore}
+        matchMinute={matchMinute}
+        onUpdateScore={(h, a) => {
+          setHomeScore(h);
+          setAwayScore(a);
+        }}
+        onUpdateMinute={(m) => setMatchMinute(m)}
+        onAddMatchEvent={handleAddMatchEvent}
+        onDispatchPushNotification={(notif) => {
+          setNotifications((prev) => [notif, ...prev]);
+          setActiveToast(notif);
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification(notif.title, { body: notif.body });
+          }
+        }}
+        onPostOfficialMessage={handlePostOfficialMessage}
+        onUpdatePoll={handleUpdatePoll}
+        onClearChat={handleClearChat}
+        onReturnToPublic={handleReturnToPublic}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans pb-16 md:pb-0">
       {/* Dynamic Floating Reactions Canvas */}
@@ -185,7 +238,7 @@ export default function App() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        openObsModal={() => setIsObsModalOpen(true)}
+        openObsModal={() => {}}
         openPushModal={() => setIsPushModalOpen(true)}
         unreadNotificationsCount={unreadCount}
         isStreamingLive={isStreamingLive}
@@ -238,7 +291,7 @@ export default function App() {
                 <StreamPlayer
                   isTheaterMode={isTheaterMode}
                   setIsTheaterMode={setIsTheaterMode}
-                  openObsModal={() => setIsObsModalOpen(true)}
+                  openObsModal={() => {}}
                   triggerReaction={triggerReaction}
                   homeScore={homeScore}
                   awayScore={awayScore}
@@ -264,25 +317,10 @@ export default function App() {
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <button
                       onClick={() => setActiveTab('stats')}
-                      className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-700 cursor-pointer"
+                      className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-700 cursor-pointer"
                     >
                       <Activity className="w-3.5 h-3.5 text-yellow-400" />
                       <span>Ver Estadísticas</span>
-                    </button>
-                    <button
-                      onClick={() => setIsObsModalOpen(true)}
-                      className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Video className="w-3.5 h-3.5" />
-                      <span>OBS Feed</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('admin')}
-                      className="px-3.5 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
-                      title="Configuración exclusiva del transmisor"
-                    >
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>Configurar</span>
                     </button>
                   </div>
                 </div>
@@ -360,42 +398,7 @@ export default function App() {
             toggleVipMembership={() => setIsVipMember(!isVipMember)}
           />
         )}
-
-        {/* TAB 4: EXCLUSIVE BROADCASTER ADMIN PANEL */}
-        {activeTab === 'admin' && (
-          <AdminPanel
-            streamSettings={streamSettings}
-            onUpdateStreamSettings={handleUpdateStreamSettings}
-            homeScore={homeScore}
-            awayScore={awayScore}
-            matchMinute={matchMinute}
-            onUpdateScore={(h, a) => {
-              setHomeScore(h);
-              setAwayScore(a);
-            }}
-            onUpdateMinute={(m) => setMatchMinute(m)}
-            onAddMatchEvent={handleAddMatchEvent}
-            onDispatchPushNotification={(notif) => {
-              setNotifications((prev) => [notif, ...prev]);
-              setActiveToast(notif);
-              if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-                new Notification(notif.title, { body: notif.body });
-              }
-            }}
-            onPostOfficialMessage={handlePostOfficialMessage}
-            onUpdatePoll={handleUpdatePoll}
-            onClearChat={handleClearChat}
-          />
-        )}
       </main>
-
-      {/* OBS STUDIO MODAL */}
-      <ObsStudioModal
-        isOpen={isObsModalOpen}
-        onClose={() => setIsObsModalOpen(false)}
-        isStreamingLive={isStreamingLive}
-        setIsStreamingLive={setIsStreamingLive}
-      />
 
       {/* PUSH NOTIFICATION MODAL */}
       <PushNotificationModal
@@ -412,7 +415,6 @@ export default function App() {
         setActiveTab={setActiveTab}
         mobileViewMode={mobileViewMode}
         setMobileViewMode={setMobileViewMode}
-        openObsModal={() => setIsObsModalOpen(true)}
       />
     </div>
   );

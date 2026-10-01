@@ -2,11 +2,11 @@ import React from 'react';
 import { Tv, MessageSquare, Activity, ShieldCheck, Video } from 'lucide-react';
 
 interface MobileBottomNavProps {
-  activeTab: 'stream' | 'stats' | 'exclusive' | 'obs' | 'admin';
-  setActiveTab: (tab: 'stream' | 'stats' | 'exclusive' | 'obs' | 'admin') => void;
+  activeTab: string;
+  setActiveTab: (tab: any) => void;
   mobileViewMode: 'stream' | 'chat';
   setMobileViewMode: (mode: 'stream' | 'chat') => void;
-  openObsModal: () => void;
+  openObsModal?: () => void;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -14,11 +14,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   setActiveTab,
   mobileViewMode,
   setMobileViewMode,
-  openObsModal,
 }) => {
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#070b15]/95 backdrop-blur-lg border-t border-slate-800 pb-safe">
-      <div className="grid grid-cols-5 items-center h-14">
+      <div className="grid grid-cols-4 items-center h-14">
         {/* Stream view */}
         <button
           onClick={() => {
@@ -75,15 +74,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         >
           <ShieldCheck className="w-5 h-5" />
           <span className="text-[10px] tracking-tight mt-1">Zona VIP</span>
-        </button>
-
-        {/* OBS Hub */}
-        <button
-          onClick={openObsModal}
-          className="flex flex-col items-center justify-center min-h-[44px] cursor-pointer text-yellow-400 hover:text-yellow-300"
-        >
-          <Video className="w-5 h-5" />
-          <span className="text-[10px] tracking-tight mt-1">OBS</span>
         </button>
       </div>
     </div>
