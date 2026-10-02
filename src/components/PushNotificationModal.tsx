@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import {
   Bell,
   X,
-  CheckCircle,
-  AlertTriangle,
+  CheckCircle2,
+  AlertCircle,
   Smartphone,
+  Sparkles,
+  ShieldCheck,
+  Radio,
+  Tv,
+  Check,
   Send,
-  Shield,
-  Volume2,
-  Settings,
-  Sparkles
+  Volume2
 } from 'lucide-react';
 import { NotificationItem } from '../types/football';
 
@@ -29,10 +31,8 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
   onClearNotifications,
 }) => {
   const [permission, setPermission] = useState<NotificationPermission>('default');
-  const [prefGoals, setPrefGoals] = useState(true);
-  const [prefStreamStart, setPrefStreamStart] = useState(true);
-  const [prefLineups, setPrefLineups] = useState(true);
-  const [prefVip, setPrefVip] = useState(false);
+  const [isEssentialOnly, setIsEssentialOnly] = useState<boolean>(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -42,28 +42,52 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleRequestPermission = async () => {
+  const handleRequestEssentialNotifications = async () => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       try {
         const result = await Notification.requestPermission();
         setPermission(result);
         if (result === 'granted') {
-          // Send a welcome native push notification
-          new Notification('GolBolivia Live 🇧🇴', {
-            body: '¡Notificaciones activadas! Recibirás goles en vivo y transmisiones oficiales.',
-            icon: '/favicon.ico',
+          try {
+            localStorage.setItem('golbolivia_essential_notifications', 'true');
+          } catch {}
+
+          // Send immediate confirmation push notification
+          new Notification('⚽ ¡Notificaciones Esenciales Activadas!', {
+            body: 'Solo recibirás goles en vivo, inicio del directo y decisiones clave de GolBolivia.',
+            icon: '/pwa-192x192.png',
+          });
+
+          // Also trigger simulated in-app item
+          onTriggerSimulatedPush({
+            id: 'notif-welcome-' + Date.now(),
+            title: '🔔 Alertas Esenciales Activadas',
+            body: 'Estás suscrito únicamente a Goles en Vivo e Inicio de Transmisión Oficial.',
+            timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
+            type: 'stream_start',
+            read: false,
           });
         }
       } catch (e) {
         console.warn('Notification permission error', e);
       }
+    } else {
+      // Fallback for browsers that don't support Web Notifications API (e.g. some webviews)
+      onTriggerSimulatedPush({
+        id: 'notif-fallback-' + Date.now(),
+        title: '🔔 Alertas en Pantalla Activadas',
+        body: 'Recibirás avisos de goles y transmisiones en vivo directamente en pantalla.',
+        timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
+        type: 'stream_start',
+        read: false,
+      });
     }
   };
 
   const handleSendTestGoal = () => {
     const item: NotificationItem = {
       id: 'notif-' + Date.now(),
-      title: '⚽ ¡GOOOOL DE BOLÍVAR! (78\')',
+      title: '⚽ ¡GOOOL DE BOLÍVAR! (78\')',
       body: 'Bruno Sávio anota el 2-1 desde el punto penal en el Hernando Siles.',
       timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
       type: 'goal',
@@ -76,6 +100,7 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
     if (permission === 'granted' && typeof window !== 'undefined' && 'Notification' in window) {
       new Notification(item.title, {
         body: item.body,
+        icon: '/pwa-192x192.png',
       });
     }
   };
@@ -83,8 +108,8 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
   const handleSendTestStream = () => {
     const item: NotificationItem = {
       id: 'notif-' + Date.now(),
-      title: '🔴 ¡EN VIVO: Rueda de Prensa!',
-      body: 'Ismael Rescalvo y Flavio Robatto en vivo por OBS Studio desde vestuarios.',
+      title: '🔴 ¡EN VIVO: Partido de la Liga!',
+      body: 'Bolívar vs The Strongest en vivo con relatores oficiales y chat.',
       timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
       type: 'stream_start',
       clubId: 'strongest',
@@ -96,16 +121,17 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
     if (permission === 'granted' && typeof window !== 'undefined' && 'Notification' in window) {
       new Notification(item.title, {
         body: item.body,
+        icon: '/pwa-192x192.png',
       });
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-      <div className="bg-[#0b101e] border border-slate-700/80 rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-2xl text-slate-100 my-auto relative">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+      <div className="bg-[#0b101e] border border-slate-700/80 rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-2xl text-slate-100 my-auto relative animate-in fade-in zoom-in-95 duration-200">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           aria-label="Cerrar modal"
         >
           <X className="w-5 h-5" />
@@ -113,129 +139,138 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
 
         {/* Modal Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-            <Bell className="w-5 h-5" />
+          <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+            <Bell className="w-6 h-6 animate-pulse" />
           </div>
           <div>
-            <h2 className="font-display font-bold text-lg sm:text-xl text-white">
-              Notificaciones Push para Suscriptores
+            <h2 className="font-display font-bold text-lg sm:text-xl text-white flex items-center gap-2">
+              <span>Notificaciones Esenciales</span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] uppercase font-bold tracking-wider">
+                Sin Spam
+              </span>
             </h2>
-            <p className="text-xs text-slate-400">
-              Mantén a tu hinchada al día con alertas directas en sus teléfonos y computadoras.
+            <p className="text-xs text-slate-400 mt-0.5">
+              Solo lo importante del partido en tu celular o PC.
             </p>
           </div>
         </div>
 
-        {/* Browser Permission Status Banner */}
-        <div className="p-3.5 rounded-xl bg-[#070b14] border border-slate-800 mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Smartphone className="w-4 h-4 text-emerald-400" />
-            <div>
-              <div className="text-xs font-semibold text-white">
-                Permiso del Navegador Web
+        {/* Main Status & 1-Click Activation Card */}
+        {permission === 'granted' ? (
+          <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 mb-4 shadow-lg">
+            <div className="flex items-center justify-between pb-3 border-b border-emerald-500/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Alertas Esenciales Activas</div>
+                  <div className="text-[11px] text-emerald-400">Recibirás goles en directo y avisos de streaming</div>
+                </div>
               </div>
-              <div className="text-[11px] text-slate-400">
-                Estado: {permission === 'granted' ? (
-                  <span className="text-emerald-400 font-bold">Activado (Recibiendo alertas)</span>
-                ) : permission === 'denied' ? (
-                  <span className="text-red-400 font-bold">Bloqueado en el navegador</span>
-                ) : (
-                  <span className="text-yellow-400 font-bold">Pendiente de autorización</span>
-                )}
+              <span className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                Activo
+              </span>
+            </div>
+
+            <div className="pt-3 flex items-center justify-between text-xs">
+              <span className="text-slate-300 text-[11px]">Probar alertas en tu dispositivo:</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSendTestGoal}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-750 text-white rounded-lg border border-slate-700 font-semibold text-[11px] cursor-pointer"
+                >
+                  ⚽ Probar Gol
+                </button>
+                <button
+                  onClick={handleSendTestStream}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-750 text-white rounded-lg border border-slate-700 font-semibold text-[11px] cursor-pointer"
+                >
+                  🔴 Probar Live
+                </button>
               </div>
             </div>
           </div>
+        ) : permission === 'denied' ? (
+          <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 mb-4 text-xs">
+            <div className="flex items-center gap-2 text-red-300 font-bold mb-1">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+              <span>Notificaciones Bloqueadas en tu Navegador</span>
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Para recibir goles en vivo, toca el icono de candado 🔒 o configuración en la barra de tu navegador y cambia &quot;Notificaciones&quot; a <strong>Permitir</strong>.
+            </p>
+          </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-slate-900 border border-emerald-500/50 mb-4 shadow-xl">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-white text-sm">Activar Solo Alertas Esenciales</h4>
+                <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                  Te avisaremos únicamente cuando haya <strong>un gol</strong> o cuando <strong>arranque la transmisión en vivo</strong>. Sin publicidad ni spam.
+                </p>
+              </div>
+            </div>
 
-          {permission !== 'granted' && (
             <button
-              onClick={handleRequestPermission}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-black font-bold text-xs rounded-lg transition-colors cursor-pointer"
+              onClick={handleRequestEssentialNotifications}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 cursor-pointer transition-all hover:scale-[1.01]"
             >
-              Habilitar
+              <Bell className="w-4 h-4" />
+              <span>Activar Notificaciones Esenciales (1 Clic)</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Notification Preferences */}
-        <div className="mb-5 space-y-2">
-          <span className="text-xs font-semibold text-slate-300 block mb-1">
-            Preferencias de Alertas para Hinchas:
+        {/* 4 Guaranteed Essential Items */}
+        <div className="mb-4">
+          <span className="text-xs font-semibold text-slate-300 block mb-2">
+            ¿Qué incluye la modalidad esencial?
           </span>
 
-          <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#090e1c] border border-slate-800 cursor-pointer">
-            <div className="text-xs">
-              <span className="text-white font-medium">⚽ Goles y Tarjetas Rojas en Vivo</span>
-              <p className="text-[11px] text-slate-400">Alerta inmediata cuando se mueve el marcador.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center text-emerald-400 shrink-0 font-bold">
+                ⚽
+              </div>
+              <div>
+                <div className="font-bold text-white text-[11px]">Goles al Instante</div>
+                <div className="text-[10px] text-slate-400">Minuto, autor y marcador</div>
+              </div>
             </div>
-            <input
-              type="checkbox"
-              checked={prefGoals}
-              onChange={(e) => setPrefGoals(e.target.checked)}
-              className="w-4 h-4 accent-emerald-500 cursor-pointer"
-            />
-          </label>
 
-          <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#090e1c] border border-slate-800 cursor-pointer">
-            <div className="text-xs">
-              <span className="text-white font-medium">🔴 Inicio de Transmisión del Club</span>
-              <p className="text-[11px] text-slate-400">Aviso cuando el equipo inicia el streaming con OBS.</p>
+            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-red-500/15 flex items-center justify-center text-red-400 shrink-0 font-bold">
+                🔴
+              </div>
+              <div>
+                <div className="font-bold text-white text-[11px]">Inicio de Transmisión</div>
+                <div className="text-[10px] text-slate-400">Aviso cuando comience el live</div>
+              </div>
             </div>
-            <input
-              type="checkbox"
-              checked={prefStreamStart}
-              onChange={(e) => setPrefStreamStart(e.target.checked)}
-              className="w-4 h-4 accent-emerald-500 cursor-pointer"
-            />
-          </label>
 
-          <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#090e1c] border border-slate-800 cursor-pointer">
-            <div className="text-xs">
-              <span className="text-white font-medium">📋 Alineaciones Confirmadas</span>
-              <p className="text-[11px] text-slate-400">Notificación 1 hora antes del pitazo inicial.</p>
+            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-400 shrink-0 font-bold">
+                ⚖️
+              </div>
+              <div>
+                <div className="font-bold text-white text-[11px]">VAR y Penales Clave</div>
+                <div className="text-[10px] text-slate-400">Solo jugadas determinantes</div>
+              </div>
             </div>
-            <input
-              type="checkbox"
-              checked={prefLineups}
-              onChange={(e) => setPrefLineups(e.target.checked)}
-              className="w-4 h-4 accent-emerald-500 cursor-pointer"
-            />
-          </label>
 
-          <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#090e1c] border border-slate-800 cursor-pointer">
-            <div className="text-xs">
-              <span className="text-white font-medium">🎙️ Contenido Exclusivo de Camerinos</span>
-              <p className="text-[11px] text-slate-400">Acceso a entrevistas y detrás de escena VIP.</p>
+            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center text-blue-400 shrink-0 font-bold">
+                ⏱️
+              </div>
+              <div>
+                <div className="font-bold text-white text-[11px]">Resultado Final</div>
+                <div className="text-[10px] text-slate-400">Pitazo final y marcador oficial</div>
+              </div>
             </div>
-            <input
-              type="checkbox"
-              checked={prefVip}
-              onChange={(e) => setPrefVip(e.target.checked)}
-              className="w-4 h-4 accent-emerald-500 cursor-pointer"
-            />
-          </label>
-        </div>
-
-        {/* Live Simulation / Test push triggers */}
-        <div className="p-3 bg-gradient-to-r from-emerald-950/40 to-slate-900 border border-emerald-500/30 rounded-xl mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              Probar Envío de Notificación Push
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={handleSendTestGoal}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-750 text-white font-medium text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span>⚽ Test Gol 2-1</span>
-            </button>
-            <button
-              onClick={handleSendTestStream}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-750 text-white font-medium text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span>🔴 Test En Vivo OBS</span>
-            </button>
           </div>
         </div>
 
@@ -246,20 +281,20 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
             {notifications.length > 0 && (
               <button
                 onClick={onClearNotifications}
-                className="text-[11px] text-slate-500 hover:text-slate-300"
+                className="text-[11px] text-slate-500 hover:text-slate-300 cursor-pointer"
               >
                 Limpiar historial
               </button>
             )}
           </div>
 
-          <div className="max-h-36 overflow-y-auto space-y-1.5 text-xs">
+          <div className="max-h-28 overflow-y-auto space-y-1.5 text-xs pr-1">
             {notifications.length === 0 ? (
-              <p className="text-[11px] text-slate-500 text-center py-3">
-                No hay notificaciones recientes. Haz clic en &quot;Probar Envío&quot; para simular una.
+              <p className="text-[11px] text-slate-500 text-center py-2">
+                Sin notificaciones recientes.
               </p>
             ) : (
-              notifications.map((n) => (
+              notifications.slice(-4).map((n) => (
                 <div key={n.id} className="p-2 bg-[#080d18] rounded-lg border border-slate-800/80">
                   <div className="flex justify-between font-semibold text-slate-200 text-xs">
                     <span>{n.title}</span>
@@ -272,12 +307,15 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
           </div>
         </div>
 
-        <div className="mt-4 pt-3 border-t border-slate-800 text-right">
+        <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+          <span className="text-[10px] text-slate-500">
+            🔒 Puedes cancelar las alertas cuando quieras
+          </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg cursor-pointer"
+            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
           >
-            Cerrar
+            Entendido
           </button>
         </div>
       </div>

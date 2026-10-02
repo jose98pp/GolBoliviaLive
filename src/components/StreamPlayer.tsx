@@ -107,6 +107,7 @@ interface StreamPlayerProps {
   awayScore: number;
   matchMinute: number;
   streamSettings?: StreamSettings;
+  viewerCount?: number;
 }
 
 export const StreamPlayer: React.FC<StreamPlayerProps> = ({
@@ -118,6 +119,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   awayScore,
   matchMinute,
   streamSettings,
+  viewerCount = 14820,
 }) => {
   const homeClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.homeClubId]) || BOLIVIAN_CLUBS.bolivar;
   const awayClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.awayClubId]) || BOLIVIAN_CLUBS.strongest;
@@ -1212,6 +1214,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-600/90 text-white text-[11px] font-bold tracking-wider uppercase shadow-lg shadow-red-950/50">
           <span className="w-2 h-2 rounded-full bg-white animate-ping" />
           <span>EN VIVO</span>
+          <span className="opacity-90 font-mono">· {viewerCount >= 1000 ? `${(viewerCount / 1000).toFixed(1)}k` : viewerCount}</span>
         </div>
 
         <button

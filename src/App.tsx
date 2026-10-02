@@ -19,12 +19,19 @@ import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin } from '
 import { SecretLoginPage } from './components/SecretLoginPage';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { SocialFollowBanner } from './components/SocialFollowBanner';
+import { LiveAudienceModal } from './components/LiveAudienceModal';
+import { useRealPresence } from './hooks/useRealPresence';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'stream' | 'stats' | 'exclusive'>('stream');
   const [mobileViewMode, setMobileViewMode] = useState<'stream' | 'chat'>('stream');
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
+  const [isAudienceModalOpen, setIsAudienceModalOpen] = useState(false);
+
+  // Real-time live connected presence exclusively on this web & app
+  const presence = useRealPresence(true);
+  const liveViewerCount = presence.onlineOnSite;
 
   // Secret /login route detection
   const [isLoginRoute, setIsLoginRoute] = useState<boolean>(() => {
@@ -343,10 +350,15 @@ export default function App() {
         setActiveTab={setActiveTab}
         openObsModal={() => {}}
         openPushModal={() => setIsPushModalOpen(true)}
+        openAudienceModal={() => setIsAudienceModalOpen(true)}
         unreadNotificationsCount={unreadCount}
         isStreamingLive={isStreamingLive}
         isVipMember={isVipMember}
         toggleVipMembership={() => setIsVipMember(!isVipMember)}
+        viewerCount={liveViewerCount}
+        homeScore={homeScore}
+        awayScore={awayScore}
+        matchMinute={matchMinute}
       />
 
       {/* MAIN VIEWPORT BODY */}
@@ -378,6 +390,7 @@ export default function App() {
                   awayScore={awayScore}
                   matchMinute={matchMinute}
                   streamSettings={streamSettings}
+                  viewerCount={liveViewerCount}
                 />
 
                 {/* Mobile View Toggle Buttons: Chat or Stats below the video player */}
@@ -466,6 +479,7 @@ export default function App() {
                   officialAnnouncement={streamSettings.officialAnnouncement}
                   activePoll={activePoll}
                   onVotePoll={handleUpdatePoll}
+                  viewerCount={liveViewerCount}
                 />
               </div>
             </div>
@@ -512,13 +526,20 @@ export default function App() {
       {/* FOOTER WITH CREATOR PROFILE & SOCIAL LINKS */}
       <SocialFollowBanner variant="footer" />
 
-      {/* PUSH NOTIFICATION MODAL */}
+      {/* ESSENTIAL PUSH NOTIFICATIONS MODAL */}
       <PushNotificationModal
         isOpen={isPushModalOpen}
         onClose={() => setIsPushModalOpen(false)}
         notifications={notifications}
         onTriggerSimulatedPush={handleTriggerSimulatedPush}
         onClearNotifications={() => setNotifications([])}
+      />
+
+      {/* REAL ON-SITE AUDIENCE METRICS MODAL */}
+      <LiveAudienceModal
+        isOpen={isAudienceModalOpen}
+        onClose={() => setIsAudienceModalOpen(false)}
+        presenceStats={presence}
       />
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}

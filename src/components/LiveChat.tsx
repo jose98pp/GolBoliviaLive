@@ -10,6 +10,7 @@ interface LiveChatProps {
   officialAnnouncement?: string;
   activePoll?: LivePoll;
   onVotePoll?: (poll: LivePoll) => void;
+  viewerCount?: number;
 }
 
 export const LiveChat: React.FC<LiveChatProps> = ({
@@ -19,6 +20,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
   officialAnnouncement,
   activePoll,
   onVotePoll,
+  viewerCount = 14820,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_CHAT);
   const [inputText, setInputText] = useState('');
@@ -193,7 +195,9 @@ export const LiveChat: React.FC<LiveChatProps> = ({
           <h2 className="text-xs font-bold text-white tracking-wide uppercase font-display flex items-center gap-1.5">
             Chat en Directo
           </h2>
-          <span className="text-[11px] text-slate-400 font-mono">1.4k espectadores</span>
+          <span className="text-[11px] text-slate-400 font-mono">
+            {viewerCount >= 1000 ? `${(viewerCount / 1000).toFixed(1)}k hinchas` : `${viewerCount} hinchas`}
+          </span>
         </div>
 
         {/* Action icons: Poll toggle & Filter */}
