@@ -119,5 +119,8 @@ export interface StreamSettings {
   customVideoUrl: string;
   chatMode: 'all' | 'subscribers' | 'muted';
   officialAnnouncement: string;
+  broadcastMode?: 'obs_custom' | 'simulation' | 'pre_match' | 'halftime' | 'var' | 'post_match';
+  overlayScoreboardVisible?: boolean;
+  lowLatencyMode?: boolean;
 }
 

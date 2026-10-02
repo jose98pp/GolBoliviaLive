@@ -193,6 +193,25 @@ export default function App() {
     } catch {}
   };
 
+  // Check if iframe real-time preview mode was requested
+  const isPreviewOnly = typeof window !== 'undefined' && window.location.search.includes('preview=1');
+  if (isPreviewOnly) {
+    return (
+      <div className="w-full h-full min-h-screen bg-[#060911] flex items-center justify-center p-0 m-0 overflow-hidden select-none">
+        <StreamPlayer
+          isTheaterMode={false}
+          setIsTheaterMode={() => {}}
+          openObsModal={() => {}}
+          triggerReaction={() => {}}
+          homeScore={homeScore}
+          awayScore={awayScore}
+          matchMinute={matchMinute}
+          streamSettings={streamSettings}
+        />
+      </div>
+    );
+  }
+
   // If user navigated to /login or #/login, render Secret Login Page exclusively
   if (isLoginRoute) {
     return (

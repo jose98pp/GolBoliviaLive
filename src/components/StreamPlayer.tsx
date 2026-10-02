@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Hls from 'hls.js';
 import {
   Play,
   Pause,
@@ -274,6 +275,70 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     };
   }, [streamSettings?.customVideoUrl, isPlaying, cameraAngle]);
 
+  // MediaMTX & OBS HLS Stream Handler with Hls.js
+  useEffect(() => {
+    const video = userVideoRef.current;
+    const url = streamSettings?.customVideoUrl?.trim();
+    if (!video || !url) return;
+
+    let hls: Hls | null = null;
+    const isHlsStream = url.includes('.m3u8') || url.includes('/hls/') || url.includes(':8888');
+
+    if (isHlsStream && Hls.isSupported()) {
+      hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 15,
+        liveSyncDurationCount: 2,
+        liveMaxLatencyDurationCount: 4,
+      });
+
+      hls.loadSource(url);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {});
+      });
+
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              hls?.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              hls?.recoverMediaError();
+              break;
+            default:
+              hls?.destroy();
+              break;
+          }
+        }
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native Apple HLS (Safari iOS/macOS)
+      video.src = url;
+      video.play().catch(() => {});
+    } else {
+      video.src = url;
+      video.play().catch(() => {});
+    }
+
+    return () => {
+      if (hls) {
+        hls.destroy();
+      }
+    };
+  }, [streamSettings?.customVideoUrl]);
+
+  // Sync mute and volume with video element
+  useEffect(() => {
+    if (userVideoRef.current) {
+      userVideoRef.current.muted = isMuted;
+      userVideoRef.current.volume = volume;
+    }
+  }, [isMuted, volume]);
+
   // Dynamic telemetry fluctuation
   useEffect(() => {
     const timer = setInterval(() => {
@@ -313,10 +378,99 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         isTheaterMode ? 'w-full aspect-[16/9] max-h-[85vh]' : 'w-full aspect-[16/9]'
       }`}
     >
-      {/* Video Content: Custom Video/HLS Stream or Interactive Match Simulation */}
-      {streamSettings?.customVideoUrl ? (
+      {/* Video Content: Modes (Pre-Match, Halftime, VAR, Post-Match, OBS Video, Canvas Simulation) */}
+      {streamSettings?.broadcastMode === 'pre_match' ? (
+        <div className="w-full h-full bg-gradient-to-br from-[#070b14] via-[#0a1122] to-[#040810] flex flex-col items-center justify-center p-6 select-none relative overflow-hidden">
+          {/* Animated stadium spotlight and tricolor border */}
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-500 via-yellow-400 to-emerald-500" />
+          <div className="absolute -top-32 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold uppercase tracking-wider mb-4 animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            Transmisión Inicia en Breve
+          </div>
+
+          <div className="flex items-center justify-center gap-6 sm:gap-12 my-2">
+            <div className="text-center">
+              <div
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl shadow-2xl border-2 mx-auto mb-2"
+                style={{ backgroundColor: `${homeClub.primaryColor}30`, borderColor: homeClub.primaryColor }}
+              >
+                {homeClub.badgeEmoji}
+              </div>
+              <span className="font-bold text-sm sm:text-base text-white">{homeClub.name}</span>
+            </div>
+
+            <div className="text-center">
+              <span className="text-xs font-mono font-bold text-slate-400 px-3 py-1 bg-slate-900/80 rounded-lg border border-slate-700">VS</span>
+            </div>
+
+            <div className="text-center">
+              <div
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl shadow-2xl border-2 mx-auto mb-2"
+                style={{ backgroundColor: `${awayClub.primaryColor}30`, borderColor: awayClub.primaryColor }}
+              >
+                {awayClub.badgeEmoji}
+              </div>
+              <span className="font-bold text-sm sm:text-base text-white">{awayClub.name}</span>
+            </div>
+          </div>
+
+          <div className="text-center mt-4">
+            <p className="text-sm font-semibold text-slate-300">{streamSettings.title}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{streamSettings.stadiumName} · {streamSettings.altitudeMeters} msnm · La Paz, Bolivia</p>
+          </div>
+        </div>
+      ) : streamSettings?.broadcastMode === 'halftime' ? (
+        <div className="w-full h-full bg-[#070c18] flex flex-col items-center justify-center p-6 select-none relative overflow-hidden">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-300 text-xs font-semibold uppercase tracking-wider mb-3">
+            <span>⏸️</span>
+            Entretiempo · Análisis de Partido
+          </div>
+
+          <div className="text-center mb-3">
+            <div className="font-mono text-4xl sm:text-5xl font-black text-white tracking-widest">
+              {homeScore} - {awayScore}
+            </div>
+            <p className="text-xs text-emerald-400 font-semibold mt-1">Primer Tiempo Finalizado</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 max-w-sm w-full bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-xs">
+            <div className="text-center border-r border-slate-800">
+              <span className="text-slate-400 text-[10px]">Posesión</span>
+              <div className="font-bold text-white mt-0.5">54% - 46%</div>
+            </div>
+            <div className="text-center">
+              <span className="text-slate-400 text-[10px]">Tiros a Puerta</span>
+              <div className="font-bold text-white mt-0.5">6 - 3</div>
+            </div>
+          </div>
+        </div>
+      ) : streamSettings?.broadcastMode === 'var' ? (
+        <div className="w-full h-full bg-[#110505] flex flex-col items-center justify-center p-6 select-none relative overflow-hidden">
+          <div className="w-16 h-16 rounded-2xl bg-red-600/20 border-2 border-red-500 flex items-center justify-center text-red-500 mb-3 animate-pulse">
+            <Tv className="w-8 h-8" />
+          </div>
+          <span className="px-3 py-1 rounded bg-red-600 text-white font-mono font-black text-sm tracking-wider uppercase shadow-lg shadow-red-950/80">
+            REVISIÓN VAR EN PROCESO
+          </span>
+          <p className="text-xs text-slate-300 mt-2 font-medium">Árbitro revisando monitor oficial en cancha</p>
+          <span className="text-[11px] text-red-400 font-mono mt-1">FBF · Comisión de Arbitraje</span>
+        </div>
+      ) : streamSettings?.broadcastMode === 'post_match' ? (
+        <div className="w-full h-full bg-[#050914] flex flex-col items-center justify-center p-6 select-none relative overflow-hidden">
+          <span className="px-3 py-1 rounded bg-slate-800 text-slate-300 font-mono font-bold text-xs uppercase mb-2">
+            Final del Partido
+          </span>
+          <div className="font-mono text-4xl sm:text-5xl font-black text-white tracking-widest mb-1">
+            {homeScore} - {awayScore}
+          </div>
+          <p className="text-xs text-slate-400">{homeClub.name} vs {awayClub.name}</p>
+          <p className="text-[11px] text-emerald-400 mt-2">Gracias por sintonizar GolBolivia Live</p>
+        </div>
+      ) : streamSettings?.customVideoUrl ? (
         <video
-          src={streamSettings.customVideoUrl}
+          ref={userVideoRef}
           autoPlay
           playsInline
           controls={false}
@@ -333,35 +487,37 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       )}
 
       {/* TOP OVERLAYS */}
-      {/* 1. Official TV Scoreboard Bug */}
-      <div className="absolute top-3 left-3 z-20 flex items-center shadow-2xl select-none">
-        <div className="flex items-center bg-[#090e1a]/95 backdrop-blur-md border border-slate-700/80 rounded-lg overflow-hidden text-xs">
-          {/* Home team */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-r border-slate-700/60" style={{ backgroundColor: `${homeClub.primaryColor}25` }}>
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: homeClub.primaryColor }} />
-            <span className="font-bold text-white tracking-wider">{homeClub.shortName.slice(0, 3).toUpperCase()}</span>
-            <span className="font-mono text-sm font-extrabold text-white px-1 tabular-nums">{homeScore}</span>
+      {/* 1. Official TV Scoreboard Bug (Toggleable) */}
+      {streamSettings?.overlayScoreboardVisible !== false && (
+        <div className="absolute top-3 left-3 z-20 flex items-center shadow-2xl select-none">
+          <div className="flex items-center bg-[#090e1a]/95 backdrop-blur-md border border-slate-700/80 rounded-lg overflow-hidden text-xs">
+            {/* Home team */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-r border-slate-700/60" style={{ backgroundColor: `${homeClub.primaryColor}25` }}>
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: homeClub.primaryColor }} />
+              <span className="font-bold text-white tracking-wider">{homeClub.shortName.slice(0, 3).toUpperCase()}</span>
+              <span className="font-mono text-sm font-extrabold text-white px-1 tabular-nums">{homeScore}</span>
+            </div>
+            {/* Away team */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-r border-slate-700/60" style={{ backgroundColor: `${awayClub.primaryColor}25` }}>
+              <span className="font-mono text-sm font-extrabold text-white px-1 tabular-nums">{awayScore}</span>
+              <span className="font-bold text-white tracking-wider">{awayClub.shortName.slice(0, 3).toUpperCase()}</span>
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: awayClub.primaryColor }} />
+            </div>
+            {/* Match minute */}
+            <div className="px-2.5 py-1.5 font-mono text-[11px] font-semibold text-emerald-400 bg-slate-900/90 flex items-center gap-1">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>{matchMinute}&apos; {streamSettings?.period || '2T'}</span>
+            </div>
           </div>
-          {/* Away team */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-r border-slate-700/60" style={{ backgroundColor: `${awayClub.primaryColor}25` }}>
-            <span className="font-mono text-sm font-extrabold text-white px-1 tabular-nums">{awayScore}</span>
-            <span className="font-bold text-white tracking-wider">{awayClub.shortName.slice(0, 3).toUpperCase()}</span>
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: awayClub.primaryColor }} />
-          </div>
-          {/* Match minute */}
-          <div className="px-2.5 py-1.5 font-mono text-[11px] font-semibold text-emerald-400 bg-slate-900/90 flex items-center gap-1">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{matchMinute}&apos; {streamSettings?.period || '2T'}</span>
-          </div>
-        </div>
 
-        {/* Tournament name unboxed metadata */}
-        <div className="hidden sm:flex items-center text-[10px] text-slate-300 ml-2 font-medium px-2 py-1 bg-black/60 backdrop-blur-sm rounded">
-          <span>{streamSettings?.tournamentName || 'División Profesional Boliviana'}</span>
-          <span className="mx-1.5">·</span>
-          <span>{streamSettings?.stadiumName || 'Estadio Siles'}</span>
+          {/* Tournament name unboxed metadata */}
+          <div className="hidden sm:flex items-center text-[10px] text-slate-300 ml-2 font-medium px-2 py-1 bg-black/60 backdrop-blur-sm rounded">
+            <span>{streamSettings?.tournamentName || 'División Profesional Boliviana'}</span>
+            <span className="mx-1.5">·</span>
+            <span>{streamSettings?.stadiumName || 'Estadio Siles'}</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 2. Top Right Broadcast Live Badge & Ingest Indicator */}
       <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
