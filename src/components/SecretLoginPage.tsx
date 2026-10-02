@@ -30,7 +30,10 @@ import {
   ShieldCheck,
   HelpCircle,
   Crown,
-  Trophy
+  Trophy,
+  Save,
+  Database,
+  Check
 } from 'lucide-react';
 import { AdminPanel } from './AdminPanel';
 import { AdminVipManagement } from './AdminVipManagement';
@@ -200,6 +203,74 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
       customVideoUrl: '',
       broadcastMode: 'simulation',
     });
+    setPreviewKey((prev) => prev + 1);
+  };
+
+  // Backup M3U8 URL state persisted in localStorage
+  const [backupM3u8Input, setBackupM3u8Input] = useState<string>(() => {
+    try {
+      return (
+        localStorage.getItem('golbolivia_backup_m3u8_url') ||
+        streamSettings.backupVideoUrl ||
+        'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'
+      );
+    } catch {
+      return streamSettings.backupVideoUrl || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+    }
+  });
+  const [backupSaveSuccess, setBackupSaveSuccess] = useState<boolean>(false);
+
+  // Sync if backupVideoUrl changes externally
+  React.useEffect(() => {
+    if (streamSettings.backupVideoUrl) {
+      setBackupM3u8Input(streamSettings.backupVideoUrl);
+      try {
+        localStorage.setItem('golbolivia_backup_m3u8_url', streamSettings.backupVideoUrl);
+      } catch {}
+    }
+  }, [streamSettings.backupVideoUrl]);
+
+  const handleSaveBackupM3u8 = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanUrl = backupM3u8Input.trim();
+    try {
+      localStorage.setItem('golbolivia_backup_m3u8_url', cleanUrl);
+    } catch {}
+
+    onUpdateStreamSettings({
+      backupVideoUrl: cleanUrl,
+    });
+    apiClient.updateStreamSettings({ backupVideoUrl: cleanUrl }).catch(() => {});
+    setBackupSaveSuccess(true);
+    setTimeout(() => setBackupSaveSuccess(false), 4500);
+  };
+
+  const handleSwitchStreamSource = (source: 'obs' | 'backup') => {
+    try {
+      localStorage.setItem('golbolivia_active_stream_source', source);
+    } catch {}
+
+    const updates: Partial<StreamSettings> = {
+      activeStreamSource: source,
+      broadcastMode: 'obs_custom',
+      isLive: true,
+    };
+
+    if (source === 'backup') {
+      const cleanBackup = backupM3u8Input.trim();
+      updates.backupVideoUrl = cleanBackup;
+    } else {
+      const cleanObs = videoUrlInput.trim();
+      updates.customVideoUrl = cleanObs;
+    }
+
+    onUpdateStreamSettings(updates);
+    apiClient.failoverStream({
+      activeStreamSource: source,
+      backupVideoUrl: backupM3u8Input.trim(),
+      backupChannelName: streamSettings.backupChannelName || 'Canal de Respaldo M3U8',
+    }).catch(() => {});
+
     setPreviewKey((prev) => prev + 1);
   };
 
@@ -464,7 +535,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
                     <span className="truncate">
-                      Enlace activo configurado:{' '}
+                      Enlace OBS configurado:{' '}
                       <strong className="text-emerald-400 font-mono select-all">
                         {streamSettings.customVideoUrl || '(Ninguno - usando animación interactiva)'}
                       </strong>
@@ -472,6 +543,214 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     <span className="text-emerald-400/90 font-medium">✓ Sincronizado en tiempo real con el servidor</span>
                   </div>
                 </form>
+
+                {/* SECCIÓN DEDICADA: URL M3U8 DE RESPALDO (LOCALSTORAGE) Y ALTERNADOR DE FUENTES */}
+                <div className="pt-4 border-t-2 border-slate-800/90 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                        <Radio className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <span>Fuente de Respaldo .M3U8 (Para cuando el OBS no esté conectado)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                            <Database className="w-2.5 h-2.5" />
+                            <span>LOCALSTORAGE</span>
+                          </span>
+                        </h3>
+                        <p className="text-xs text-slate-300 mt-0.5">
+                          Ingresa y guarda en tu navegador la URL <code className="text-amber-300 font-mono">.m3u8</code> alternativa para mantener la transmisión viva cuando OBS esté apagado.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Active Streaming Source Badge */}
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+                      <span className="text-slate-400 text-[11px]">Fuente al aire:</span>
+                      <span className={`font-mono font-bold text-xs flex items-center gap-1.5 ${
+                        streamSettings.activeStreamSource === 'backup'
+                          ? 'text-amber-400'
+                          : streamSettings.activeStreamSource === 'simulation'
+                          ? 'text-blue-400'
+                          : 'text-emerald-400'
+                      }`}>
+                        <span className={`w-2 h-2 rounded-full ${
+                          streamSettings.activeStreamSource === 'backup'
+                            ? 'bg-amber-400 animate-ping'
+                            : streamSettings.activeStreamSource === 'simulation'
+                            ? 'bg-blue-400'
+                            : 'bg-emerald-400 animate-pulse'
+                        }`} />
+                        {streamSettings.activeStreamSource === 'backup'
+                          ? 'RESPALDO M3U8'
+                          : streamSettings.activeStreamSource === 'simulation'
+                          ? 'CANCHA 2D'
+                          : 'LOCAL OBS'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Backup M3U8 Dedicated Input Field */}
+                  <form onSubmit={handleSaveBackupM3u8} className="space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="url"
+                          value={backupM3u8Input}
+                          onChange={(e) => setBackupM3u8Input(e.target.value)}
+                          placeholder="https://servidor-cdn.com/live/respaldo/index.m3u8"
+                          className="w-full bg-[#060a14] border-2 border-amber-500/60 focus:border-amber-400 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                          required
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-amber-950/60 transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                      >
+                        <Save className="w-4 h-4 text-black" />
+                        <span>GUARDAR EN LOCALSTORAGE</span>
+                      </button>
+                    </div>
+
+                    {/* Quick Presets for Backup M3U8 */}
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      <span className="text-slate-400 text-[10px] font-medium">Preajustes sugeridos de respaldo:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+                          setBackupM3u8Input(url);
+                          try { localStorage.setItem('golbolivia_backup_m3u8_url', url); } catch {}
+                          onUpdateStreamSettings({ backupVideoUrl: url });
+                          apiClient.updateStreamSettings({ backupVideoUrl: url }).catch(() => {});
+                          setBackupSaveSuccess(true);
+                          setTimeout(() => setBackupSaveSuccess(false), 3000);
+                        }}
+                        className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-850 text-amber-300 border border-amber-500/30 font-medium cursor-pointer transition-colors"
+                      >
+                        Canal 24/7 (Fútbol HD)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = 'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8';
+                          setBackupM3u8Input(url);
+                          try { localStorage.setItem('golbolivia_backup_m3u8_url', url); } catch {}
+                          onUpdateStreamSettings({ backupVideoUrl: url });
+                          apiClient.updateStreamSettings({ backupVideoUrl: url }).catch(() => {});
+                          setBackupSaveSuccess(true);
+                          setTimeout(() => setBackupSaveSuccess(false), 3000);
+                        }}
+                        className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-750 font-medium cursor-pointer transition-colors"
+                      >
+                        Akamai Test HLS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = 'https://live-par-2-abr.livepush.io/live/bigbuckbunny/index.m3u8';
+                          setBackupM3u8Input(url);
+                          try { localStorage.setItem('golbolivia_backup_m3u8_url', url); } catch {}
+                          onUpdateStreamSettings({ backupVideoUrl: url });
+                          apiClient.updateStreamSettings({ backupVideoUrl: url }).catch(() => {});
+                          setBackupSaveSuccess(true);
+                          setTimeout(() => setBackupSaveSuccess(false), 3000);
+                        }}
+                        className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-750 font-medium cursor-pointer transition-colors"
+                      >
+                        LivePush CDN
+                      </button>
+                    </div>
+
+                    {backupSaveSuccess && (
+                      <div className="p-3 bg-amber-950/80 border border-amber-500 rounded-xl text-xs text-amber-200 flex items-center gap-2 shadow-lg animate-pulse">
+                        <Check className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>
+                          <strong>¡URL de respaldo guardada en localStorage y servidor!</strong> Lista para ser emitida cuando el OBS no esté conectado.
+                        </span>
+                      </div>
+                    )}
+                  </form>
+
+                  {/* BOTONES DEDICADOS PARA ALTERNAR ENTRE FUENTE LOCAL Y FUENTE DE RESPALDO */}
+                  <div className="p-3.5 bg-[#060a14] rounded-xl border border-slate-800 space-y-2.5">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Alternar Fuente de Streaming en Vivo (1 Clic):</span>
+                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Alternador Opción 1: Fuente Local OBS Studio */}
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchStreamSource('obs')}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative ${
+                          streamSettings.activeStreamSource !== 'backup' && streamSettings.activeStreamSource !== 'simulation'
+                            ? 'bg-gradient-to-r from-emerald-950/80 to-slate-900 border-emerald-500 shadow-lg shadow-emerald-950/40 ring-1 ring-emerald-500/40'
+                            : 'bg-slate-900/80 hover:bg-slate-850 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <Video className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>1. Fuente Local (OBS Studio)</span>
+                          </span>
+                          {streamSettings.activeStreamSource !== 'backup' && streamSettings.activeStreamSource !== 'simulation' && (
+                            <span className="text-[10px] px-2 py-0.5 rounded font-mono font-black bg-emerald-500 text-black">
+                              AL AIRE
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Transmite la señal en directo desde tu OBS o MediaMTX local.
+                        </p>
+                      </button>
+
+                      {/* Alternador Opción 2: Fuente de Respaldo M3U8 */}
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchStreamSource('backup')}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative ${
+                          streamSettings.activeStreamSource === 'backup'
+                            ? 'bg-gradient-to-r from-amber-950/80 to-slate-900 border-amber-500 shadow-lg shadow-amber-950/40 ring-1 ring-amber-500/40'
+                            : 'bg-slate-900/80 hover:bg-slate-850 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <Radio className="w-3.5 h-3.5 text-amber-400" />
+                            <span>2. Fuente de Respaldo (.m3u8)</span>
+                          </span>
+                          {streamSettings.activeStreamSource === 'backup' && (
+                            <span className="text-[10px] px-2 py-0.5 rounded font-mono font-black bg-amber-400 text-black animate-pulse">
+                              AL AIRE
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Transmite la URL M3U8 de respaldo guardada en localStorage cuando el OBS esté apagado.
+                        </p>
+                      </button>
+                    </div>
+
+                    {/* Status Info Footer */}
+                    <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
+                      <span className="text-slate-400 truncate">
+                        Transmitiendo actualmente:{' '}
+                        <strong className="text-white font-mono select-all">
+                          {streamSettings.activeStreamSource === 'backup'
+                            ? `Respaldo M3U8 (${backupM3u8Input || 'Sin URL'})`
+                            : `Local OBS (${streamSettings.customVideoUrl || 'Sin URL'})`}
+                        </strong>
+                      </span>
+                      <span className="text-slate-500">
+                        Cambio en caliente sin desconectar a los espectadores
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* PANEL DE CONMUTACIÓN & CANAL DE RESPALDO M3U8 */}

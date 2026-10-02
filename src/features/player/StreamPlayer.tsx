@@ -88,9 +88,13 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
 
   const [failoverBanner, setFailoverBanner] = useState<string | null>(null);
 
+  const effectiveSrc = streamSettings?.activeStreamSource === 'backup'
+    ? (streamSettings?.backupVideoUrl || streamSettings?.customVideoUrl)
+    : (streamSettings?.activeStreamSource === 'simulation' ? '' : (streamSettings?.customVideoUrl || streamSettings?.backupVideoUrl));
+
   const { isLoaded, changeLevel, hlsInstance, isUsingBackup } = useHls({
     videoRef,
-    src: streamSettings?.customVideoUrl,
+    src: effectiveSrc,
     backupSrc: streamSettings?.backupVideoUrl,
     autoFailover: streamSettings?.autoFailoverEnabled !== false,
     autoplay: isPlaying,

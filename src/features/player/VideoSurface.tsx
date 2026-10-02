@@ -34,7 +34,13 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   const homeClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.homeClubId]) || BOLIVIAN_CLUBS.bolivar;
   const awayClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.awayClubId]) || BOLIVIAN_CLUBS.strongest;
 
-  const hasCustomStream = Boolean(streamSettings?.customVideoUrl);
+  const hasCustomStream = streamSettings?.activeStreamSource === 'simulation'
+    ? false
+    : Boolean(
+        streamSettings?.activeStreamSource === 'backup'
+          ? (streamSettings?.backupVideoUrl || streamSettings?.customVideoUrl)
+          : (streamSettings?.customVideoUrl || streamSettings?.backupVideoUrl)
+      );
 
   // Canvas pitch simulation when no custom video URL is provided
   useEffect(() => {
