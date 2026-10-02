@@ -1,5 +1,5 @@
 import React from 'react';
-import { Radio, Bell, Tv, ShieldCheck, Video, Menu, X, Lock } from 'lucide-react';
+import { Radio, Bell, Tv, ShieldCheck, Menu, X } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: 'stream' | 'stats' | 'exclusive' | 'obs' | 'admin' | string;
@@ -95,30 +95,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             {unreadNotificationsCount > 0 && (
               <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-[#080c14] animate-pulse" />
             )}
-          </button>
-
-          {/* Admin shortcut button */}
-          <button
-            onClick={() => setActiveTab('admin')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'admin'
-                ? 'bg-amber-500 text-black shadow-md shadow-amber-500/30'
-                : 'bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700/60'
-            }`}
-            title="Configuración de la página (Solo acceso transmisor)"
-          >
-            <Lock className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden lg:inline">Configuración</span>
-          </button>
-
-          {/* OBS Studio broadcast button */}
-          <button
-            onClick={openObsModal}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-black font-semibold text-xs transition-colors shadow-md shadow-emerald-900/30 whitespace-nowrap cursor-pointer"
-          >
-            <Video className="w-4 h-4" />
-            <span className="hidden sm:inline">Panel OBS Studio</span>
-            <span className="sm:hidden">OBS</span>
           </button>
 
           {/* Mobile hamburger menu toggle */}

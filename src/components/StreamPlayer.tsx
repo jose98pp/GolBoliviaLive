@@ -17,6 +17,8 @@ import {
   Check,
   Zap,
   Mic,
+  Cast,
+  X,
 } from 'lucide-react';
 import { StreamResolution, StreamSettings } from '../types/football';
 import { RESOLUTIONS, BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
@@ -65,6 +67,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   const [bitrateTelemetry, setBitrateTelemetry] = useState<number>(5940);
   const [fpsTelemetry, setFpsTelemetry] = useState<number>(59.9);
   const [showStatsOverlay, setShowStatsOverlay] = useState<boolean>(false);
+  const [showCastModal, setShowCastModal] = useState<boolean>(false);
 
   // Auto-hide on-screen controls for clean video view
   const [showControls, setShowControls] = useState<boolean>(true);
@@ -540,6 +543,39 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       window.removeEventListener('orientationchange', handleOrientationOrResize);
     };
   }, [isPlaying]);
+
+  const handleTriggerCast = async () => {
+    const video = userVideoRef.current;
+    let nativeTriggered = false;
+
+    // 1. Native Apple AirPlay (Safari iOS / macOS)
+    if (
+      video &&
+      typeof (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker === 'function'
+    ) {
+      try {
+        (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker();
+        nativeTriggered = true;
+      } catch (err) {
+        console.log('AirPlay target picker:', err);
+      }
+    }
+
+    // 2. W3C Remote Playback API (Chromium / Chrome / Edge to Smart TVs & Chromecast)
+    if (!nativeTriggered && video && 'remote' in video) {
+      try {
+        const remote = (video as unknown as { remote: { prompt: () => Promise<void> } }).remote;
+        if (remote && typeof remote.prompt === 'function') {
+          await remote.prompt();
+          nativeTriggered = true;
+        }
+      } catch (err) {
+        console.log('Remote playback prompt:', err);
+      }
+    }
+
+    setShowCastModal(true);
+  };
 
   const handleSelectResolution = (res: StreamResolution) => {
     setCurrentResolution(res);
@@ -1115,6 +1151,17 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
               )}
             </div>
 
+            {/* Cast to Smart TV */}
+            <button
+              onClick={handleTriggerCast}
+              className="p-1.5 hover:text-emerald-400 text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1"
+              title="Transmitir a Smart TV / Chromecast / AirPlay"
+              aria-label="Transmitir a Smart TV"
+            >
+              <Cast className="w-4 h-4 text-emerald-400" />
+              <span className="hidden xl:inline text-[11px] font-medium">Cast</span>
+            </button>
+
             {/* Theater Mode toggle */}
             <button
               onClick={() => setIsTheaterMode((prev) => !prev)}
@@ -1135,6 +1182,99 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* CAST TO SMART TV MODAL */}
+      {showCastModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#0b111e] border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative text-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setShowCastModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              aria-label="Cerrar modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3.5 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                <Cast className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base">Transmitir Señal a Smart TV</h3>
+                <p className="text-xs text-slate-400">Pasa el partido en vivo a tu televisor o dispositivo cercano</p>
+              </div>
+            </div>
+
+            {/* Direct Cast / AirPlay Trigger Button */}
+            <button
+              onClick={() => {
+                const video = userVideoRef.current;
+                if (video && typeof (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker === 'function') {
+                  (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker();
+                } else if (video && 'remote' in video) {
+                  const remote = (video as unknown as { remote: { prompt: () => Promise<void> } }).remote;
+                  if (remote && typeof remote.prompt === 'function') {
+                    remote.prompt().catch(() => {});
+                  }
+                }
+              }}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 mb-4 cursor-pointer transition-all hover:scale-[1.01]"
+            >
+              <Cast className="w-4 h-4" />
+              <span>Conectar Dispositivos (Chromecast / AirPlay)</span>
+            </button>
+
+            <div className="space-y-2.5 text-xs max-h-[60vh] overflow-y-auto pr-1">
+              {/* Option 1: Chrome / Edge PC o Celular */}
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div className="font-bold text-emerald-400 mb-1 flex items-center gap-1.5">
+                  <span>📺 1. Chromecast / Android TV / Google TV</span>
+                </div>
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  En tu navegador Chrome o Edge (computadora o celular), abre el menú de tres puntos <strong>(⋮)</strong> arriba a la derecha, toca en <strong>Transmitir...</strong> y selecciona tu Smart TV.
+                </p>
+              </div>
+
+              {/* Option 2: Smart View / Duplicar Pantalla */}
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div className="font-bold text-emerald-400 mb-1 flex items-center gap-1.5">
+                  <span>📱 2. Celulares Android (Smart View / Duplicar)</span>
+                </div>
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  Baja el panel superior de tu celular Android y pulsa el botón <strong>Smart View</strong> o <strong>Transmitir pantalla</strong> para duplicar la imagen hacia tu TV Samsung, LG o Roku.
+                </p>
+              </div>
+
+              {/* Option 3: Apple AirPlay */}
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div className="font-bold text-emerald-400 mb-1 flex items-center gap-1.5">
+                  <span>🍏 3. iPhone / iPad / Mac (AirPlay 2)</span>
+                </div>
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  Desliza para abrir el Centro de Control de tu iPhone o Mac, pulsa en <strong>Duplicar pantalla</strong> y selecciona tu Apple TV o Smart TV compatible con AirPlay.
+                </p>
+              </div>
+
+              {/* Option 4: Navegador directo de la Smart TV */}
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div className="font-bold text-amber-300 mb-1 flex items-center gap-1.5">
+                  <span>🌐 4. Opción Directa: Navegador de la Smart TV</span>
+                </div>
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  Abre la aplicación <strong>Internet / Navegador Web</strong> en tu Smart TV e ingresa la URL de esta página para ver el partido directamente a pantalla completa en la TV.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowCastModal(false)}
+              className="w-full mt-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
