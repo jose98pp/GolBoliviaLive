@@ -140,7 +140,23 @@ export default function App() {
 
   // Stream state
   const [isStreamingLive, setIsStreamingLive] = useState(true);
-  const [isVipMember, setIsVipMember] = useState(false);
+  const [isVipMember, setIsVipMember] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('golbolivia_vip_active') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleVip = (forcedState?: boolean) => {
+    setIsVipMember((prev) => {
+      const next = typeof forcedState === 'boolean' ? forcedState : !prev;
+      try {
+        localStorage.setItem('golbolivia_vip_active', next.toString());
+      } catch {}
+      return next;
+    });
+  };
 
   // Match live score & events
   const [homeScore, setHomeScore] = useState(2);
@@ -522,7 +538,7 @@ export default function App() {
         {activeTab === 'exclusive' && (
           <ExclusiveClubZone
             isVipMember={isVipMember}
-            toggleVipMembership={() => setIsVipMember(!isVipMember)}
+            toggleVipMembership={handleToggleVip}
           />
         )}
       </main>
