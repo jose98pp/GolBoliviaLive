@@ -86,12 +86,24 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     resetRecovery,
   } = useStreamRecovery(handleReloadStream);
 
-  const { isLoaded, changeLevel, hlsInstance } = useHls({
+  const [failoverBanner, setFailoverBanner] = useState<string | null>(null);
+
+  const { isLoaded, changeLevel, hlsInstance, isUsingBackup } = useHls({
     videoRef,
     src: streamSettings?.customVideoUrl,
+    backupSrc: streamSettings?.backupVideoUrl,
+    autoFailover: streamSettings?.autoFailoverEnabled !== false,
     autoplay: isPlaying,
     onError: (err) => triggerRecovery(err),
     onSuccess: () => resetRecovery(),
+    onFailoverTriggered: (source) => {
+      if (source === 'backup') {
+        setFailoverBanner(streamSettings?.backupChannelName ? `Señal conmutada a respaldo: ${streamSettings.backupChannelName}` : 'Señal conmutada a canal de respaldo HLS.');
+        setTimeout(() => setFailoverBanner(null), 8000);
+      } else {
+        setFailoverBanner(null);
+      }
+    },
   });
 
   const telemetry = usePlayerTelemetry({
@@ -175,6 +187,14 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         awayScore={awayScore}
         matchMinute={matchMinute}
       />
+
+      {/* Failover / Backup Channel Alert Banner */}
+      {(failoverBanner || isUsingBackup || streamSettings?.activeStreamSource === 'backup') && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-3.5 py-1.5 rounded-full bg-amber-950/90 border border-amber-500/70 text-amber-200 text-xs font-mono font-bold flex items-center gap-2 shadow-2xl backdrop-blur-md">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+          <span>{failoverBanner || `Canal de Respaldo HLS Activo (${streamSettings?.backupChannelName || 'Señal Alternativa'})`}</span>
+        </div>
+      )}
 
       {/* Popovers */}
       <QualitySelector

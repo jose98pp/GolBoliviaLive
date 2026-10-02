@@ -105,6 +105,25 @@ class GolBoliviaApiClient {
     return result;
   }
 
+  // 6.1 Switch Active Stream Source (OBS vs Backup M3U8 vs Simulation)
+  async failoverStream(params: {
+    activeStreamSource?: 'obs' | 'backup' | 'simulation';
+    backupVideoUrl?: string;
+    backupChannelName?: string;
+    autoFailoverEnabled?: boolean;
+  }): Promise<{ success: boolean; activeStreamSource: string; playbackUrl: string; streamSettings: any }> {
+    const res = await fetch('/api/streams/failover', {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      throw new Error(result.error || 'Error al conmutar fuente de transmisión');
+    }
+    return result;
+  }
+
   // 6.1 Fetch Confidential Ingest Keys (strictly protected for ADMIN and TRANSMISOR)
   async getPrivateIngestCredentials(): Promise<PrivateIngestCredentials> {
     const res = await fetch('/api/streams/private-ingest', {

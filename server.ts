@@ -164,6 +164,10 @@ interface AppState {
     broadcastMode: 'obs_custom' | 'simulation' | 'pre_match' | 'halftime' | 'var' | 'post_match';
     overlayScoreboardVisible: boolean;
     lowLatencyMode: boolean;
+    backupVideoUrl: string;
+    backupChannelName: string;
+    activeStreamSource: 'obs' | 'backup' | 'simulation';
+    autoFailoverEnabled: boolean;
   };
   scoreboard: {
     homeScore: number;
@@ -223,6 +227,10 @@ const state: AppState = {
     broadcastMode: 'obs_custom',
     overlayScoreboardVisible: true,
     lowLatencyMode: true,
+    backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    backupChannelName: 'GolBolivia 24/7 Señal Alternativa HD',
+    activeStreamSource: 'obs',
+    autoFailoverEnabled: true,
   },
   scoreboard: {
     homeScore: 2,
@@ -385,9 +393,16 @@ app.post('/api/auth/logout', authenticate, (req: Request, res: Response) => {
 
 // Helper to generate sanitized public stream payload (NEVER exposes streamKey or rtmpServer)
 function getPublicStreamPayload() {
+  let effectivePlaybackUrl = state.streamSettings.customVideoUrl;
+  if (state.streamSettings.activeStreamSource === 'backup') {
+    effectivePlaybackUrl = state.streamSettings.backupVideoUrl || state.streamSettings.customVideoUrl;
+  } else if (state.streamSettings.activeStreamSource === 'simulation') {
+    effectivePlaybackUrl = '';
+  }
+
   return {
     live: state.streamSettings.isLive,
-    playbackUrl: state.streamSettings.customVideoUrl,
+    playbackUrl: effectivePlaybackUrl,
     match: state.streamSettings.title,
     tournament: state.streamSettings.tournamentName,
     quality: [
@@ -409,6 +424,10 @@ function getPublicStreamPayload() {
     lowLatencyMode: state.streamSettings.lowLatencyMode,
     title: state.streamSettings.title,
     customVideoUrl: state.streamSettings.customVideoUrl,
+    backupVideoUrl: state.streamSettings.backupVideoUrl,
+    backupChannelName: state.streamSettings.backupChannelName,
+    activeStreamSource: state.streamSettings.activeStreamSource,
+    autoFailoverEnabled: state.streamSettings.autoFailoverEnabled,
     isLive: state.streamSettings.isLive,
   };
 }
@@ -509,6 +528,40 @@ app.post(
     // Broadcast sanitized public data only
     broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
     res.json({ success: true, streamSettings: getPublicStreamPayload() });
+  }
+);
+
+// 6.3 Instant Failover Switcher: Switch between OBS, Backup M3U8, or 2D Simulation
+app.post(
+  '/api/streams/failover',
+  authenticate,
+  requireRoles(['ADMIN', 'TRANSMISOR']),
+  (req: Request, res: Response) => {
+    const { activeStreamSource, backupVideoUrl, backupChannelName, autoFailoverEnabled } = req.body;
+    if (activeStreamSource && ['obs', 'backup', 'simulation'].includes(activeStreamSource)) {
+      state.streamSettings.activeStreamSource = activeStreamSource;
+    }
+    if (typeof backupVideoUrl === 'string') {
+      state.streamSettings.backupVideoUrl = backupVideoUrl;
+    }
+    if (typeof backupChannelName === 'string') {
+      state.streamSettings.backupChannelName = backupChannelName;
+    }
+    if (typeof autoFailoverEnabled === 'boolean') {
+      state.streamSettings.autoFailoverEnabled = autoFailoverEnabled;
+    }
+
+    // Broadcast instant update across all connected fans via SSE
+    const payload = getPublicStreamPayload();
+    broadcastSseEvent('STREAM_UPDATED', payload);
+
+    res.json({
+      success: true,
+      message: `Fuente de señal cambiada a: ${state.streamSettings.activeStreamSource.toUpperCase()}`,
+      activeStreamSource: state.streamSettings.activeStreamSource,
+      playbackUrl: payload.playbackUrl,
+      streamSettings: payload,
+    });
   }
 );
 
@@ -641,6 +694,25 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
+
+    // Fallback for SPA routing in development
+    app.use('*', async (req: Request, res: Response, next: NextFunction) => {
+      const url = req.originalUrl;
+      if (url.startsWith('/api')) {
+        return next();
+      }
+      try {
+        const indexPath = path.resolve(__dirname, 'index.html');
+        let template = fs.readFileSync(indexPath, 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e: any) {
+        if (vite) {
+          vite.ssrFixStacktrace(e);
+        }
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(__dirname, 'dist');
     if (fs.existsSync(distPath)) {

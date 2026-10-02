@@ -121,6 +121,10 @@ export interface PublicStreamState {
   officialAnnouncement?: string;
   overlayScoreboardVisible?: boolean;
   lowLatencyMode?: boolean;
+  backupVideoUrl?: string;
+  backupChannelName?: string;
+  activeStreamSource?: 'obs' | 'backup' | 'simulation';
+  autoFailoverEnabled?: boolean;
 }
 
 export interface PrivateIngestCredentials {
@@ -149,6 +153,10 @@ export interface StreamSettings {
   broadcastMode?: 'obs_custom' | 'simulation' | 'pre_match' | 'halftime' | 'var' | 'post_match';
   overlayScoreboardVisible?: boolean;
   lowLatencyMode?: boolean;
+  backupVideoUrl?: string;
+  backupChannelName?: string;
+  activeStreamSource?: 'obs' | 'backup' | 'simulation';
+  autoFailoverEnabled?: boolean;
 }
 
 export interface VipTransaction {

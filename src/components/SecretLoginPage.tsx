@@ -40,6 +40,7 @@ import { apiClient } from '../services/apiClient';
 import { StreamSettings, MatchEvent, LivePoll, NotificationItem, PrivateIngestCredentials } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { RealPresenceStats } from '../hooks/useRealPresence';
+import { FailoverChannelPanel } from './FailoverChannelPanel';
 
 interface SecretLoginPageProps {
   streamSettings: StreamSettings;
@@ -149,7 +150,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [isRefreshingPreview, setIsRefreshingPreview] = useState(false);
 
   // Active section inside the private dashboard
-  const [activeTab, setActiveTab] = useState<'deck' | 'vip_management' | 'settings' | 'analytics'>('deck');
+  const [activeTab, setActiveTab] = useState<'deck' | 'failover' | 'vip_management' | 'settings' | 'analytics'>('deck');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
@@ -293,7 +294,18 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               }`}
             >
               <Tv className="w-3.5 h-3.5" />
-              <span>Tablero Central de Transmisión</span>
+              <span>Tablero Central</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('failover')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'failover'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 text-amber-400" />
+              <span>Canal de Respaldo M3U8</span>
             </button>
             <button
               onClick={() => setActiveTab('vip_management')}
@@ -444,10 +456,17 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         {streamSettings.customVideoUrl || '(Ninguno - usando animación interactiva)'}
                       </strong>
                     </span>
-                    <span className="text-emerald-400/90 font-medium">✓ Queda guardado automáticamente en el navegador</span>
+                    <span className="text-emerald-400/90 font-medium">✓ Sincronizado en tiempo real con el servidor</span>
                   </div>
                 </form>
               </div>
+
+              {/* PANEL DE CONMUTACIÓN & CANAL DE RESPALDO M3U8 */}
+              <FailoverChannelPanel
+                streamSettings={streamSettings}
+                onUpdateStreamSettings={onUpdateStreamSettings}
+                onPreviewReload={handleReloadPreview}
+              />
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* 1. MONITOR DE SALIDA EN TIEMPO REAL (IFRAME) */}
@@ -1220,6 +1239,15 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   </button>
                 </div>
               )}
+            </div>
+          ) : activeTab === 'failover' ? (
+            /* CANAL DE RESPALDO M3U8 Y CONMUTACIÓN EN TIEMPO REAL */
+            <div className="space-y-6">
+              <FailoverChannelPanel
+                streamSettings={streamSettings}
+                onUpdateStreamSettings={onUpdateStreamSettings}
+                onPreviewReload={handleReloadPreview}
+              />
             </div>
           ) : (
             /* CONFIGURACIÓN COMPLETA & SERVIDORES (AdminPanel) */
