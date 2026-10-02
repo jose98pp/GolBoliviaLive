@@ -23,6 +23,30 @@ import {
 import { StreamResolution, StreamSettings } from '../types/football';
 import { RESOLUTIONS, BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 
+// W3C Presentation API Types for Chromium Cast Integration
+interface PresentationConnection {
+  id: string;
+  state: 'connecting' | 'connected' | 'closed' | 'terminated';
+  send: (data: string) => void;
+  close: () => void;
+  terminate: () => void;
+  onconnect: (() => void) | null;
+  onclose: (() => void) | null;
+  onterminate: (() => void) | null;
+  onmessage: ((event: { data: string }) => void) | null;
+}
+
+interface PresentationAvailability {
+  value: boolean;
+  onchange: (() => void) | null;
+}
+
+interface PresentationRequestInstance {
+  start: () => Promise<PresentationConnection>;
+  reconnect: (id: string) => Promise<PresentationConnection>;
+  getAvailability?: () => Promise<PresentationAvailability>;
+}
+
 interface StreamPlayerProps {
   isTheaterMode: boolean;
   setIsTheaterMode: (val: boolean | ((prev: boolean) => boolean)) => void;
@@ -68,6 +92,13 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   const [fpsTelemetry, setFpsTelemetry] = useState<number>(59.9);
   const [showStatsOverlay, setShowStatsOverlay] = useState<boolean>(false);
   const [showCastModal, setShowCastModal] = useState<boolean>(false);
+
+  // Presentation API & Cast state for Chromium browsers
+  const [isCastConnected, setIsCastConnected] = useState<boolean>(false);
+  const [isPresentationAvailable, setIsPresentationAvailable] = useState<boolean>(false);
+  const [presentationDeviceName, setPresentationDeviceName] = useState<string>('');
+  const presentationRequestRef = useRef<PresentationRequestInstance | null>(null);
+  const presentationConnectionRef = useRef<PresentationConnection | null>(null);
 
   // Auto-hide on-screen controls for clean video view
   const [showControls, setShowControls] = useState<boolean>(true);
@@ -544,12 +575,95 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     };
   }, [isPlaying]);
 
+  // W3C Presentation Request API initialization for Chromium-based browsers
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'PresentationRequest' in window) {
+      try {
+        const presentationUrl = `${window.location.origin}${window.location.pathname}?presentation=true`;
+        const PresentationRequestClass = (
+          window as unknown as { PresentationRequest: new (urls: string[]) => PresentationRequestInstance }
+        ).PresentationRequest;
+
+        const request = new PresentationRequestClass([presentationUrl, window.location.href]);
+        presentationRequestRef.current = request;
+
+        // Register defaultRequest on navigator.presentation for Chromium Cast integration
+        const navPresentation = (
+          navigator as unknown as { presentation?: { defaultRequest?: PresentationRequestInstance } }
+        ).presentation;
+        if (navPresentation) {
+          navPresentation.defaultRequest = request;
+        }
+
+        // Monitor presentation display availability
+        if (typeof request.getAvailability === 'function') {
+          request
+            .getAvailability()
+            .then((availability) => {
+              setIsPresentationAvailable(availability.value);
+              availability.onchange = () => {
+                setIsPresentationAvailable(availability.value);
+              };
+            })
+            .catch(() => {});
+        }
+      } catch (err) {
+        console.warn('Presentation API initialization:', err);
+      }
+    }
+  }, []);
+
   const handleTriggerCast = async () => {
-    const video = userVideoRef.current;
     let nativeTriggered = false;
 
-    // 1. Native Apple AirPlay (Safari iOS / macOS)
+    // 1. Presentation Request API (Chromium: Chrome, Edge, Brave, Opera)
+    if (presentationRequestRef.current) {
+      try {
+        const connection = await presentationRequestRef.current.start();
+        presentationConnectionRef.current = connection;
+        setIsCastConnected(true);
+        setPresentationDeviceName('Smart TV / Chromecast');
+        nativeTriggered = true;
+
+        connection.onconnect = () => {
+          setIsCastConnected(true);
+          try {
+            connection.send(
+              JSON.stringify({
+                type: 'PLAY_STREAM',
+                streamUrl: streamSettings?.customVideoUrl,
+                title: `${homeClub.name} vs ${awayClub.name}`,
+              })
+            );
+          } catch {}
+        };
+
+        connection.onclose = () => {
+          setIsCastConnected(false);
+          presentationConnectionRef.current = null;
+        };
+
+        connection.onterminate = () => {
+          setIsCastConnected(false);
+          presentationConnectionRef.current = null;
+        };
+
+        setShowCastModal(false);
+        return;
+      } catch (err: unknown) {
+        const error = err as { name?: string };
+        if (error?.name === 'NotAllowedError' || error?.name === 'AbortError') {
+          // User closed the device selector without picking a display
+          return;
+        }
+        console.log('PresentationRequest.start() non-fatal fallback:', err);
+      }
+    }
+
+    // 2. Native Apple AirPlay (Safari iOS / macOS)
+    const video = userVideoRef.current;
     if (
+      !nativeTriggered &&
       video &&
       typeof (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker === 'function'
     ) {
@@ -561,7 +675,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       }
     }
 
-    // 2. W3C Remote Playback API (Chromium / Chrome / Edge to Smart TVs & Chromecast)
+    // 3. W3C Remote Playback API (Chromium fallback)
     if (!nativeTriggered && video && 'remote' in video) {
       try {
         const remote = (video as unknown as { remote: { prompt: () => Promise<void> } }).remote;
@@ -575,6 +689,16 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     }
 
     setShowCastModal(true);
+  };
+
+  const handleDisconnectCast = () => {
+    if (presentationConnectionRef.current) {
+      try {
+        presentationConnectionRef.current.terminate();
+      } catch {}
+      presentationConnectionRef.current = null;
+    }
+    setIsCastConnected(false);
   };
 
   const handleSelectResolution = (res: StreamResolution) => {
@@ -760,6 +884,24 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isReconnecting ? 'animate-spin' : ''}`} />
             <span>Reconectar Señal</span>
+          </button>
+        </div>
+      )}
+
+      {/* Active Presentation / Cast Indicator */}
+      {isCastConnected && (
+        <div
+          className={`absolute top-3 left-3 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/95 border border-emerald-500/70 text-emerald-300 text-xs shadow-2xl backdrop-blur-md select-none transition-all duration-300 ${
+            showControls ? 'opacity-100 pointer-events-auto' : 'opacity-80 pointer-events-auto'
+          }`}
+        >
+          <Cast className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+          <span className="font-semibold text-[11px]">En TV: {presentationDeviceName || 'Smart TV'}</span>
+          <button
+            onClick={handleDisconnectCast}
+            className="ml-1 px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-[10px] font-bold transition-colors cursor-pointer"
+          >
+            Desconectar
           </button>
         </div>
       )}
@@ -1151,15 +1293,28 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
               )}
             </div>
 
-            {/* Cast to Smart TV */}
+            {/* Cast to Smart TV (Presentation API / Chromecast / AirPlay) */}
             <button
               onClick={handleTriggerCast}
-              className="p-1.5 hover:text-emerald-400 text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1"
-              title="Transmitir a Smart TV / Chromecast / AirPlay"
+              className={`p-1.5 transition-all cursor-pointer flex items-center gap-1 rounded-lg ${
+                isCastConnected
+                  ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/50 shadow-sm shadow-emerald-950/40'
+                  : 'hover:text-emerald-400 text-slate-300 hover:text-white'
+              }`}
+              title={
+                isCastConnected
+                  ? `Transmitiendo a ${presentationDeviceName || 'Smart TV'} (Click para gestionar)`
+                  : 'Transmitir a Smart TV / Chromecast (Presentation Request API)'
+              }
               aria-label="Transmitir a Smart TV"
             >
-              <Cast className="w-4 h-4 text-emerald-400" />
-              <span className="hidden xl:inline text-[11px] font-medium">Cast</span>
+              <Cast className={`w-4 h-4 ${isCastConnected ? 'text-emerald-400 animate-pulse' : 'text-emerald-400'}`} />
+              <span className="hidden xl:inline text-[11px] font-medium">
+                {isCastConnected ? 'En TV' : 'Cast'}
+              </span>
+              {isPresentationAvailable && !isCastConnected && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" title="Dispositivo de transmisión disponible" />
+              )}
             </button>
 
             {/* Theater Mode toggle */}
@@ -1201,37 +1356,46 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
               </div>
               <div>
                 <h3 className="font-bold text-white text-base">Transmitir Señal a Smart TV</h3>
-                <p className="text-xs text-slate-400">Pasa el partido en vivo a tu televisor o dispositivo cercano</p>
+                <p className="text-xs text-slate-400">Presentation API para Chrome, Edge y Smart TVs</p>
               </div>
             </div>
 
-            {/* Direct Cast / AirPlay Trigger Button */}
-            <button
-              onClick={() => {
-                const video = userVideoRef.current;
-                if (video && typeof (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker === 'function') {
-                  (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker();
-                } else if (video && 'remote' in video) {
-                  const remote = (video as unknown as { remote: { prompt: () => Promise<void> } }).remote;
-                  if (remote && typeof remote.prompt === 'function') {
-                    remote.prompt().catch(() => {});
-                  }
-                }
-              }}
-              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 mb-4 cursor-pointer transition-all hover:scale-[1.01]"
-            >
-              <Cast className="w-4 h-4" />
-              <span>Conectar Dispositivos (Chromecast / AirPlay)</span>
-            </button>
+            {/* Active connection display */}
+            {isCastConnected ? (
+              <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
+                  <div>
+                    <div className="font-bold text-emerald-300 text-xs">Conectado a Smart TV</div>
+                    <div className="text-[10px] text-slate-300">{presentationDeviceName || 'Chromecast / Dispositivo Google Cast'}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={handleDisconnectCast}
+                  className="px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Desconectar
+                </button>
+              </div>
+            ) : (
+              /* Direct Presentation Request Trigger Button */
+              <button
+                onClick={handleTriggerCast}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 mb-4 cursor-pointer transition-all hover:scale-[1.01]"
+              >
+                <Cast className="w-4 h-4" />
+                <span>Abrir Selector de Pantallas (Chromecast / Smart TV)</span>
+              </button>
+            )}
 
-            <div className="space-y-2.5 text-xs max-h-[60vh] overflow-y-auto pr-1">
-              {/* Option 1: Chrome / Edge PC o Celular */}
+            <div className="space-y-2.5 text-xs max-h-[55vh] overflow-y-auto pr-1">
+              {/* Option 1: Chrome / Edge Presentation Request API */}
               <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
                 <div className="font-bold text-emerald-400 mb-1 flex items-center gap-1.5">
-                  <span>📺 1. Chromecast / Android TV / Google TV</span>
+                  <span>📺 1. Chromium Presentation API (Automático)</span>
                 </div>
                 <p className="text-slate-300 leading-relaxed text-[11px]">
-                  En tu navegador Chrome o Edge (computadora o celular), abre el menú de tres puntos <strong>(⋮)</strong> arriba a la derecha, toca en <strong>Transmitir...</strong> y selecciona tu Smart TV.
+                  En Google Chrome o Microsoft Edge, al presionar el botón de arriba el navegador activa el protocolo <strong>Presentation Request API</strong> para vincular la señal a cualquier <strong>Chromecast</strong>, <strong>Android TV</strong>, <strong>Google TV</strong> o pantalla de red local.
                 </p>
               </div>
 
