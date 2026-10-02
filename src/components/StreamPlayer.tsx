@@ -5,6 +5,7 @@ import {
   Pause,
   Volume2,
   VolumeX,
+  Volume1,
   Maximize2,
   Minimize2,
   Settings,
@@ -19,6 +20,10 @@ import {
   Mic,
   Cast,
   X,
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  ExternalLink,
 } from 'lucide-react';
 import { StreamResolution, StreamSettings } from '../types/football';
 import { RESOLUTIONS, BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
@@ -27,6 +32,7 @@ import { RESOLUTIONS, BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 declare global {
   interface Window {
     __onGCastApiAvailable?: (isAvailable: boolean) => void;
+    __isGCastApiAvailable?: boolean;
     cast?: {
       framework: {
         CastContext: {
@@ -57,6 +63,9 @@ declare global {
         };
         media: {
           DEFAULT_MEDIA_RECEIVER_APP_ID: string;
+          StreamType?: {
+            LIVE: unknown;
+          };
           MediaInfo: new (contentId: string, contentType: string) => any;
           GenericMediaMetadata: new () => any;
           LoadRequest: new (mediaInfo: any) => any;
@@ -138,7 +147,16 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   const [showStatsOverlay, setShowStatsOverlay] = useState<boolean>(false);
   const [showCastModal, setShowCastModal] = useState<boolean>(false);
 
-  // Presentation API & Cast state for Chromium browsers
+  // Google Cast & Presentation API state for Chromium browsers
+  type CastConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error';
+  const [castStatus, setCastStatus] = useState<CastConnectionStatus>('idle');
+  const [castError, setCastError] = useState<string | null>(null);
+  const [castDiagnosticsMessage, setCastDiagnosticsMessage] = useState<string | null>(null);
+  const [castDevice, setCastDevice] = useState<{ friendlyName: string; modelName?: string } | null>(null);
+  const [castIsPaused, setCastIsPaused] = useState<boolean>(false);
+  const [castTvVolume, setCastTvVolume] = useState<number>(1);
+  const [castTvMuted, setCastTvMuted] = useState<boolean>(false);
+
   const [isCastConnected, setIsCastConnected] = useState<boolean>(false);
   const [isPresentationAvailable, setIsPresentationAvailable] = useState<boolean>(false);
   const [presentationDeviceName, setPresentationDeviceName] = useState<string>('');
@@ -627,9 +645,13 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       if (isAvailable && window.cast?.framework) {
         try {
           const context = window.cast.framework.CastContext.getInstance();
+          // Explicit receiver application ID: Google Default Media Receiver CC1AD845
+          const receiverAppId =
+            window.chrome?.cast?.media?.DEFAULT_MEDIA_RECEIVER_APP_ID || 'CC1AD845';
+
           context.setOptions({
-            receiverApplicationId: window.chrome?.cast?.media?.DEFAULT_MEDIA_RECEIVER_APP_ID || 'CC1AD845',
-            autoJoinPolicy: window.chrome?.cast?.AutoJoinPolicy?.ORIGIN_SCOPED,
+            receiverApplicationId: receiverAppId,
+            autoJoinPolicy: window.chrome?.cast?.AutoJoinPolicy?.ORIGIN_SCOPED || 'origin_scoped',
           });
           setIsPresentationAvailable(true);
 
@@ -642,24 +664,47 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
                 state === window.cast?.framework?.SessionState?.SESSION_RESUMED
               ) {
                 const session = context.getCurrentSession();
+                const dev = session?.getCastDevice?.();
+                const friendlyName = dev?.friendlyName || 'Smart TV / Chromecast';
+                const modelName = dev?.modelName;
+
+                setCastStatus('connected');
+                setCastError(null);
+                setCastDevice({ friendlyName, modelName });
                 setIsCastConnected(true);
-                setPresentationDeviceName(session?.getCastDevice()?.friendlyName || 'Smart TV / Chromecast');
+                setPresentationDeviceName(friendlyName);
 
                 const videoUrl = streamSettings?.customVideoUrl;
                 if (videoUrl && window.chrome?.cast?.media) {
                   try {
                     const mediaInfo = new window.chrome.cast.media.MediaInfo(videoUrl, 'application/x-mpegURL');
+                    mediaInfo.streamType = window.chrome.cast.media.StreamType?.LIVE || 'LIVE';
+                    mediaInfo.contentType = 'application/x-mpegURL';
                     mediaInfo.metadata = new window.chrome.cast.media.GenericMediaMetadata();
                     mediaInfo.metadata.title = `${homeClub.name} vs ${awayClub.name}`;
                     mediaInfo.metadata.subtitle = streamSettings?.tournamentName || 'GolBolivia Live';
+
                     const loadReq = new window.chrome.cast.media.LoadRequest(mediaInfo);
-                    session.loadMedia(loadReq);
+                    loadReq.autoplay = true;
+
+                    session.loadMedia(loadReq).then(
+                      () => {
+                        console.log('Google Cast: Señal HLS cargada en la TV correctamente.');
+                      },
+                      (mediaError: unknown) => {
+                        console.warn('Cast media load error:', mediaError);
+                        setCastError('No se pudo reproducir la señal en el receptor. Verifica el formato de transmisión.');
+                        setCastStatus('error');
+                      }
+                    );
                   } catch (e) {
                     console.warn('Cast load media error:', e);
                   }
                 }
               } else if (state === window.cast?.framework?.SessionState?.SESSION_ENDED) {
+                setCastStatus('idle');
                 setIsCastConnected(false);
+                setCastDevice(null);
               }
             }
           );
@@ -671,10 +716,15 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
 
     if (window.cast?.framework) {
       initGoogleCast(true);
+    } else if (window.__isGCastApiAvailable) {
+      initGoogleCast(true);
     } else {
       window.__onGCastApiAvailable = (isAvailable: boolean) => {
         initGoogleCast(isAvailable);
       };
+      window.addEventListener('google-cast-api-available', () => {
+        initGoogleCast(true);
+      });
     }
 
     // 2. W3C Presentation API
@@ -713,6 +763,10 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   }, [streamSettings?.customVideoUrl, homeClub.name, awayClub.name]);
 
   const handleTriggerCast = async () => {
+    setCastError(null);
+    setCastDiagnosticsMessage(null);
+    setCastStatus('connecting');
+
     const video = userVideoRef.current;
 
     // 1. Google Cast SDK (Native Chrome on Android & PC -> Chromecast / Smart TVs)
@@ -721,15 +775,29 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         const castContext = window.cast.framework.CastContext.getInstance();
         if (castContext) {
           await castContext.requestSession();
-          // Real browser Cast device picker was displayed! Do NOT open instructions modal.
+          // If requestSession succeeds, the SESSION_STARTED event listener sets castStatus to 'connected'.
           return;
         }
       } catch (err: unknown) {
         const str = String(err);
         if (str.includes('cancel') || (err as { name?: string })?.name === 'AbortError') {
-          return; // User dismissed the picker
+          setCastStatus('idle');
+          return; // User intentionally dismissed the device selector
         }
-        console.log('Google Cast requestSession non-fatal:', err);
+        console.warn('Google Cast requestSession non-fatal error:', err);
+        let errorMsg = 'No se pudo conectar con el dispositivo de transmisión.';
+        if (str.includes('receiver_unavailable') || str.includes('timeout')) {
+          errorMsg = 'No se encontró ningún Smart TV o Chromecast activo en la red Wi-Fi.';
+        } else if (str.includes('session_error')) {
+          errorMsg = 'Error en la sesión del receptor de TV. Prueba reiniciar el televisor.';
+        } else if (str.includes('not_allowed') || str.includes('SecurityError') || str.includes('Permissions policy')) {
+          errorMsg = 'El navegador restringió el acceso a Cast dentro del visor embebido.';
+          setCastDiagnosticsMessage('Abre la página en una pestaña directa para permitir el acceso completo a dispositivos Wi-Fi.');
+        }
+        setCastError(errorMsg);
+        setCastStatus('error');
+        setShowCastModal(true);
+        return;
       }
     }
 
@@ -741,14 +809,17 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     ) {
       try {
         await (video as unknown as { remote: { prompt: () => Promise<void> } }).remote.prompt();
-        // Native device selector opened! Do NOT open instructions modal.
+        setCastStatus('connected');
+        setIsCastConnected(true);
+        setPresentationDeviceName('Smart TV');
         return;
       } catch (err: unknown) {
         const error = err as { name?: string };
         if (error?.name === 'NotAllowedError' || error?.name === 'AbortError') {
-          return; // User canceled or dismissed prompt
+          setCastStatus('idle');
+          return;
         }
-        console.log('Remote playback prompt non-fatal:', err);
+        console.warn('Remote playback prompt error:', err);
       }
     }
 
@@ -759,10 +830,10 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     ) {
       try {
         (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker();
-        // Native AirPlay sheet displayed! Do NOT open instructions modal.
+        setCastStatus('idle');
         return;
       } catch (err) {
-        console.log('AirPlay target picker non-fatal:', err);
+        console.warn('AirPlay target picker error:', err);
       }
     }
 
@@ -771,20 +842,103 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       try {
         const connection = await presentationRequestRef.current.start();
         presentationConnectionRef.current = connection;
+        setCastStatus('connected');
         setIsCastConnected(true);
-        setPresentationDeviceName('Smart TV / Chromecast');
+        setPresentationDeviceName('Smart TV');
+        setCastDevice({ friendlyName: 'Smart TV' });
+
+        connection.onconnect = () => {
+          setCastStatus('connected');
+          setIsCastConnected(true);
+          try {
+            connection.send(
+              JSON.stringify({
+                type: 'PLAY_STREAM',
+                streamUrl: streamSettings?.customVideoUrl,
+                title: `${homeClub.name} vs ${awayClub.name}`,
+              })
+            );
+          } catch {}
+        };
+
+        connection.onclose = () => {
+          setCastStatus('idle');
+          setIsCastConnected(false);
+          presentationConnectionRef.current = null;
+        };
+
+        connection.onterminate = () => {
+          setCastStatus('idle');
+          setIsCastConnected(false);
+          presentationConnectionRef.current = null;
+        };
+
         return;
       } catch (err: unknown) {
         const error = err as { name?: string };
         if (error?.name === 'NotAllowedError' || error?.name === 'AbortError') {
+          setCastStatus('idle');
           return;
         }
-        console.log('PresentationRequest.start non-fatal:', err);
+        console.warn('PresentationRequest error:', err);
       }
     }
 
-    // 5. Fallback only if no native Cast API could open (e.g. iframe sandbox without permissions)
+    // 5. Fallback if no native Cast API could open
+    setCastStatus('error');
+    setCastError('No se pudo abrir el selector de dispositivos Cast en este navegador.');
+    setCastDiagnosticsMessage('Prueba abriendo en una pestaña completa o verifica que tu TV y dispositivo estén en la misma red Wi-Fi.');
     setShowCastModal(true);
+  };
+
+  const handleToggleCastPlayback = () => {
+    if (window.cast?.framework) {
+      try {
+        const session = window.cast.framework.CastContext.getInstance()?.getCurrentSession();
+        const media = session?.getMediaSession?.();
+        if (castIsPaused) {
+          media?.play?.();
+          setCastIsPaused(false);
+        } else {
+          media?.pause?.();
+          setCastIsPaused(true);
+        }
+      } catch (err) {
+        console.warn('Cast toggle playback error:', err);
+      }
+    } else if (presentationConnectionRef.current) {
+      try {
+        presentationConnectionRef.current.send(JSON.stringify({ type: castIsPaused ? 'PLAY' : 'PAUSE' }));
+        setCastIsPaused(!castIsPaused);
+      } catch (err) {
+        console.warn('Presentation toggle error:', err);
+      }
+    }
+  };
+
+  const handleSetCastVolume = (vol: number) => {
+    setCastTvVolume(vol);
+    if (window.cast?.framework) {
+      try {
+        const session = window.cast.framework.CastContext.getInstance()?.getCurrentSession();
+        session?.setVolume?.(vol);
+      } catch (err) {
+        console.warn('Cast set volume error:', err);
+      }
+    }
+  };
+
+  const handleToggleCastMute = () => {
+    const nextMuted = !castTvMuted;
+    setCastTvMuted(nextMuted);
+    if (window.cast?.framework) {
+      try {
+        const session = window.cast.framework.CastContext.getInstance()?.getCurrentSession();
+        session?.setMute?.(nextMuted);
+      } catch (err) {
+        console.warn('Cast set mute error:', err);
+      }
+    }
   };
 
   const handleDisconnectCast = () => {
@@ -802,7 +956,10 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       } catch {}
       presentationConnectionRef.current = null;
     }
+    setCastStatus('idle');
     setIsCastConnected(false);
+    setCastDevice(null);
+    setCastError(null);
   };
 
   const handleSelectResolution = (res: StreamResolution) => {
@@ -989,20 +1146,59 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         </div>
       )}
 
-      {/* Active Presentation / Cast Indicator */}
-      {isCastConnected && (
+      {/* Dynamic Cast Status Banner in Top-Left */}
+      {castStatus === 'connected' && (
         <div
           className={`absolute top-3 left-3 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/95 border border-emerald-500/70 text-emerald-300 text-xs shadow-2xl backdrop-blur-md select-none transition-all duration-300 ${
-            showControls ? 'opacity-100 pointer-events-auto' : 'opacity-80 pointer-events-auto'
+            showControls ? 'opacity-100 pointer-events-auto' : 'opacity-85 pointer-events-auto'
           }`}
         >
           <Cast className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-          <span className="font-semibold text-[11px]">En TV: {presentationDeviceName || 'Smart TV'}</span>
+          <span className="font-semibold text-[11px]">En TV: {castDevice?.friendlyName || presentationDeviceName || 'Smart TV'}</span>
+          <button
+            onClick={handleToggleCastPlayback}
+            className="ml-1 px-2 py-0.5 rounded bg-emerald-800/90 hover:bg-emerald-700 text-white text-[10px] font-bold transition-colors cursor-pointer"
+            title={castIsPaused ? 'Reanudar en TV' : 'Pausar en TV'}
+          >
+            {castIsPaused ? '▶️ TV' : '⏸️ TV'}
+          </button>
           <button
             onClick={handleDisconnectCast}
-            className="ml-1 px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-[10px] font-bold transition-colors cursor-pointer"
+            className="px-2 py-0.5 rounded bg-red-600/90 hover:bg-red-500 text-white text-[10px] font-bold transition-colors cursor-pointer"
           >
             Desconectar
+          </button>
+        </div>
+      )}
+
+      {castStatus === 'connecting' && (
+        <div className="absolute top-3 left-3 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-950/95 border border-amber-500/70 text-amber-300 text-xs shadow-2xl backdrop-blur-md animate-in fade-in select-none">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+          <span className="font-semibold text-[11px]">Conectando con Smart TV...</span>
+          <button
+            onClick={() => setCastStatus('idle')}
+            className="ml-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold transition-colors cursor-pointer"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {castStatus === 'error' && castError && (
+        <div className="absolute top-3 left-3 z-30 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-red-950/95 border border-red-500/70 text-red-200 text-xs shadow-2xl backdrop-blur-md animate-in fade-in max-w-sm select-none">
+          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+          <span className="text-[11px] truncate">{castError}</span>
+          <button
+            onClick={handleTriggerCast}
+            className="ml-auto px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white text-[10px] font-bold transition-colors cursor-pointer shrink-0"
+          >
+            Reintentar
+          </button>
+          <button
+            onClick={() => setCastStatus('idle')}
+            className="p-0.5 text-slate-400 hover:text-white shrink-0 cursor-pointer"
+          >
+            <X className="w-3 h-3" />
           </button>
         </div>
       )}
@@ -1394,26 +1590,44 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
               )}
             </div>
 
-            {/* Cast to Smart TV (Presentation API / Chromecast / AirPlay) */}
+            {/* Cast to Smart TV */}
             <button
-              onClick={handleTriggerCast}
+              onClick={() => {
+                if (castStatus === 'connected') {
+                  setShowCastModal(true);
+                } else {
+                  handleTriggerCast();
+                }
+              }}
               className={`p-1.5 transition-all cursor-pointer flex items-center gap-1 rounded-lg ${
-                isCastConnected
+                castStatus === 'connected'
                   ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/50 shadow-sm shadow-emerald-950/40'
+                  : castStatus === 'connecting'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                  : castStatus === 'error'
+                  ? 'bg-red-500/20 text-red-300 border border-red-500/40'
                   : 'hover:text-emerald-400 text-slate-300 hover:text-white'
               }`}
               title={
-                isCastConnected
-                  ? `Transmitiendo a ${presentationDeviceName || 'Smart TV'} (Click para gestionar)`
-                  : 'Transmitir a Smart TV / Chromecast (Presentation Request API)'
+                castStatus === 'connected'
+                  ? `Transmitiendo en ${castDevice?.friendlyName || presentationDeviceName || 'Smart TV'} (Click para panel de control TV)`
+                  : castStatus === 'connecting'
+                  ? 'Conectando con Smart TV...'
+                  : castStatus === 'error'
+                  ? `Error: ${castError || 'Click para reintentar'}`
+                  : 'Transmitir a Smart TV / Chromecast (Google Cast & AirPlay)'
               }
               aria-label="Transmitir a Smart TV"
             >
-              <Cast className={`w-4 h-4 ${isCastConnected ? 'text-emerald-400 animate-pulse' : 'text-emerald-400'}`} />
+              {castStatus === 'connecting' ? (
+                <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
+              ) : (
+                <Cast className={`w-4 h-4 ${castStatus === 'connected' ? 'text-emerald-400 animate-pulse' : 'text-emerald-400'}`} />
+              )}
               <span className="hidden xl:inline text-[11px] font-medium">
-                {isCastConnected ? 'En TV' : 'Cast'}
+                {castStatus === 'connected' ? 'En TV' : castStatus === 'connecting' ? 'Conectando...' : 'Cast'}
               </span>
-              {isPresentationAvailable && !isCastConnected && (
+              {isPresentationAvailable && castStatus === 'idle' && (
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" title="Dispositivo de transmisión disponible" />
               )}
             </button>
@@ -1439,7 +1653,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         </div>
       </div>
 
-      {/* CAST TO SMART TV MODAL */}
+      {/* CAST TO SMART TV MODAL & VIRTUAL TV REMOTE CENTER */}
       {showCastModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-[#0b111e] border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative text-slate-200 animate-in fade-in zoom-in-95 duration-200">
@@ -1456,36 +1670,150 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
                 <Cast className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-base">Transmitir Señal a Smart TV</h3>
-                <p className="text-xs text-slate-400">Presentation API para Chrome, Edge y Smart TVs</p>
+                <h3 className="font-bold text-white text-base">Centro de Transmisión Smart TV</h3>
+                <p className="text-xs text-slate-400">Google Cast SDK (Receptor CC1AD845) & AirPlay</p>
               </div>
             </div>
 
-            {/* Active connection display */}
-            {isCastConnected ? (
-              <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
-                  <div>
-                    <div className="font-bold text-emerald-300 text-xs">Conectado a Smart TV</div>
-                    <div className="text-[10px] text-slate-300">{presentationDeviceName || 'Chromecast / Dispositivo Google Cast'}</div>
+            {/* 1. CONNECTED STATE: VIRTUAL TV REMOTE DASHBOARD */}
+            {castStatus === 'connected' && (
+              <div className="space-y-3 mb-4">
+                <div className="p-4 rounded-2xl bg-emerald-950/50 border border-emerald-500/40 shadow-xl">
+                  <div className="flex items-center justify-between pb-3 border-b border-emerald-500/20">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-emerald-400 uppercase tracking-widest font-bold flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                          <span>Transmitiendo en Vivo</span>
+                        </div>
+                        <div className="font-bold text-white text-sm sm:text-base">
+                          {castDevice?.friendlyName || presentationDeviceName || 'Smart TV'}
+                        </div>
+                        {castDevice?.modelName && (
+                          <div className="text-[10px] text-slate-400">{castDevice.modelName}</div>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleDisconnectCast}
+                      className="px-3 py-1.5 rounded-xl bg-red-600/90 hover:bg-red-500 text-white font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      Desconectar
+                    </button>
+                  </div>
+
+                  {/* Remote TV Control actions */}
+                  <div className="pt-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleToggleCastPlayback}
+                        className="flex-1 py-2 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                      >
+                        {castIsPaused ? <Play className="w-4 h-4 fill-emerald-400 text-emerald-400" /> : <Pause className="w-4 h-4 text-amber-400" />}
+                        <span>{castIsPaused ? 'Reanudar en TV' : 'Pausar en TV'}</span>
+                      </button>
+
+                      <button
+                        onClick={handleToggleCastMute}
+                        className="py-2 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                      >
+                        {castTvMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                        <span>{castTvMuted ? 'Activar Sonido' : 'Silenciar TV'}</span>
+                      </button>
+                    </div>
+
+                    {/* TV Volume Slider */}
+                    <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 flex items-center gap-3">
+                      <Volume1 className="w-4 h-4 text-slate-400 shrink-0" />
+                      <div className="flex-1 flex flex-col">
+                        <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                          <span>Volumen del Smart TV</span>
+                          <span className="font-mono text-emerald-400">{Math.round(castTvVolume * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={castTvMuted ? 0 : castTvVolume}
+                          onChange={(e) => handleSetCastVolume(parseFloat(e.target.value))}
+                          className="w-full h-1.5 accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* 2. CONNECTING STATE: ACTIVE SPINNER & NEGOTIATION */}
+            {castStatus === 'connecting' && (
+              <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 mb-4 flex flex-col items-center text-center">
+                <Loader2 className="w-8 h-8 text-amber-400 animate-spin mb-2" />
+                <h4 className="font-bold text-white text-sm">Buscando y negociando señal con tu Smart TV...</h4>
+                <p className="text-xs text-slate-300 mt-1 max-w-sm leading-relaxed">
+                  Si tu navegador mostró una lista de dispositivos (Chromecast o televisores en tu Wi-Fi), selecciónalo para empezar a transmitir.
+                </p>
                 <button
-                  onClick={handleDisconnectCast}
-                  className="px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white font-bold text-xs transition-colors cursor-pointer"
+                  onClick={() => setCastStatus('idle')}
+                  className="mt-3 px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
                 >
-                  Desconectar
+                  Cancelar Búsqueda
                 </button>
               </div>
-            ) : (
-              <div className="space-y-2 mb-4">
+            )}
+
+            {/* 3. ERROR STATE: DIAGNOSTICS & RETRY */}
+            {castStatus === 'error' && (
+              <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 mb-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 shrink-0 mt-0.5">
+                    <AlertCircle className="w-5 h-5 text-red-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-red-300 text-sm">No se pudo completar la conexión</h4>
+                    <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">{castError}</p>
+                    {castDiagnosticsMessage && (
+                      <p className="text-xs text-amber-300/90 mt-1.5 bg-amber-950/30 p-2 rounded-lg border border-amber-500/30">
+                        💡 {castDiagnosticsMessage}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-2 mt-3 pt-3 border-t border-red-500/20">
+                  <button
+                    onClick={handleTriggerCast}
+                    className="w-full sm:flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Reintentar Conexión</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.open(window.location.href, '_blank');
+                    }}
+                    className="w-full sm:flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Abrir en Pestaña Directa</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 4. IDLE STATE: PRIMARY ACTION BUTTONS */}
+            {castStatus === 'idle' && (
+              <div className="space-y-2.5 mb-4">
                 <button
                   onClick={handleTriggerCast}
                   className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 cursor-pointer transition-all hover:scale-[1.01]"
                 >
                   <Cast className="w-4 h-4" />
-                  <span>Conectar Directamente (Chromecast / Smart TV)</span>
+                  <span>Buscar y Conectar Smart TV / Chromecast</span>
                 </button>
 
                 <button
@@ -1495,20 +1823,21 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
                   className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
                   title="Abre la página fuera del marco para máxima compatibilidad con Cast"
                 >
-                  <Tv className="w-3.5 h-3.5 text-blue-400" />
+                  <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
                   <span>Abrir en Pestaña Directa (Permite Cast y AirPlay 100%)</span>
                 </button>
               </div>
             )}
 
-            <div className="space-y-2.5 text-xs max-h-[55vh] overflow-y-auto pr-1">
+            {/* Compatibility Guide & Methods */}
+            <div className="space-y-2.5 text-xs max-h-[48vh] overflow-y-auto pr-1">
               {/* Option 1: Chrome / Edge Presentation Request API */}
               <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
                 <div className="font-bold text-emerald-400 mb-1 flex items-center gap-1.5">
-                  <span>📺 1. Chromium Presentation API (Automático)</span>
+                  <span>📺 1. Google Cast SDK (Receptor CC1AD845)</span>
                 </div>
                 <p className="text-slate-300 leading-relaxed text-[11px]">
-                  En Google Chrome o Microsoft Edge, al presionar el botón de arriba el navegador activa el protocolo <strong>Presentation Request API</strong> para vincular la señal a cualquier <strong>Chromecast</strong>, <strong>Android TV</strong>, <strong>Google TV</strong> o pantalla de red local.
+                  En Google Chrome o Microsoft Edge, el reproductor inicializa el receptor multimedia oficial de Google Cast para enviar la señal HLS a cualquier <strong>Chromecast</strong>, <strong>Android TV</strong> o <strong>Google TV</strong>.
                 </p>
               </div>
 

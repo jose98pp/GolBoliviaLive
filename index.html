@@ -38,6 +38,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <!-- Official Google Cast Web Sender SDK for Smart TV / Chromecast -->
+    <script>
+      window['__onGCastApiAvailable'] = function(isAvailable) {
+        window.__isGCastApiAvailable = Boolean(isAvailable);
+        if (isAvailable) {
+          window.dispatchEvent(new CustomEvent('google-cast-api-available', { detail: { isAvailable: true } }));
+        }
+      };
+    </script>
     <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
   </head>
   <body class="bg-[#070b14] text-slate-100 antialiased selection:bg-emerald-500 selection:text-black">
