@@ -23,7 +23,49 @@ import {
 import { StreamResolution, StreamSettings } from '../types/football';
 import { RESOLUTIONS, BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 
-// W3C Presentation API Types for Chromium Cast Integration
+// Google Cast & W3C Presentation API Types
+declare global {
+  interface Window {
+    __onGCastApiAvailable?: (isAvailable: boolean) => void;
+    cast?: {
+      framework: {
+        CastContext: {
+          getInstance: () => {
+            setOptions: (options: { receiverApplicationId: string; autoJoinPolicy: unknown }) => void;
+            requestSession: () => Promise<void>;
+            getCurrentSession: () => any;
+            endCurrentSession?: (stopCasting: boolean) => void;
+            addEventListener: (type: string, handler: (event: any) => void) => void;
+            getCastState: () => string;
+          };
+        };
+        CastContextEventType: {
+          SESSION_STATE_CHANGED: string;
+          CAST_STATE_CHANGED: string;
+        };
+        SessionState: {
+          SESSION_STARTED: string;
+          SESSION_RESUMED: string;
+          SESSION_ENDED: string;
+        };
+      };
+    };
+    chrome?: {
+      cast: {
+        AutoJoinPolicy: {
+          ORIGIN_SCOPED: unknown;
+        };
+        media: {
+          DEFAULT_MEDIA_RECEIVER_APP_ID: string;
+          MediaInfo: new (contentId: string, contentType: string) => any;
+          GenericMediaMetadata: new () => any;
+          LoadRequest: new (mediaInfo: any) => any;
+        };
+      };
+    };
+  }
+}
+
 interface PresentationConnection {
   id: string;
   state: 'connecting' | 'connected' | 'closed' | 'terminated';
@@ -68,6 +110,9 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   matchMinute,
   streamSettings,
 }) => {
+  const homeClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.homeClubId]) || BOLIVIAN_CLUBS.bolivar;
+  const awayClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.awayClubId]) || BOLIVIAN_CLUBS.strongest;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const userVideoRef = useRef<HTMLVideoElement>(null);
@@ -575,8 +620,64 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     };
   }, [isPlaying]);
 
-  // W3C Presentation Request API initialization for Chromium-based browsers
+  // Google Cast Framework & W3C Presentation Request API initialization
   useEffect(() => {
+    // 1. Google Cast SDK (Chromecast, Android TV, Google TV, Smart TVs with Cast)
+    const initGoogleCast = (isAvailable: boolean) => {
+      if (isAvailable && window.cast?.framework) {
+        try {
+          const context = window.cast.framework.CastContext.getInstance();
+          context.setOptions({
+            receiverApplicationId: window.chrome?.cast?.media?.DEFAULT_MEDIA_RECEIVER_APP_ID || 'CC1AD845',
+            autoJoinPolicy: window.chrome?.cast?.AutoJoinPolicy?.ORIGIN_SCOPED,
+          });
+          setIsPresentationAvailable(true);
+
+          context.addEventListener(
+            window.cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+            (event: { sessionState: string }) => {
+              const state = event.sessionState;
+              if (
+                state === window.cast?.framework?.SessionState?.SESSION_STARTED ||
+                state === window.cast?.framework?.SessionState?.SESSION_RESUMED
+              ) {
+                const session = context.getCurrentSession();
+                setIsCastConnected(true);
+                setPresentationDeviceName(session?.getCastDevice()?.friendlyName || 'Smart TV / Chromecast');
+
+                const videoUrl = streamSettings?.customVideoUrl;
+                if (videoUrl && window.chrome?.cast?.media) {
+                  try {
+                    const mediaInfo = new window.chrome.cast.media.MediaInfo(videoUrl, 'application/x-mpegURL');
+                    mediaInfo.metadata = new window.chrome.cast.media.GenericMediaMetadata();
+                    mediaInfo.metadata.title = `${homeClub.name} vs ${awayClub.name}`;
+                    mediaInfo.metadata.subtitle = streamSettings?.tournamentName || 'GolBolivia Live';
+                    const loadReq = new window.chrome.cast.media.LoadRequest(mediaInfo);
+                    session.loadMedia(loadReq);
+                  } catch (e) {
+                    console.warn('Cast load media error:', e);
+                  }
+                }
+              } else if (state === window.cast?.framework?.SessionState?.SESSION_ENDED) {
+                setIsCastConnected(false);
+              }
+            }
+          );
+        } catch (e) {
+          console.warn('Cast init error:', e);
+        }
+      }
+    };
+
+    if (window.cast?.framework) {
+      initGoogleCast(true);
+    } else {
+      window.__onGCastApiAvailable = (isAvailable: boolean) => {
+        initGoogleCast(isAvailable);
+      };
+    }
+
+    // 2. W3C Presentation API
     if (typeof window !== 'undefined' && 'PresentationRequest' in window) {
       try {
         const presentationUrl = `${window.location.origin}${window.location.pathname}?presentation=true`;
@@ -587,7 +688,6 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         const request = new PresentationRequestClass([presentationUrl, window.location.href]);
         presentationRequestRef.current = request;
 
-        // Register defaultRequest on navigator.presentation for Chromium Cast integration
         const navPresentation = (
           navigator as unknown as { presentation?: { defaultRequest?: PresentationRequestInstance } }
         ).presentation;
@@ -595,7 +695,6 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
           navPresentation.defaultRequest = request;
         }
 
-        // Monitor presentation display availability
         if (typeof request.getAvailability === 'function') {
           request
             .getAvailability()
@@ -611,87 +710,92 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         console.warn('Presentation API initialization:', err);
       }
     }
-  }, []);
+  }, [streamSettings?.customVideoUrl, homeClub.name, awayClub.name]);
 
   const handleTriggerCast = async () => {
-    let nativeTriggered = false;
+    const video = userVideoRef.current;
 
-    // 1. Presentation Request API (Chromium: Chrome, Edge, Brave, Opera)
+    // 1. Google Cast SDK (Native Chrome on Android & PC -> Chromecast / Smart TVs)
+    if (window.cast?.framework) {
+      try {
+        const castContext = window.cast.framework.CastContext.getInstance();
+        if (castContext) {
+          await castContext.requestSession();
+          // Real browser Cast device picker was displayed! Do NOT open instructions modal.
+          return;
+        }
+      } catch (err: unknown) {
+        const str = String(err);
+        if (str.includes('cancel') || (err as { name?: string })?.name === 'AbortError') {
+          return; // User dismissed the picker
+        }
+        console.log('Google Cast requestSession non-fatal:', err);
+      }
+    }
+
+    // 2. HTML5 Remote Playback API (Standard Chromium on mobile Android and desktop Chrome)
+    if (
+      video &&
+      'remote' in video &&
+      typeof (video as unknown as { remote: { prompt: () => Promise<void> } }).remote?.prompt === 'function'
+    ) {
+      try {
+        await (video as unknown as { remote: { prompt: () => Promise<void> } }).remote.prompt();
+        // Native device selector opened! Do NOT open instructions modal.
+        return;
+      } catch (err: unknown) {
+        const error = err as { name?: string };
+        if (error?.name === 'NotAllowedError' || error?.name === 'AbortError') {
+          return; // User canceled or dismissed prompt
+        }
+        console.log('Remote playback prompt non-fatal:', err);
+      }
+    }
+
+    // 3. Apple AirPlay (Safari iOS / macOS)
+    if (
+      video &&
+      typeof (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker === 'function'
+    ) {
+      try {
+        (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker();
+        // Native AirPlay sheet displayed! Do NOT open instructions modal.
+        return;
+      } catch (err) {
+        console.log('AirPlay target picker non-fatal:', err);
+      }
+    }
+
+    // 4. W3C Presentation Request API
     if (presentationRequestRef.current) {
       try {
         const connection = await presentationRequestRef.current.start();
         presentationConnectionRef.current = connection;
         setIsCastConnected(true);
         setPresentationDeviceName('Smart TV / Chromecast');
-        nativeTriggered = true;
-
-        connection.onconnect = () => {
-          setIsCastConnected(true);
-          try {
-            connection.send(
-              JSON.stringify({
-                type: 'PLAY_STREAM',
-                streamUrl: streamSettings?.customVideoUrl,
-                title: `${homeClub.name} vs ${awayClub.name}`,
-              })
-            );
-          } catch {}
-        };
-
-        connection.onclose = () => {
-          setIsCastConnected(false);
-          presentationConnectionRef.current = null;
-        };
-
-        connection.onterminate = () => {
-          setIsCastConnected(false);
-          presentationConnectionRef.current = null;
-        };
-
-        setShowCastModal(false);
         return;
       } catch (err: unknown) {
         const error = err as { name?: string };
         if (error?.name === 'NotAllowedError' || error?.name === 'AbortError') {
-          // User closed the device selector without picking a display
           return;
         }
-        console.log('PresentationRequest.start() non-fatal fallback:', err);
+        console.log('PresentationRequest.start non-fatal:', err);
       }
     }
 
-    // 2. Native Apple AirPlay (Safari iOS / macOS)
-    const video = userVideoRef.current;
-    if (
-      !nativeTriggered &&
-      video &&
-      typeof (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker === 'function'
-    ) {
-      try {
-        (video as unknown as { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker();
-        nativeTriggered = true;
-      } catch (err) {
-        console.log('AirPlay target picker:', err);
-      }
-    }
-
-    // 3. W3C Remote Playback API (Chromium fallback)
-    if (!nativeTriggered && video && 'remote' in video) {
-      try {
-        const remote = (video as unknown as { remote: { prompt: () => Promise<void> } }).remote;
-        if (remote && typeof remote.prompt === 'function') {
-          await remote.prompt();
-          nativeTriggered = true;
-        }
-      } catch (err) {
-        console.log('Remote playback prompt:', err);
-      }
-    }
-
+    // 5. Fallback only if no native Cast API could open (e.g. iframe sandbox without permissions)
     setShowCastModal(true);
   };
 
   const handleDisconnectCast = () => {
+    // 1. Google Cast
+    if (window.cast?.framework) {
+      try {
+        const castContext = window.cast.framework.CastContext.getInstance();
+        castContext.endCurrentSession?.(true);
+      } catch {}
+    }
+    // 2. Presentation API
     if (presentationConnectionRef.current) {
       try {
         presentationConnectionRef.current.terminate();
@@ -707,9 +811,6 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   };
 
   const currentResConfig = RESOLUTIONS.find((r) => r.id === currentResolution) || RESOLUTIONS[0];
-
-  const homeClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.homeClubId]) || BOLIVIAN_CLUBS.bolivar;
-  const awayClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.awayClubId]) || BOLIVIAN_CLUBS.strongest;
 
   return (
     <div
@@ -966,9 +1067,9 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         </div>
       )}
 
-      {/* FLOATING QUICK REACTIONS TRIGGER BAR ON VIDEO (Auto-hiding) */}
+      {/* FLOATING QUICK REACTIONS TRIGGER BAR ON VIDEO (Auto-hiding on desktop only so it doesn't block mobile screen) */}
       <div
-        className={`absolute right-3 bottom-16 z-20 flex flex-col gap-1.5 transition-all duration-300 ${
+        className={`hidden sm:flex absolute right-3 bottom-16 z-20 flex-col gap-1.5 transition-all duration-300 ${
           showControls ? 'opacity-100 pointer-events-auto translate-x-0' : 'opacity-0 pointer-events-none translate-x-2'
         }`}
       >
@@ -1061,7 +1162,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
                   setVolume(parseFloat(e.target.value));
                   if (isMuted) setIsMuted(false);
                 }}
-                className="w-16 h-1 accent-emerald-500 bg-slate-700 rounded-lg cursor-pointer"
+                className="hidden sm:block w-16 h-1 accent-emerald-500 bg-slate-700 rounded-lg cursor-pointer"
               />
             </div>
 
@@ -1378,14 +1479,26 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
                 </button>
               </div>
             ) : (
-              /* Direct Presentation Request Trigger Button */
-              <button
-                onClick={handleTriggerCast}
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 mb-4 cursor-pointer transition-all hover:scale-[1.01]"
-              >
-                <Cast className="w-4 h-4" />
-                <span>Abrir Selector de Pantallas (Chromecast / Smart TV)</span>
-              </button>
+              <div className="space-y-2 mb-4">
+                <button
+                  onClick={handleTriggerCast}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 cursor-pointer transition-all hover:scale-[1.01]"
+                >
+                  <Cast className="w-4 h-4" />
+                  <span>Conectar Directamente (Chromecast / Smart TV)</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    window.open(window.location.href, '_blank');
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                  title="Abre la página fuera del marco para máxima compatibilidad con Cast"
+                >
+                  <Tv className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Abrir en Pestaña Directa (Permite Cast y AirPlay 100%)</span>
+                </button>
+              </div>
             )}
 
             <div className="space-y-2.5 text-xs max-h-[55vh] overflow-y-auto pr-1">

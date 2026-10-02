@@ -348,31 +348,9 @@ export default function App() {
       />
 
       {/* MAIN VIEWPORT BODY */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 md:p-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-5 md:p-6 pb-24 md:pb-8">
         {activeTab === 'stream' && (
-          <div className="space-y-5">
-            {/* Mobile View Toggle Buttons (Touch Ergonomics) */}
-            <div className="md:hidden flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl">
-              <button
-                onClick={() => setMobileViewMode('stream')}
-                className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                  mobileViewMode === 'stream' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400'
-                }`}
-              >
-                <Tv className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Transmisión en Vivo</span>
-              </button>
-              <button
-                onClick={() => setMobileViewMode('chat')}
-                className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                  mobileViewMode === 'chat' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400'
-                }`}
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Chat en Directo</span>
-              </button>
-            </div>
-
+          <div className="space-y-4 sm:space-y-5">
             {/* Split Grid for Stream & Chat */}
             <div
               className={`grid gap-5 ${
@@ -381,13 +359,13 @@ export default function App() {
                   : 'grid-cols-1 lg:grid-cols-12 items-start'
               }`}
             >
-              {/* VIDEO PLAYER COLUMN */}
+              {/* VIDEO PLAYER COLUMN - ALWAYS ACTIVE & VISIBLE ON MOBILE & DESKTOP */}
               <div
                 className={`${
                   isTheaterMode
                     ? 'w-full'
                     : 'lg:col-span-8'
-                } ${mobileViewMode === 'chat' ? 'hidden md:block' : 'block'}`}
+                } w-full`}
               >
                 <StreamPlayer
                   isTheaterMode={isTheaterMode}
@@ -400,8 +378,30 @@ export default function App() {
                   streamSettings={streamSettings}
                 />
 
+                {/* Mobile View Toggle Buttons: Chat or Stats below the video player */}
+                <div className="lg:hidden mt-3 p-1 bg-slate-900/90 border border-slate-800 rounded-xl flex items-center gap-1">
+                  <button
+                    onClick={() => setMobileViewMode('chat')}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      mobileViewMode === 'chat' ? 'bg-slate-800 text-emerald-400 font-bold shadow-sm' : 'text-slate-400'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Chat en Directo</span>
+                  </button>
+                  <button
+                    onClick={() => setMobileViewMode('stream')}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      mobileViewMode === 'stream' ? 'bg-slate-800 text-emerald-400 font-bold shadow-sm' : 'text-slate-400'
+                    }`}
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>Estadísticas & Resumen</span>
+                  </button>
+                </div>
+
                 {/* Match Information Bar underneath player */}
-                <div className="mt-4 p-4 rounded-xl bg-[#0a0f1d] border border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="mt-3 sm:mt-4 p-3.5 sm:p-4 rounded-xl bg-[#0a0f1d] border border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
                       <span className="font-semibold text-white">Transmisión Oficial</span>
@@ -427,22 +427,22 @@ export default function App() {
                 </div>
 
                 {/* Live Match Quick Summary Strip */}
-                <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div className="p-3 rounded-xl bg-[#090e1b] border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Posesión Balón</span>
-                    <div className="font-mono font-bold text-white text-sm mt-0.5">56% - 44%</div>
+                <div className="mt-3 sm:mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 text-xs">
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-[#090e1b] border border-slate-800">
+                    <span className="text-slate-400 text-[10px] sm:text-[11px]">Posesión Balón</span>
+                    <div className="font-mono font-bold text-white text-xs sm:text-sm mt-0.5">56% - 44%</div>
                   </div>
-                  <div className="p-3 rounded-xl bg-[#090e1b] border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Tiros al Arco</span>
-                    <div className="font-mono font-bold text-white text-sm mt-0.5">7 - 4</div>
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-[#090e1b] border border-slate-800">
+                    <span className="text-slate-400 text-[10px] sm:text-[11px]">Tiros al Arco</span>
+                    <div className="font-mono font-bold text-white text-xs sm:text-sm mt-0.5">7 - 4</div>
                   </div>
-                  <div className="p-3 rounded-xl bg-[#090e1b] border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Espectadores</span>
-                    <div className="font-mono font-bold text-emerald-400 text-sm mt-0.5">38.450 en vivo</div>
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-[#090e1b] border border-slate-800">
+                    <span className="text-slate-400 text-[10px] sm:text-[11px]">Espectadores</span>
+                    <div className="font-mono font-bold text-emerald-400 text-xs sm:text-sm mt-0.5">38.450 en vivo</div>
                   </div>
-                  <div className="p-3 rounded-xl bg-[#090e1b] border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Estadio y Altitud</span>
-                    <div className="font-mono font-bold text-slate-300 text-sm mt-0.5">
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-[#090e1b] border border-slate-800">
+                    <span className="text-slate-400 text-[10px] sm:text-[11px]">Estadio y Altitud</span>
+                    <div className="font-mono font-bold text-slate-300 text-xs sm:text-sm mt-0.5">
                       {streamSettings.altitudeMeters} m s.n.m.
                     </div>
                   </div>
@@ -454,8 +454,8 @@ export default function App() {
                 className={`${
                   isTheaterMode
                     ? 'w-full h-[520px]'
-                    : 'lg:col-span-4 h-[620px]'
-                } ${mobileViewMode === 'stream' ? 'hidden md:block' : 'block h-[70vh]'}`}
+                    : 'lg:col-span-4'
+                } ${mobileViewMode === 'stream' ? 'hidden lg:block lg:h-[620px]' : 'block h-[420px] sm:h-[480px] lg:h-[620px]'}`}
               >
                 <LiveChat
                   onTriggerFloatingReaction={triggerReaction}
