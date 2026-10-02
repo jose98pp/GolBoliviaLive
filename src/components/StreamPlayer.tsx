@@ -441,16 +441,105 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     return () => clearInterval(timer);
   }, [currentResolution]);
 
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch((err) => console.warn(err));
-      setIsFullscreen(true);
+  const toggleFullscreen = async () => {
+    const container = containerRef.current;
+    const video = userVideoRef.current;
+    if (!container) return;
+
+    const isFs = !!(
+      document.fullscreenElement ||
+      (document as unknown as { webkitFullscreenElement: Element }).webkitFullscreenElement
+    );
+
+    if (!isFs) {
+      try {
+        if (container.requestFullscreen) {
+          await container.requestFullscreen();
+        } else if ((container as unknown as { webkitRequestFullscreen: () => Promise<void> }).webkitRequestFullscreen) {
+          await (container as unknown as { webkitRequestFullscreen: () => Promise<void> }).webkitRequestFullscreen();
+        } else if (video && (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen) {
+          (video as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+        }
+
+        // Auto-rotate: lock orientation to landscape on mobile devices
+        if (typeof screen !== 'undefined' && screen.orientation && 'lock' in screen.orientation) {
+          try {
+            await (screen.orientation as unknown as { lock: (orientation: string) => Promise<void> }).lock('landscape');
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('Fullscreen request failed:', err);
+      }
     } else {
-      document.exitFullscreen().catch((err) => console.warn(err));
-      setIsFullscreen(false);
+      try {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as unknown as { webkitExitFullscreen: () => Promise<void> }).webkitExitFullscreen) {
+          await (document as unknown as { webkitExitFullscreen: () => Promise<void> }).webkitExitFullscreen();
+        }
+
+        // Unlock orientation when exiting fullscreen
+        if (typeof screen !== 'undefined' && screen.orientation && 'unlock' in screen.orientation) {
+          try {
+            (screen.orientation as unknown as { unlock: () => void }).unlock();
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('Exit fullscreen failed:', err);
+      }
     }
   };
+
+  // Fullscreen state listener
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFs = !!(
+        document.fullscreenElement ||
+        (document as unknown as { webkitFullscreenElement: Element }).webkitFullscreenElement
+      );
+      setIsFullscreen(isFs);
+      if (!isFs) {
+        try {
+          if (typeof screen !== 'undefined' && screen.orientation && 'unlock' in screen.orientation) {
+            (screen.orientation as unknown as { unlock: () => void }).unlock();
+          }
+        } catch {}
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // Automatic rotation: when a mobile user turns their phone to landscape, auto-enter fullscreen
+  useEffect(() => {
+    const handleOrientationOrResize = () => {
+      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 1024;
+      const isLandscape = typeof window !== 'undefined' && window.matchMedia('(orientation: landscape)').matches;
+      const isFs = !!(
+        document.fullscreenElement ||
+        (document as unknown as { webkitFullscreenElement: Element }).webkitFullscreenElement
+      );
+
+      if (isMobile && isLandscape && isPlaying && !isFs) {
+        const container = containerRef.current;
+        if (container?.requestFullscreen) {
+          container.requestFullscreen().catch(() => {});
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleOrientationOrResize);
+    window.addEventListener('orientationchange', handleOrientationOrResize);
+    return () => {
+      window.removeEventListener('resize', handleOrientationOrResize);
+      window.removeEventListener('orientationchange', handleOrientationOrResize);
+    };
+  }, [isPlaying]);
 
   const handleSelectResolution = (res: StreamResolution) => {
     setCurrentResolution(res);
@@ -473,10 +562,14 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
           setShowControls(false);
         }
       }}
-      className={`relative bg-[#060911] rounded-2xl overflow-hidden shadow-2xl border border-slate-800/80 transition-all duration-300 group select-none ${
+      className={`relative bg-black transition-all duration-300 group select-none flex items-center justify-center ${
         !showControls && isPlaying ? 'cursor-none' : 'cursor-default'
       } ${
-        isTheaterMode ? 'w-full aspect-[16/9] max-h-[85vh]' : 'w-full aspect-[16/9]'
+        isFullscreen
+          ? 'fixed inset-0 w-screen h-screen z-50 rounded-none border-0 aspect-auto overflow-hidden bg-black'
+          : isTheaterMode
+          ? 'w-full aspect-[16/9] max-h-[85vh] rounded-2xl overflow-hidden shadow-2xl border border-slate-800/80 bg-black'
+          : 'w-full aspect-[16/9] rounded-2xl overflow-hidden shadow-2xl border border-slate-800/80 bg-black'
       }`}
     >
       {/* Video Content: Modes (Pre-Match, Halftime, VAR, Post-Match, OBS Video, Canvas Simulation) */}
@@ -574,7 +667,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
           ref={canvasRef}
           width={854}
           height={480}
-          className="w-full h-full object-cover select-none"
+          className="w-full h-full object-contain select-none bg-black"
         />
       ) : (
         <video
@@ -583,7 +676,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
           playsInline
           controls={false}
           muted={isMuted}
-          className="w-full h-full object-cover select-none bg-black cursor-pointer"
+          className="w-full h-full object-contain select-none bg-black cursor-pointer"
           onClick={handleTogglePlay}
         />
       )}
