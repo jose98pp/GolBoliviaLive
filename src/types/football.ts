@@ -105,6 +105,33 @@ export interface NotificationItem {
   read: boolean;
 }
 
+export interface PublicStreamState {
+  live: boolean;
+  playbackUrl: string;
+  match: string;
+  tournament?: string;
+  quality: string[];
+  homeClubId: string;
+  awayClubId: string;
+  stadiumName: string;
+  altitudeMeters: number;
+  period: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
+  broadcastMode?: 'obs_custom' | 'simulation' | 'pre_match' | 'halftime' | 'var' | 'post_match';
+  chatMode?: 'all' | 'subscribers' | 'muted';
+  officialAnnouncement?: string;
+  overlayScoreboardVisible?: boolean;
+  lowLatencyMode?: boolean;
+}
+
+export interface PrivateIngestCredentials {
+  rtmpServer: string;
+  streamKey: string;
+  srtPublishUrl?: string;
+  hlsPublishUrl?: string;
+  webrtcPublishUrl?: string;
+  playbackUrl: string;
+}
+
 export interface StreamSettings {
   title: string;
   tournamentName: string;
@@ -114,8 +141,8 @@ export interface StreamSettings {
   altitudeMeters: number;
   period: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
   isLive: boolean;
-  rtmpServer: string;
-  streamKey: string;
+  rtmpServer?: string; // Private only - never exposed to public viewers
+  streamKey?: string;  // Private only - never exposed to public viewers
   customVideoUrl: string;
   chatMode: 'all' | 'subscribers' | 'muted';
   officialAnnouncement: string;

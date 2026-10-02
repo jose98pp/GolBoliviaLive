@@ -21,6 +21,7 @@ import { PWAInstallButton } from './components/PWAInstallButton';
 import { SocialFollowBanner } from './components/SocialFollowBanner';
 import { LiveAudienceModal } from './components/LiveAudienceModal';
 import { useRealPresence } from './hooks/useRealPresence';
+import { apiClient } from './services/apiClient';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'stream' | 'stats' | 'exclusive'>('stream');
@@ -87,8 +88,6 @@ export default function App() {
       period: saved.period || '2T',
       isLive: saved.isLive ?? true,
       broadcastMode: saved.broadcastMode || 'obs_custom',
-      rtmpServer: saved.rtmpServer || 'rtmp://localhost:1935/live',
-      streamKey: saved.streamKey || 'partido',
       customVideoUrl: finalUrl,
       chatMode: saved.chatMode || 'all',
       officialAnnouncement: saved.officialAnnouncement || 'Transmisión oficial de GolBolivia Live desde el Hernando Siles.',
@@ -97,46 +96,60 @@ export default function App() {
     };
   });
 
-  // Cross-tab synchronization: when /login updates the stream, the public view updates in real-time
+  // Authoritative Backend Synchronization: GET /api/live & SSE /api/events
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    // 1. Fetch authoritative initial state from backend
+    apiClient.getLiveState()
+      .then((data) => {
+        if (data.streamSettings) {
+          setStreamSettings((prev) => ({ ...prev, ...data.streamSettings }));
+        }
+        if (data.scoreboard) {
+          setHomeScore(data.scoreboard.homeScore);
+          setAwayScore(data.scoreboard.awayScore);
+          setMatchMinute(data.scoreboard.matchMinute);
+        }
+        if (data.events && data.events.length > 0) {
+          setEvents(data.events);
+        }
+      })
+      .catch(() => {
+        // Fallback gracefully to default match state if offline
+      });
 
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'golbolivia_stream_settings' && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          setStreamSettings((prev) => ({ ...prev, ...parsed }));
-        } catch {}
-      } else if (e.key === 'golbolivia_custom_video_url' && e.newValue) {
-        setStreamSettings((prev) => ({
-          ...prev,
-          customVideoUrl: e.newValue!,
-          broadcastMode: 'obs_custom',
-        }));
+    // 2. Subscribe to Real-Time Server-Sent Events (SSE)
+    const unsubscribeEvents = apiClient.subscribeLiveEvents((type, data) => {
+      if (type === 'INITIAL_STATE') {
+        if (data.streamSettings) setStreamSettings((prev) => ({ ...prev, ...data.streamSettings }));
+        if (data.scoreboard) {
+          setHomeScore(data.scoreboard.homeScore);
+          setAwayScore(data.scoreboard.awayScore);
+          setMatchMinute(data.scoreboard.matchMinute);
+        }
+        if (data.events) setEvents(data.events);
+      } else if (type === 'STREAM_UPDATED') {
+        setStreamSettings((prev) => ({ ...prev, ...data }));
+      } else if (type === 'SCOREBOARD_UPDATED') {
+        if (data.homeScore !== undefined) setHomeScore(data.homeScore);
+        if (data.awayScore !== undefined) setAwayScore(data.awayScore);
+        if (data.matchMinute !== undefined) setMatchMinute(data.matchMinute);
+      } else if (type === 'MATCH_EVENT_ADDED') {
+        setEvents((prev) => [data, ...prev]);
       }
-    };
+    });
 
-    window.addEventListener('storage', handleStorage);
-
-    let bc: BroadcastChannel | null = null;
-    try {
-      if ('BroadcastChannel' in window) {
-        bc = new BroadcastChannel('gol_bolivia_live_chat_channel');
-        bc.onmessage = (event) => {
-          if (event.data?.type === 'STREAM_SETTINGS_UPDATED' && event.data?.settings) {
-            setStreamSettings((prev) => ({ ...prev, ...event.data.settings }));
-          }
-        };
+    // 3. Heartbeat to report real active viewer session to server
+    const heartbeatTimer = setInterval(() => {
+      if (presence.currentSession?.sessionId) {
+        apiClient.sendHeartbeat(presence.currentSession.sessionId);
       }
-    } catch {}
+    }, 15000);
 
     return () => {
-      window.removeEventListener('storage', handleStorage);
-      try {
-        bc?.close();
-      } catch {}
+      unsubscribeEvents();
+      clearInterval(heartbeatTimer);
     };
-  }, []);
+  }, [presence.currentSession?.sessionId]);
 
   // Stream state
   const [isStreamingLive, setIsStreamingLive] = useState(true);
@@ -230,26 +243,9 @@ export default function App() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleUpdateStreamSettings = (newSettings: Partial<StreamSettings>) => {
-    setStreamSettings((prev) => {
-      const updated = { ...prev, ...newSettings };
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('golbolivia_stream_settings', JSON.stringify(updated));
-          if (updated.customVideoUrl) {
-            localStorage.setItem('golbolivia_custom_video_url', updated.customVideoUrl);
-          }
-        } catch {}
-      }
-      return updated;
-    });
-
-    try {
-      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-        const bc = new BroadcastChannel('gol_bolivia_live_chat_channel');
-        bc.postMessage({ type: 'STREAM_SETTINGS_UPDATED', settings: newSettings });
-        bc.close();
-      }
-    } catch {}
+    setStreamSettings((prev) => ({ ...prev, ...newSettings }));
+    // Push authoritative update to backend API
+    apiClient.updateStreamSettings(newSettings).catch(() => {});
   };
 
   const handleAddMatchEvent = (newEvent: Omit<MatchEvent, 'id'>) => {
@@ -332,8 +328,12 @@ export default function App() {
         onUpdateScore={(h, a) => {
           setHomeScore(h);
           setAwayScore(a);
+          apiClient.updateScoreboard({ homeScore: h, awayScore: a }).catch(() => {});
         }}
-        onUpdateMinute={(m) => setMatchMinute(m)}
+        onUpdateMinute={(m) => {
+          setMatchMinute(m);
+          apiClient.updateScoreboard({ matchMinute: m }).catch(() => {});
+        }}
         onAddMatchEvent={handleAddMatchEvent}
         onDispatchPushNotification={(notif) => {
           setNotifications((prev) => [notif, ...prev]);

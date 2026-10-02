@@ -637,29 +637,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             )}
           </div>
 
-          {/* OBS RTMP Server & Key Details */}
+          {/* OBS RTMP Server & Key Details (Private Broadcaster Ingest Only) */}
           <div className="p-4 bg-[#0d1424] rounded-xl border border-slate-800">
-            <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Radio className="w-3.5 h-3.5 text-red-400" />
-              Parámetros de Ingesta OBS Studio
-            </h4>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Radio className="w-3.5 h-3.5 text-red-400" />
+                <span>Parámetros Confidenciales de Ingesta (OBS / MediaMTX)</span>
+              </h4>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono font-bold flex items-center gap-1 w-fit">
+                <Lock className="w-2.5 h-2.5" />
+                <span>Exclusivo Servidor / Operador</span>
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-3">
+              Estas credenciales están aisladas en el backend y protegidas por roles. <strong>Nunca se exponen a los espectadores en el frontend público ni en /api/live.</strong>
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1">Servidor RTMP:</label>
+                <label className="block text-slate-400 text-[11px] mb-1">Servidor RTMP Privado:</label>
                 <input
                   type="text"
-                  value={streamSettings.rtmpServer}
+                  value={streamSettings.rtmpServer || 'rtmp://localhost:1935/live'}
                   onChange={(e) => onUpdateStreamSettings({ rtmpServer: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white font-mono"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1">Clave de Retransmisión:</label>
+                <label className="block text-slate-400 text-[11px] mb-1">Stream Key Confidencial:</label>
                 <input
-                  type="text"
-                  value={streamSettings.streamKey}
+                  type="password"
+                  value={streamSettings.streamKey || 'bolivia'}
                   onChange={(e) => onUpdateStreamSettings({ streamKey: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white font-mono"
+                  className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white font-mono tracking-wider"
                 />
               </div>
             </div>

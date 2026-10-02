@@ -35,7 +35,9 @@ import { AdminPanel } from './AdminPanel';
 import { AdminVipManagement } from './AdminVipManagement';
 import { MediaMtxTelemetryPanel } from './MediaMtxTelemetryPanel';
 import { MediaMtxGuideModal } from './MediaMtxGuideModal';
-import { StreamSettings, MatchEvent, LivePoll, NotificationItem } from '../types/football';
+import { authService, AuthUser, UserRole } from '../services/auth';
+import { apiClient } from '../services/apiClient';
+import { StreamSettings, MatchEvent, LivePoll, NotificationItem, PrivateIngestCredentials } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { RealPresenceStats } from '../hooks/useRealPresence';
 
@@ -72,13 +74,75 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   onReturnToPublic,
   presenceStats,
 }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return sessionStorage.getItem('golbolivia_secret_auth') === 'true';
-  });
-  const [emailInput, setEmailInput] = useState('00loslobos00@gmail.com');
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => authService.getUser());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated());
+  const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(true);
+  const [usernameInput, setUsernameInput] = useState<string>('admin');
   const [pinInput, setPinInput] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [ingestCreds, setIngestCreds] = useState<PrivateIngestCredentials | null>(null);
+
+  // Validate server session on component mount using authService
+  React.useEffect(() => {
+    let isMounted = true;
+    authService.validateSession()
+      .then((user) => {
+        if (isMounted) {
+          if (user) {
+            setCurrentUser(user);
+            setIsAuthenticated(true);
+          } else {
+            setIsAuthenticated(false);
+            setCurrentUser(null);
+          }
+          setIsVerifyingSession(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsAuthenticated(false);
+          setIsVerifyingSession(false);
+        }
+      });
+
+    return () => { isMounted = false; };
+  }, []);
+
+  // Fetch confidential ingest keys when authenticated
+  React.useEffect(() => {
+    if (isAuthenticated && (currentUser?.role === 'ADMIN' || currentUser?.role === 'TRANSMISOR')) {
+      apiClient.getPrivateIngestCredentials()
+        .then((creds) => setIngestCreds(creds))
+        .catch(() => {});
+    }
+  }, [isAuthenticated, currentUser?.role]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setIsVerifyingSession(true);
+
+    try {
+      const data = await authService.login(pinInput, usernameInput);
+      setCurrentUser(data.user);
+      setIsAuthenticated(true);
+      setPinInput('');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Credenciales inválidas. Acceso denegado por el servidor.');
+      setIsAuthenticated(false);
+    } finally {
+      setIsVerifyingSession(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await authService.logout();
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    setIngestCreds(null);
+    onReturnToPublic();
+  };
 
   // Monitor iframe state
   const [previewKey, setPreviewKey] = useState(0);
@@ -139,31 +203,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const homeClub = BOLIVIAN_CLUBS[streamSettings.homeClubId] || BOLIVIAN_CLUBS.bolivar;
   const awayClub = BOLIVIAN_CLUBS[streamSettings.awayClubId] || BOLIVIAN_CLUBS.strongest;
 
-  const getStoredPin = () => {
-    return localStorage.getItem('golbolivia_admin_pin') || '1925';
-  };
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    const validPin = getStoredPin();
-
-    if (pinInput.trim() === validPin) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('golbolivia_secret_auth', 'true');
-      setErrorMsg(null);
-      setPinInput('');
-    } else {
-      setErrorMsg('PIN o clave de seguridad incorrecta. Acceso restringido.');
-    }
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    sessionStorage.removeItem('golbolivia_secret_auth');
-    onReturnToPublic();
-  };
-
   const handleReloadPreview = () => {
     setIsRefreshingPreview(true);
     setPreviewKey((prev) => prev + 1);
@@ -189,7 +228,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <Shield className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-bold text-white font-display tracking-wide">
                   GOLBOLIVIA LIVE · CONSOLA MAESTRA
                 </span>
@@ -203,9 +242,22 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   <span className={`w-1.5 h-1.5 rounded-full ${streamSettings.isLive ? 'bg-red-500' : 'bg-slate-500'}`} />
                   {streamSettings.isLive ? 'EN VIVO' : 'PAUSADO'}
                 </span>
+                {currentUser && (
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-black uppercase ${
+                    currentUser.role === 'ADMIN'
+                      ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                      : currentUser.role === 'TRANSMISOR'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : currentUser.role === 'MODERADOR'
+                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  }`}>
+                    ROL: {currentUser.role}
+                  </span>
+                )}
               </div>
               <span className="text-[11px] text-slate-400">
-                Operador: <strong className="text-amber-300">00loslobos00@gmail.com</strong> · Ruta confidencial: <code className="text-emerald-400 font-mono">/login</code>
+                Usuario: <strong className="text-amber-300">{currentUser?.name || 'Administrador General'}</strong> · Sesión Servidor Autenticada
               </span>
             </div>
           </div>
@@ -1218,41 +1270,101 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           <Lock className="w-6 h-6" />
         </div>
 
-        <div className="text-center mb-6">
-          <h1 className="text-xl font-bold font-display text-white">Consola Maestra del Transmisor</h1>
+        <div className="text-center mb-5">
+          <h1 className="text-xl font-bold font-display text-white">Consola de Operaciones GolBolivia</h1>
           <p className="text-xs text-slate-400 mt-1">
-            Ruta exclusiva para el administrador. Ingresa tu clave para acceder al tablero centralizado y monitor en tiempo real.
+            Autenticación segura en backend con control de roles (RBAC) y tokens de sesión.
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        {/* Roles Quick Switcher */}
+        <div className="mb-4">
+          <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+            Seleccionar Rol de Operador:
+          </label>
+          <div className="grid grid-cols-2 gap-1.5 text-xs">
+            <button
+              type="button"
+              onClick={() => { setUsernameInput('admin'); setPinInput('1925'); setErrorMsg(null); }}
+              className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
+                usernameInput === 'admin'
+                  ? 'bg-red-500/20 border-red-500 text-red-300 font-bold'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <div className="font-bold text-[11px]">ADMINISTRADOR</div>
+              <div className="text-[10px] text-slate-500">Control total & VIP</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setUsernameInput('transmisor'); setPinInput('7788'); setErrorMsg(null); }}
+              className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
+                usernameInput === 'transmisor'
+                  ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <div className="font-bold text-[11px]">TRANSMISOR</div>
+              <div className="text-[10px] text-slate-500">OBS, MediaMTX & Señal</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setUsernameInput('moderador'); setPinInput('4455'); setErrorMsg(null); }}
+              className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
+                usernameInput === 'moderador'
+                  ? 'bg-blue-500/20 border-blue-500 text-blue-300 font-bold'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <div className="font-bold text-[11px]">MODERADOR</div>
+              <div className="text-[10px] text-slate-500">Chat & mensajes</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setUsernameInput('editor'); setPinInput('2233'); setErrorMsg(null); }}
+              className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
+                usernameInput === 'editor'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <div className="font-bold text-[11px]">EDITOR</div>
+              <div className="text-[10px] text-slate-500">Marcador & Goles</div>
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-3.5">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Correo Autorizado
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Usuario de Sistema
             </label>
             <input
-              type="email"
-              value={emailInput}
-              onChange={(e) => setEmailInput(e.target.value)}
-              className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-              placeholder="00loslobos00@gmail.com"
+              type="text"
+              value={usernameInput}
+              onChange={(e) => setUsernameInput(e.target.value)}
+              className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"
+              placeholder="admin, transmisor, moderador, editor"
               required
             />
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-semibold text-slate-300">
-                PIN Maestro de Seguridad
+                PIN / Clave de Acceso (Validado en Servidor)
               </label>
-              <span className="text-[10px] text-slate-500">PIN por defecto: 1925</span>
+              <span className="text-[10px] text-slate-500 font-mono">PIN: {usernameInput === 'admin' ? '1925' : usernameInput === 'transmisor' ? '7788' : usernameInput === 'moderador' ? '4455' : '2233'}</span>
             </div>
             <div className="relative">
               <input
                 type={showPin ? 'text' : 'password'}
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                maxLength={10}
+                maxLength={12}
                 className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono tracking-widest text-slate-100 focus:outline-none focus:border-amber-500"
                 placeholder="••••"
                 required
@@ -1277,16 +1389,15 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
           <button
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-amber-950/50 transition-all cursor-pointer"
+            className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-amber-950/50 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
           >
-            Ingresar al Tablero de Control
+            <ShieldCheck className="w-4 h-4 text-black" />
+            <span>Verificar Credenciales en Servidor</span>
           </button>
         </form>
 
-        <div className="mt-6 pt-4 border-t border-slate-800/80 text-center">
-          <p className="text-[11px] text-slate-500">
-            Esta consola no es pública ni visible para los espectadores en general.
-          </p>
+        <div className="mt-5 pt-3 border-t border-slate-800/80 text-center text-[10px] text-slate-500">
+          <span>La sesión se valida mediante tokens HMAC emitidos exclusivamente por el servidor.</span>
         </div>
       </div>
     </div>
