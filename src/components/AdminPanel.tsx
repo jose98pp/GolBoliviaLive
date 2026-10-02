@@ -531,56 +531,90 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
-          {/* Teams and Stadium settings */}
-          <div className="p-4 bg-[#0d1424] rounded-xl border border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          {/* Match Title, Teams and Stadium settings */}
+          <div className="p-4 bg-[#0d1424] rounded-xl border border-slate-800 space-y-4 text-xs">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Club Local:</label>
-              <select
-                value={streamSettings.homeClubId}
-                onChange={(e) => onUpdateStreamSettings({ homeClubId: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-emerald-500"
-              >
-                {Object.values(BOLIVIAN_CLUBS).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.badgeEmoji} {c.name} ({c.city})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Club Visitante:</label>
-              <select
-                value={streamSettings.awayClubId}
-                onChange={(e) => onUpdateStreamSettings({ awayClubId: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-emerald-500"
-              >
-                {Object.values(BOLIVIAN_CLUBS).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.badgeEmoji} {c.name} ({c.city})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Estadio y Sede:</label>
+              <label className="block text-slate-300 font-semibold mb-1">Título Oficial del Partido (Cabecera en la Web):</label>
               <input
                 type="text"
-                value={streamSettings.stadiumName}
-                onChange={(e) => onUpdateStreamSettings({ stadiumName: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white"
+                value={streamSettings.title || ''}
+                onChange={(e) => onUpdateStreamSettings({ title: e.target.value })}
+                placeholder="Ej: Bolívar vs The Strongest - Clásico Paceño N° 234"
+                className="w-full bg-slate-900 border border-slate-750 focus:border-emerald-500 rounded-lg p-2.5 text-white font-semibold"
               />
             </div>
 
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Torneo / Campeonato:</label>
-              <input
-                type="text"
-                value={streamSettings.tournamentName}
-                onChange={(e) => onUpdateStreamSettings({ tournamentName: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Club Local:</label>
+                <select
+                  value={streamSettings.homeClubId}
+                  onChange={(e) => onUpdateStreamSettings({ homeClubId: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-emerald-500"
+                >
+                  {Object.values(BOLIVIAN_CLUBS).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.badgeEmoji} {c.name} ({c.city})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Club Visitante:</label>
+                <select
+                  value={streamSettings.awayClubId}
+                  onChange={(e) => onUpdateStreamSettings({ awayClubId: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-emerald-500"
+                >
+                  {Object.values(BOLIVIAN_CLUBS).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.badgeEmoji} {c.name} ({c.city})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Estadio y Sede:</label>
+                <input
+                  type="text"
+                  value={streamSettings.stadiumName}
+                  onChange={(e) => onUpdateStreamSettings({ stadiumName: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Altitud Oficial (m s.n.m.):</label>
+                <input
+                  type="number"
+                  value={streamSettings.altitudeMeters || 3637}
+                  onChange={(e) => onUpdateStreamSettings({ altitudeMeters: Number(e.target.value) || 0 })}
+                  className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white font-mono"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-slate-300 font-semibold mb-1">Torneo / Campeonato:</label>
+                <input
+                  type="text"
+                  value={streamSettings.tournamentName}
+                  onChange={(e) => onUpdateStreamSettings({ tournamentName: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-slate-300 font-semibold mb-1">Comunicado Oficial al Hincha:</label>
+                <input
+                  type="text"
+                  value={streamSettings.officialAnnouncement || ''}
+                  onChange={(e) => onUpdateStreamSettings({ officialAnnouncement: e.target.value })}
+                  placeholder="Ej: Transmisión Oficial en HD para toda Bolivia por GolBolivia TV."
+                  className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white"
+                />
+              </div>
             </div>
           </div>
 

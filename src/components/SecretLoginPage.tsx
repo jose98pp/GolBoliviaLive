@@ -29,7 +29,8 @@ import {
   Cpu,
   ShieldCheck,
   HelpCircle,
-  Crown
+  Crown,
+  Trophy
 } from 'lucide-react';
 import { AdminPanel } from './AdminPanel';
 import { AdminVipManagement } from './AdminVipManagement';
@@ -41,6 +42,7 @@ import { StreamSettings, MatchEvent, LivePoll, NotificationItem, PrivateIngestCr
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { RealPresenceStats } from '../hooks/useRealPresence';
 import { FailoverChannelPanel } from './FailoverChannelPanel';
+import { MatchDetailsEditor } from './MatchDetailsEditor';
 
 interface SecretLoginPageProps {
   streamSettings: StreamSettings;
@@ -150,7 +152,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [isRefreshingPreview, setIsRefreshingPreview] = useState(false);
 
   // Active section inside the private dashboard
-  const [activeTab, setActiveTab] = useState<'deck' | 'failover' | 'vip_management' | 'settings' | 'analytics'>('deck');
+  const [activeTab, setActiveTab] = useState<'deck' | 'match_details' | 'failover' | 'vip_management' | 'settings' | 'analytics'>('deck');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
@@ -295,6 +297,17 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             >
               <Tv className="w-3.5 h-3.5" />
               <span>Tablero Central</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('match_details')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'match_details'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <span>Datos del Partido (Web)</span>
             </button>
             <button
               onClick={() => setActiveTab('failover')}
@@ -915,8 +928,22 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                 </div>
               </div>
 
+              {/* EDITOR DE DATOS DEL PARTIDO (TÍTULO, CLUBES, ESTADIO, TORNEO) */}
+              <MatchDetailsEditor
+                streamSettings={streamSettings}
+                onUpdateStreamSettings={onUpdateStreamSettings}
+              />
+
               {/* TELEMETRÍA REAL MEDIAMTX EN VIVO (SIN SIMULACIÓN) */}
               <MediaMtxTelemetryPanel />
+            </div>
+          ) : activeTab === 'match_details' ? (
+            /* EDITOR DE DATOS DEL PARTIDO Y PÁGINA PRINCIPAL */
+            <div className="space-y-6">
+              <MatchDetailsEditor
+                streamSettings={streamSettings}
+                onUpdateStreamSettings={onUpdateStreamSettings}
+              />
             </div>
           ) : activeTab === 'vip_management' ? (
             /* GESTIÓN DE SUSCRIPCIÓN VIP Y PASARELA DE PAGOS BOLIVIA */
