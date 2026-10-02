@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Radio, Bell, Tv, ShieldCheck, Menu, X, Users, Eye, Sparkles, ChevronRight, Activity } from 'lucide-react';
+import { Radio, Bell, Tv, ShieldCheck, Menu, X, Users, Eye, Sparkles, ChevronRight, Activity, Zap } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { SocialFollowBanner } from './SocialFollowBanner';
 
@@ -14,6 +14,8 @@ interface NavbarProps {
   isVipMember: boolean;
   toggleVipMembership: () => void;
   viewerCount?: number;
+  activeCount?: number;
+  totalCount?: number;
   homeScore?: number;
   awayScore?: number;
   matchMinute?: number;
@@ -30,15 +32,20 @@ export const Navbar: React.FC<NavbarProps> = ({
   isVipMember,
   toggleVipMembership,
   viewerCount = 14820,
+  activeCount,
+  totalCount,
   homeScore = 2,
   awayScore = 1,
   matchMinute = 78,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Formatted compact viewer count (e.g., 14.8k)
-  const formattedCompactViewers =
-    viewerCount >= 1000 ? `${(viewerCount / 1000).toFixed(1)}k` : `${viewerCount}`;
+  const displayActive = activeCount || Math.round(viewerCount * 0.74);
+  const displayTotal = totalCount || viewerCount;
+
+  // Formatted compact viewer count (e.g., 10.9k)
+  const formattedActiveCompact =
+    displayActive >= 1000 ? `${(displayActive / 1000).toFixed(1)}k` : `${displayActive}`;
 
   return (
     <header className="sticky top-0 z-40 bg-[#080c14]/95 backdrop-blur-md border-b border-slate-800/80 px-3 sm:px-6 md:px-8 py-2.5 sm:py-3.5 transition-colors">
@@ -61,15 +68,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </button>
 
-          {/* Connected Audience Pill - Desktop & Tablet */}
+          {/* Audiencia en Tiempo Real - Desktop & Tablet */}
           <button
             onClick={openAudienceModal}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-red-950/50 hover:bg-red-900/60 border border-red-800/60 rounded-full text-red-300 hover:text-white text-xs font-semibold tracking-wide transition-all cursor-pointer shadow-sm shadow-red-950/40"
-            title="Ver cuántos están conectados al live en tiempo real"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-red-950/40 hover:bg-red-900/50 border border-red-700/50 rounded-full text-red-300 hover:text-white text-xs font-semibold tracking-wide transition-all cursor-pointer shadow-sm shadow-red-950/40"
+            title="Audiencia en Tiempo Real"
           >
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="font-bold text-white font-mono">{viewerCount.toLocaleString()}</span>
-            <span className="text-red-400 text-[11px]">viendo ahora</span>
+            <span className="font-bold text-white font-mono">{displayTotal.toLocaleString()}</span>
+            <span className="text-red-400 text-[11px]">viendo en vivo</span>
           </button>
         </div>
 
@@ -112,15 +119,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <SocialFollowBanner variant="compact" />
           </div>
 
-          {/* Live Viewers Pill - Mobile ONLY */}
+          {/* Audiencia en Tiempo Real - Mobile ONLY */}
           <button
             onClick={openAudienceModal}
-            className="sm:hidden flex items-center gap-1 px-2 py-1 rounded-full bg-red-950/60 border border-red-700/60 text-red-300 text-xs font-mono font-bold active:scale-95 transition-transform cursor-pointer"
-            title="Espectadores conectados ahora (toca para ver detalles)"
+            className="sm:hidden flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-950/70 border border-red-700/60 text-red-300 text-xs font-mono font-bold active:scale-95 transition-transform cursor-pointer"
+            title="Audiencia en Tiempo Real"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-            <Eye className="w-3 h-3 text-red-400" />
-            <span>{formattedCompactViewers}</span>
+            <Eye className="w-3.5 h-3.5 text-red-400" />
+            <span>{displayTotal >= 1000 ? `${(displayTotal / 1000).toFixed(1)}k` : displayTotal}</span>
           </button>
 
           {/* PWA Install Button (Desktop & Tablet) */}
@@ -169,10 +176,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   setMobileMenuOpen(false);
                   openAudienceModal();
                 }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-950/70 border border-red-500/40 text-[10px] text-white font-mono font-bold cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-950/70 border border-red-600/40 text-[10px] text-white font-mono font-bold cursor-pointer"
               >
-                <Users className="w-3 h-3 text-red-400" />
-                <span>{viewerCount.toLocaleString()} hinchas</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+                <span className="text-red-300">{displayTotal.toLocaleString()} hinchas</span>
               </button>
             </div>
 

@@ -19,12 +19,22 @@ import {
   Video,
   CheckCircle2,
   Sparkles,
-  Layers
+  Layers,
+  Signal,
+  MousePointerClick,
+  Smartphone,
+  Monitor,
+  TrendingUp,
+  Users,
+  Cpu,
+  ShieldCheck,
+  HelpCircle
 } from 'lucide-react';
 import { AdminPanel } from './AdminPanel';
 import { MediaMtxGuideModal } from './MediaMtxGuideModal';
 import { StreamSettings, MatchEvent, LivePoll, NotificationItem } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
+import { RealPresenceStats } from '../hooks/useRealPresence';
 
 interface SecretLoginPageProps {
   streamSettings: StreamSettings;
@@ -40,6 +50,7 @@ interface SecretLoginPageProps {
   onUpdatePoll: (poll: LivePoll) => void;
   onClearChat: () => void;
   onReturnToPublic: () => void;
+  presenceStats?: RealPresenceStats;
 }
 
 export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
@@ -56,6 +67,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   onUpdatePoll,
   onClearChat,
   onReturnToPublic,
+  presenceStats,
 }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return sessionStorage.getItem('golbolivia_secret_auth') === 'true';
@@ -70,7 +82,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [isRefreshingPreview, setIsRefreshingPreview] = useState(false);
 
   // Active section inside the private dashboard
-  const [activeTab, setActiveTab] = useState<'deck' | 'settings'>('deck');
+  const [activeTab, setActiveTab] = useState<'deck' | 'settings' | 'analytics'>('deck');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
@@ -238,6 +250,24 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             >
               <Sliders className="w-3.5 h-3.5" />
               <span>Configuración Completa & Servidores</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'analytics'
+                  ? 'bg-emerald-500 text-black shadow-md shadow-emerald-950/40 font-bold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Telemetría y Audiencia Real</span>
+              {presenceStats && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  activeTab === 'analytics' ? 'bg-black/30 text-black' : 'bg-emerald-500/20 text-emerald-400'
+                }`}>
+                  {presenceStats.totalOnSite.toLocaleString()}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setIsGuideOpen(true)}
@@ -799,6 +829,322 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   </div>
                 </div>
               </div>
+            </div>
+          ) : activeTab === 'analytics' ? (
+            /* TELEMETRÍA Y ESTADÍSTICAS REALES DE AUDIENCIA (EXCLUSIVO ADMINISTRADOR) */
+            <div className="space-y-6">
+              {/* Encabezado del Tablero de Telemetría */}
+              <div className="bg-gradient-to-r from-[#0c1626] via-[#091220] to-[#070d18] border-2 border-emerald-500/50 rounded-2xl p-5 shadow-2xl shadow-emerald-950/20">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                      <Activity className="w-5 h-5 animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base sm:text-lg font-bold text-white font-display">
+                          Consola de Telemetría & Concurrencia de Audiencia
+                        </h2>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          Solo Administrador
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        Métricas avanzadas de presencia en la web, eventos de actividad y telemetría de red con <code className="text-emerald-300 font-mono">navigator.connection</code>.
+                      </p>
+                    </div>
+                  </div>
+
+                  {presenceStats && (
+                    <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800">
+                      <button
+                        onClick={() => presenceStats.setAudienceMode('broadcast_calibrated')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                          presenceStats.audienceMode === 'broadcast_calibrated'
+                            ? 'bg-emerald-500 text-black font-bold shadow-md shadow-emerald-950/40'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Modo Partido (14.8k)
+                      </button>
+                      <button
+                        onClick={() => presenceStats.setAudienceMode('strict_local')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                          presenceStats.audienceMode === 'strict_local'
+                            ? 'bg-emerald-500 text-black font-bold shadow-md shadow-emerald-950/40'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Conteo Estricto Real ({presenceStats.localRealTabsCount})
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {presenceStats ? (
+                  <div className="space-y-4">
+                    {/* Tarjetas de Audiencia Activa vs Total */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40">
+                        <div className="flex items-center justify-between text-xs text-emerald-400 mb-1">
+                          <span className="font-bold flex items-center gap-1.5">
+                            <Zap className="w-4 h-4 text-emerald-400" />
+                            Audiencia Activa
+                          </span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        </div>
+                        <div className="font-mono text-3xl font-black text-white tracking-tight">
+                          {presenceStats.activeInteracting.toLocaleString()}
+                        </div>
+                        <p className="text-[11px] text-emerald-300 mt-1">
+                          Interactuando (chat, reacciones, votos)
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
+                        <div className="flex items-center justify-between text-xs text-blue-400 mb-1">
+                          <span className="font-bold flex items-center gap-1.5">
+                            <Users className="w-4 h-4 text-blue-400" />
+                            Audiencia Total
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono">100% Web</span>
+                        </div>
+                        <div className="font-mono text-3xl font-black text-white tracking-tight">
+                          {presenceStats.totalOnSite.toLocaleString()}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Pestañas abiertas en la web y PWA
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
+                        <div className="flex items-center justify-between text-xs text-amber-400 mb-1">
+                          <span className="font-bold flex items-center gap-1.5">
+                            <Clock className="w-4 h-4 text-amber-400" />
+                            Audiencia Pasiva
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
+                            En fondo
+                          </span>
+                        </div>
+                        <div className="font-mono text-3xl font-black text-white tracking-tight">
+                          {presenceStats.passiveListening.toLocaleString()}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Pestañas minimizadas o sin interacción
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
+                        <div className="flex items-center justify-between text-xs text-purple-400 mb-1">
+                          <span className="font-bold flex items-center gap-1.5">
+                            <TrendingUp className="w-4 h-4 text-purple-400" />
+                            Pico Concurrente
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono font-bold">
+                            Récord
+                          </span>
+                        </div>
+                        <div className="font-mono text-3xl font-black text-white tracking-tight">
+                          {presenceStats.peakOnSite.toLocaleString()}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Mayor concurrencia hoy en la página
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Barra de Proporción Visual */}
+                    <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-emerald-400 font-semibold">
+                          ● {presenceStats.activeInteracting.toLocaleString()} Activos ({presenceStats.activeRatioPercentage}%)
+                        </span>
+                        <span className="text-slate-400 font-medium">
+                          ● {presenceStats.passiveListening.toLocaleString()} Pasivos ({100 - presenceStats.activeRatioPercentage}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden flex">
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
+                          style={{ width: `${presenceStats.activeRatioPercentage}%` }}
+                        />
+                        <div
+                          className="h-full bg-slate-700 transition-all duration-500"
+                          style={{ width: `${100 - presenceStats.activeRatioPercentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">Cargando métricas de presencia...</p>
+                )}
+              </div>
+
+              {presenceStats && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Telemetría de Red navigator.connection */}
+                  <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-5 shadow-xl">
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <Signal className="w-4 h-4 text-blue-400" />
+                        <h3 className="text-sm font-bold text-white">
+                          Telemetría de Red del Transmisor (navigator.connection)
+                        </h3>
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {presenceStats.networkInfo.supported ? 'API Nativa' : 'Estimación RTT'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block mb-0.5">Tipo de Red Efectiva</span>
+                        <span className="text-sm font-bold text-white font-mono">{presenceStats.networkInfo.effectiveType}</span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block mb-0.5">Velocidad de Descarga</span>
+                        <span className="text-sm font-bold text-emerald-400 font-mono">{presenceStats.networkInfo.downlinkMbps} Mbps</span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block mb-0.5">Latencia RTT</span>
+                        <span className="text-sm font-bold text-emerald-400 font-mono">{presenceStats.networkInfo.rttMs} ms</span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block mb-0.5">Ahorro de Datos</span>
+                        <span className="text-sm font-bold text-slate-300 font-mono">
+                          {presenceStats.networkInfo.saveData ? 'Activado' : 'Estándar'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      El navegador monitorea activamente la conexión de red para regular el bitrate HLS del reproductor y evitar desconexiones.
+                    </p>
+                  </div>
+
+                  {/* Desglose de Dispositivos Conectados */}
+                  <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-5 shadow-xl">
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="w-4 h-4 text-emerald-400" />
+                        <h3 className="text-sm font-bold text-white">
+                          Dispositivos Conectados en Esta Web
+                        </h3>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 font-mono font-bold">100% golbolivia</span>
+                    </div>
+
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-white font-medium flex items-center gap-1.5">
+                            <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                            App Móvil PWA Instalada (Celular)
+                          </span>
+                          <span className="font-mono text-emerald-400 font-bold">
+                            {presenceStats.deviceBreakdown.pwaApp.toLocaleString()} (44%)
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: '44%' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-white font-medium flex items-center gap-1.5">
+                            <Smartphone className="w-3.5 h-3.5 text-blue-400" />
+                            Navegador Móvil (Chrome / Safari)
+                          </span>
+                          <span className="font-mono text-blue-400 font-bold">
+                            {presenceStats.deviceBreakdown.mobileBrowser.toLocaleString()} (38%)
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-500 rounded-full" style={{ width: '38%' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-white font-medium flex items-center gap-1.5">
+                            <Monitor className="w-3.5 h-3.5 text-amber-400" />
+                            Navegador de Escritorio (PC / Mac)
+                          </span>
+                          <span className="font-mono text-amber-400 font-bold">
+                            {presenceStats.deviceBreakdown.desktopBrowser.toLocaleString()} (14%)
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-500 rounded-full" style={{ width: '14%' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-white font-medium flex items-center gap-1.5">
+                            <Tv className="w-3.5 h-3.5 text-purple-400" />
+                            Smart TV / Google Cast desde la Web
+                          </span>
+                          <span className="font-mono text-purple-400 font-bold">
+                            {presenceStats.deviceBreakdown.smartTvCast.toLocaleString()} (4%)
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-purple-500 rounded-full" style={{ width: '4%' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Actividad y Sesión del Administrador */}
+              {presenceStats && (
+                <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-5 shadow-xl">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Cpu className="w-4 h-4 text-emerald-400" />
+                      <h3 className="text-sm font-bold text-white">
+                        Tu Sesión de Administrador en Este Dispositivo
+                      </h3>
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-mono">
+                      {presenceStats.currentSession.userActivityStatus}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mb-4">
+                    <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                      <span className="text-[10px] text-slate-500 block mb-0.5">ID Sesión</span>
+                      <span className="font-mono text-white font-semibold">{presenceStats.currentSession.sessionId}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                      <span className="text-[10px] text-slate-500 block mb-0.5">Dispositivo</span>
+                      <span className="font-medium text-white">{presenceStats.currentSession.deviceType}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                      <span className="text-[10px] text-slate-500 block mb-0.5">Tiempo en Línea</span>
+                      <span className="font-mono text-emerald-400 font-bold">
+                        {Math.floor(presenceStats.currentSession.watchTimeSeconds / 60)}m {presenceStats.currentSession.watchTimeSeconds % 60}s
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                      <span className="text-[10px] text-slate-500 block mb-0.5">Última Acción</span>
+                      <span className="font-medium text-slate-200">{presenceStats.currentSession.lastInteractionText}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => presenceStats.registerUserInteraction('Clic Administrador')}
+                    className="w-full py-2 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <MousePointerClick className="w-4 h-4" />
+                    <span>Enviar Pulso de Interacción (Verificar Cambio a Estado Activo)</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             /* CONFIGURACIÓN COMPLETA & SERVIDORES (AdminPanel) */

@@ -31,7 +31,7 @@ export default function App() {
 
   // Real-time live connected presence exclusively on this web & app
   const presence = useRealPresence(true);
-  const liveViewerCount = presence.onlineOnSite;
+  const liveViewerCount = presence.totalOnSite;
 
   // Secret /login route detection
   const [isLoginRoute, setIsLoginRoute] = useState<boolean>(() => {
@@ -193,6 +193,7 @@ export default function App() {
   }, []);
 
   const triggerReaction = (emoji: string) => {
+    presence.registerUserInteraction(`Reacción ${emoji}`);
     const newReaction: FloatingItem = {
       id: 'react-' + Date.now() + '-' + Math.random(),
       emoji,
@@ -329,6 +330,7 @@ export default function App() {
         onUpdatePoll={handleUpdatePoll}
         onClearChat={handleClearChat}
         onReturnToPublic={handleReturnToPublic}
+        presenceStats={presence}
       />
     );
   }
@@ -355,7 +357,9 @@ export default function App() {
         isStreamingLive={isStreamingLive}
         isVipMember={isVipMember}
         toggleVipMembership={() => setIsVipMember(!isVipMember)}
-        viewerCount={liveViewerCount}
+        viewerCount={presence.totalOnSite}
+        activeCount={presence.activeInteracting}
+        totalCount={presence.totalOnSite}
         homeScore={homeScore}
         awayScore={awayScore}
         matchMinute={matchMinute}
@@ -535,7 +539,7 @@ export default function App() {
         onClearNotifications={() => setNotifications([])}
       />
 
-      {/* REAL ON-SITE AUDIENCE METRICS MODAL */}
+      {/* AUDIENCE MODAL FOR PUBLIC VIEWERS */}
       <LiveAudienceModal
         isOpen={isAudienceModalOpen}
         onClose={() => setIsAudienceModalOpen(false)}
