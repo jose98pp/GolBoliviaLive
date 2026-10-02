@@ -51,25 +51,80 @@ export default function App() {
 
   // Broadcaster & Page Settings
   const [streamSettings, setStreamSettings] = useState<StreamSettings>(() => {
-    const savedUrl = typeof window !== 'undefined' ? localStorage.getItem('golbolivia_custom_video_url') : null;
-    const defaultUrl = savedUrl || 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8';
+    const defaultUrl = 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8';
+    let saved: Partial<StreamSettings> = {};
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('golbolivia_stream_settings');
+        if (raw) saved = JSON.parse(raw);
+      } catch {}
+      const savedUrl = localStorage.getItem('golbolivia_custom_video_url');
+      if (savedUrl) saved.customVideoUrl = savedUrl;
+    }
+    const finalUrl = (saved.customVideoUrl && saved.customVideoUrl.trim().length > 5)
+      ? saved.customVideoUrl.trim()
+      : defaultUrl;
+
     return {
-      title: 'Bolívar vs The Strongest — Fecha 22 Torneo Clausura',
-      tournamentName: 'División Profesional de Bolivia',
-      homeClubId: 'bolivar',
-      awayClubId: 'strongest',
-      stadiumName: 'Estadio Olímpico Hernando Siles',
-      altitudeMeters: 3637,
-      period: '2T',
-      isLive: true,
-      broadcastMode: 'obs_custom',
-      rtmpServer: 'rtmp://localhost:1935/live',
-      streamKey: 'partido',
-      customVideoUrl: defaultUrl,
-      chatMode: 'all',
-      officialAnnouncement: 'Transmisión oficial de GolBolivia Live desde el Hernando Siles.',
+      title: saved.title || 'Bolívar vs The Strongest — Fecha 22 Torneo Clausura',
+      tournamentName: saved.tournamentName || 'División Profesional de Bolivia',
+      homeClubId: saved.homeClubId || 'bolivar',
+      awayClubId: saved.awayClubId || 'strongest',
+      stadiumName: saved.stadiumName || 'Estadio Olímpico Hernando Siles',
+      altitudeMeters: saved.altitudeMeters || 3637,
+      period: saved.period || '2T',
+      isLive: saved.isLive ?? true,
+      broadcastMode: saved.broadcastMode || 'obs_custom',
+      rtmpServer: saved.rtmpServer || 'rtmp://localhost:1935/live',
+      streamKey: saved.streamKey || 'partido',
+      customVideoUrl: finalUrl,
+      chatMode: saved.chatMode || 'all',
+      officialAnnouncement: saved.officialAnnouncement || 'Transmisión oficial de GolBolivia Live desde el Hernando Siles.',
+      overlayScoreboardVisible: saved.overlayScoreboardVisible ?? true,
+      lowLatencyMode: saved.lowLatencyMode ?? true,
     };
   });
+
+  // Cross-tab synchronization: when /login updates the stream, the public view updates in real-time
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'golbolivia_stream_settings' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setStreamSettings((prev) => ({ ...prev, ...parsed }));
+        } catch {}
+      } else if (e.key === 'golbolivia_custom_video_url' && e.newValue) {
+        setStreamSettings((prev) => ({
+          ...prev,
+          customVideoUrl: e.newValue!,
+          broadcastMode: 'obs_custom',
+        }));
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if ('BroadcastChannel' in window) {
+        bc = new BroadcastChannel('gol_bolivia_live_chat_channel');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'STREAM_SETTINGS_UPDATED' && event.data?.settings) {
+            setStreamSettings((prev) => ({ ...prev, ...event.data.settings }));
+          }
+        };
+      }
+    } catch {}
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      try {
+        bc?.close();
+      } catch {}
+    };
+  }, []);
 
   // Stream state
   const [isStreamingLive, setIsStreamingLive] = useState(true);
@@ -146,12 +201,26 @@ export default function App() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleUpdateStreamSettings = (newSettings: Partial<StreamSettings>) => {
-    if (newSettings.customVideoUrl !== undefined && typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('golbolivia_custom_video_url', newSettings.customVideoUrl);
-      } catch {}
-    }
-    setStreamSettings((prev) => ({ ...prev, ...newSettings }));
+    setStreamSettings((prev) => {
+      const updated = { ...prev, ...newSettings };
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('golbolivia_stream_settings', JSON.stringify(updated));
+          if (updated.customVideoUrl) {
+            localStorage.setItem('golbolivia_custom_video_url', updated.customVideoUrl);
+          }
+        } catch {}
+      }
+      return updated;
+    });
+
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('gol_bolivia_live_chat_channel');
+        bc.postMessage({ type: 'STREAM_SETTINGS_UPDATED', settings: newSettings });
+        bc.close();
+      }
+    } catch {}
   };
 
   const handleAddMatchEvent = (newEvent: Omit<MatchEvent, 'id'>) => {

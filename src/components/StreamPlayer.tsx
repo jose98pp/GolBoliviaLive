@@ -47,8 +47,11 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   const userVideoRef = useRef<HTMLVideoElement>(null);
 
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
   const [volume, setVolume] = useState<number>(0.85);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
+  const [streamReloadKey, setStreamReloadKey] = useState<number>(0);
   const [currentResolution, setCurrentResolution] = useState<StreamResolution>('1080p60');
   const [showSettingsMenu, setShowSettingsMenu] = useState<boolean>(false);
   const [showAudioMenu, setShowAudioMenu] = useState<boolean>(false);
@@ -86,6 +89,53 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       // AudioContext muted/unsupported
     }
   };
+
+  const handleTogglePlay = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const video = userVideoRef.current;
+    if (video) {
+      if (!video.paused) {
+        video.pause();
+        setIsPlaying(false);
+      } else {
+        video.play().then(() => setIsPlaying(true)).catch(() => {});
+        setIsPlaying(true);
+        playWhistleSound();
+      }
+    } else {
+      setIsPlaying((prev) => !prev);
+      if (!isPlaying) playWhistleSound();
+    }
+  };
+
+  const handleReloadStream = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsReconnecting(true);
+    setStreamError(null);
+    setStreamReloadKey((prev) => prev + 1);
+    const video = userVideoRef.current;
+    if (video) {
+      try {
+        video.load();
+        video.play().catch(() => {});
+      } catch {}
+    }
+    setTimeout(() => setIsReconnecting(false), 900);
+  };
+
+  // Sync isPlaying state with real video element events
+  useEffect(() => {
+    const video = userVideoRef.current;
+    if (!video) return;
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    return () => {
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
+    };
+  }, [userVideoRef.current]);
 
   // Canvas-based football match broadcast simulation
   useEffect(() => {
@@ -284,6 +334,11 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     let hls: Hls | null = null;
     const isHlsStream = url.includes('.m3u8') || url.includes('/hls/') || url.includes(':8888');
 
+    // Ensure mute and volume are set before loading
+    video.muted = isMuted;
+    video.volume = volume;
+    setStreamError(null);
+
     if (isHlsStream && Hls.isSupported()) {
       hls = new Hls({
         enableWorker: true,
@@ -297,13 +352,17 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.play().catch(() => {});
+        setStreamError(null);
+        if (isPlaying) {
+          video.play().catch(() => {});
+        }
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
+              setStreamError('Conectando con OBS Studio... Verifica que OBS esté transmitiendo y Cloudflare activo.');
               hls?.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
@@ -318,10 +377,10 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native Apple HLS (Safari iOS/macOS)
       video.src = url;
-      video.play().catch(() => {});
+      if (isPlaying) video.play().catch(() => {});
     } else {
       video.src = url;
-      video.play().catch(() => {});
+      if (isPlaying) video.play().catch(() => {});
     }
 
     return () => {
@@ -329,7 +388,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         hls.destroy();
       }
     };
-  }, [streamSettings?.customVideoUrl]);
+  }, [streamSettings?.customVideoUrl, streamSettings?.broadcastMode, streamReloadKey]);
 
   // Sync mute and volume with video element
   useEffect(() => {
@@ -468,22 +527,70 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
           <p className="text-xs text-slate-400">{homeClub.name} vs {awayClub.name}</p>
           <p className="text-[11px] text-emerald-400 mt-2">Gracias por sintonizar GolBolivia Live</p>
         </div>
-      ) : streamSettings?.customVideoUrl ? (
-        <video
-          ref={userVideoRef}
-          autoPlay
-          playsInline
-          controls={false}
-          muted={isMuted}
-          className="w-full h-full object-cover select-none bg-black"
-        />
-      ) : (
+      ) : streamSettings?.broadcastMode === 'simulation' ? (
         <canvas
           ref={canvasRef}
           width={854}
           height={480}
           className="w-full h-full object-cover select-none"
         />
+      ) : (
+        <video
+          ref={userVideoRef}
+          autoPlay
+          playsInline
+          controls={false}
+          muted={isMuted}
+          className="w-full h-full object-cover select-none bg-black cursor-pointer"
+          onClick={handleTogglePlay}
+        />
+      )}
+
+      {/* Paused Overlay */}
+      {!isPlaying && streamSettings?.broadcastMode !== 'simulation' && (
+        <div
+          onClick={handleTogglePlay}
+          className="absolute inset-0 z-15 bg-black/60 flex items-center justify-center cursor-pointer select-none"
+        >
+          <div className="w-16 h-16 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all">
+            <Play className="w-8 h-8 fill-black translate-x-0.5" />
+          </div>
+        </div>
+      )}
+
+      {/* Unmute floating banner */}
+      {isMuted && streamSettings?.broadcastMode !== 'simulation' && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsMuted(false);
+            if (userVideoRef.current) userVideoRef.current.muted = false;
+          }}
+          className="absolute top-14 left-3 z-30 px-3 py-1.5 rounded-full bg-black/85 hover:bg-black border border-amber-500/60 text-amber-300 text-xs font-semibold flex items-center gap-1.5 shadow-xl transition-all hover:scale-105 cursor-pointer animate-pulse"
+        >
+          <VolumeX className="w-3.5 h-3.5 text-amber-400" />
+          <span>Toca para activar audio 🔊</span>
+        </button>
+      )}
+
+      {/* Reconnecting / Stream Error Overlay */}
+      {streamError && streamSettings?.broadcastMode !== 'simulation' && (
+        <div className="absolute inset-0 z-15 bg-black/90 flex flex-col items-center justify-center p-6 text-center select-none">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mb-3">
+            <Radio className="w-6 h-6 animate-pulse" />
+          </div>
+          <h3 className="text-white font-bold text-sm">Esperando señal de OBS Studio...</h3>
+          <p className="text-xs text-slate-300 max-w-md mt-1 mb-4 leading-relaxed">
+            {streamError}
+          </p>
+          <button
+            onClick={handleReloadStream}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-950/60 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isReconnecting ? 'animate-spin' : ''}`} />
+            <span>Reconectar Señal</span>
+          </button>
+        </div>
       )}
 
       {/* TOP OVERLAYS */}
@@ -625,14 +732,22 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
           {/* Left Controls: Play/Pause, Volume, Live, Audio track */}
           <div className="flex items-center gap-3">
             <button
-              onClick={() => {
-                setIsPlaying(!isPlaying);
-                if (!isPlaying) playWhistleSound();
-              }}
+              onClick={handleTogglePlay}
               className="p-1.5 hover:text-emerald-400 transition-colors cursor-pointer"
               aria-label={isPlaying ? 'Pausar' : 'Reproducir'}
+              title={isPlaying ? 'Pausar transmisión' : 'Reanudar transmisión'}
             >
               {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-white" />}
+            </button>
+
+            <button
+              onClick={handleReloadStream}
+              className="p-1.5 hover:text-emerald-400 text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1"
+              title="Recargar señal en vivo"
+              aria-label="Recargar señal"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isReconnecting ? 'animate-spin text-emerald-400' : ''}`} />
+              <span className="hidden sm:inline text-[11px] font-mono">Recargar</span>
             </button>
 
             {/* Volume control */}
