@@ -203,6 +203,30 @@ hlsAllowOrigin: '*'
               </p>
             </div>
           </div>
+
+          {/* PASO 5: METRICS & PROMETHEUS / GRAFANA */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-emerald-400 font-bold font-display text-sm">
+              <span className="w-5 h-5 rounded-full bg-emerald-400/20 flex items-center justify-center text-xs">5</span>
+              <span>Telemetría Real: Activar Exportador de Métricas (metrics: yes)</span>
+            </div>
+            <p className="text-slate-400">
+              MediaMTX puede exponer telemetría real (bitrate de entrada, tráfico saliente, sesiones HLS, SRT y WebRTC) mediante Prometheus sin simulaciones.
+            </p>
+            <div className="p-3 bg-slate-900/90 border border-emerald-500/40 rounded-xl space-y-2">
+              <p className="text-[11px] text-slate-300">
+                Abre tu archivo <strong>mediamtx.yml</strong> y habilita las siguientes líneas:
+              </p>
+              <pre className="bg-[#050912] p-2.5 rounded text-[11px] font-mono text-emerald-300 border border-slate-800">
+{`metrics: yes
+metricsAddress: :9998`}
+              </pre>
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>Endpoint local disponible en: <strong className="text-white font-mono">http://localhost:9998/metrics</strong></span>
+                <span className="text-emerald-400 font-bold">MediaMTX ➔ Prometheus ➔ Grafana</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}

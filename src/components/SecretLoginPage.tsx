@@ -28,9 +28,12 @@ import {
   Users,
   Cpu,
   ShieldCheck,
-  HelpCircle
+  HelpCircle,
+  Crown
 } from 'lucide-react';
 import { AdminPanel } from './AdminPanel';
+import { AdminVipManagement } from './AdminVipManagement';
+import { MediaMtxTelemetryPanel } from './MediaMtxTelemetryPanel';
 import { MediaMtxGuideModal } from './MediaMtxGuideModal';
 import { StreamSettings, MatchEvent, LivePoll, NotificationItem } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
@@ -82,7 +85,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [isRefreshingPreview, setIsRefreshingPreview] = useState(false);
 
   // Active section inside the private dashboard
-  const [activeTab, setActiveTab] = useState<'deck' | 'settings' | 'analytics'>('deck');
+  const [activeTab, setActiveTab] = useState<'deck' | 'vip_management' | 'settings' | 'analytics'>('deck');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
@@ -239,6 +242,17 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             >
               <Tv className="w-3.5 h-3.5" />
               <span>Tablero Central de Transmisión</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('vip_management')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'vip_management'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110" />
+              <span>Gestión Suscripción VIP</span>
             </button>
             <button
               onClick={() => setActiveTab('settings')}
@@ -829,10 +843,19 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* TELEMETRÍA REAL MEDIAMTX EN VIVO (SIN SIMULACIÓN) */}
+              <MediaMtxTelemetryPanel />
             </div>
+          ) : activeTab === 'vip_management' ? (
+            /* GESTIÓN DE SUSCRIPCIÓN VIP Y PASARELA DE PAGOS BOLIVIA */
+            <AdminVipManagement />
           ) : activeTab === 'analytics' ? (
             /* TELEMETRÍA Y ESTADÍSTICAS REALES DE AUDIENCIA (EXCLUSIVO ADMINISTRADOR) */
             <div className="space-y-6">
+              {/* TELEMETRÍA REAL MEDIAMTX PROMETHEUS METRICS */}
+              <MediaMtxTelemetryPanel />
+
               {/* Encabezado del Tablero de Telemetría */}
               <div className="bg-gradient-to-r from-[#0c1626] via-[#091220] to-[#070d18] border-2 border-emerald-500/50 rounded-2xl p-5 shadow-2xl shadow-emerald-950/20">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">

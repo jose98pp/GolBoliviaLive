@@ -18,6 +18,7 @@ import {
   RefreshCw,
   ExternalLink
 } from 'lucide-react';
+import { registerVipTransaction } from '../services/vipService';
 
 interface VipSubscriptionModalProps {
   isOpen: boolean;
@@ -75,6 +76,18 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
   const handleConfirmPayment = (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
+
+    const safePhone = userPhone.trim() || `7${Math.floor(1000000 + Math.random() * 8999999)}`;
+    const safeRef = transactionRef.trim() || `${paymentMethod === 'tigo' ? 'TIGO' : 'QR'}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    registerVipTransaction(
+      safePhone,
+      safeRef,
+      paymentMethod,
+      selectedPlan,
+      planPrice,
+      `Solicitud enviada por usuario ${safePhone}`
+    );
 
     setTimeout(() => {
       setIsProcessing(false);
@@ -369,6 +382,19 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
 
         {/* VERIFICATION FORM & SUBMIT */}
         <form onSubmit={handleConfirmPayment} className="space-y-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+              Código de Transacción / N° de Operación (opcional si es automático):
+            </label>
+            <input
+              type="text"
+              value={transactionRef}
+              onChange={(e) => setTransactionRef(e.target.value)}
+              placeholder="Ej. OP-984210 o TIGO-782103"
+              className="w-full bg-[#050912] border border-slate-700 focus:border-amber-500 rounded-xl px-3.5 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
+            />
+          </div>
+
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>Total a Pagar: <strong className="text-white font-mono text-sm">{planPrice} Bs</strong></span>
             <span className="text-emerald-400 font-semibold flex items-center gap-1">

@@ -124,3 +124,15 @@ export interface StreamSettings {
   lowLatencyMode?: boolean;
 }
 
+export interface VipTransaction {
+  id: string;
+  userPhone: string;
+  code: string;
+  method: 'qr' | 'tigo';
+  plan: 'match' | 'monthly';
+  amount: number;
+  timestamp: string;
+  status: 'pending' | 'approved' | 'rejected';
+  userNote?: string;
+}
+
