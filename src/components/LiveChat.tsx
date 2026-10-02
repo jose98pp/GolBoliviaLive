@@ -38,6 +38,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
   }, [activePoll]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
   // BroadcastChannel for cross-tab multi-user sync
@@ -96,9 +97,11 @@ export const LiveChat: React.FC<LiveChatProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-scroll to bottom of chat
+  // Auto-scroll inside chat box ONLY (does NOT scroll the outer browser window)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -336,7 +339,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
       )}
 
       {/* MESSAGES SCROLL AREA */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[220px]">
+      <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[220px]">
         {filteredMessages.map((msg) => {
           const club = BOLIVIAN_CLUBS[msg.clubId] || BOLIVIAN_CLUBS.bolivar;
 

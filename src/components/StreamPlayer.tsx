@@ -66,6 +66,38 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   const [fpsTelemetry, setFpsTelemetry] = useState<number>(59.9);
   const [showStatsOverlay, setShowStatsOverlay] = useState<boolean>(false);
 
+  // Auto-hide on-screen controls for clean video view
+  const [showControls, setShowControls] = useState<boolean>(true);
+  const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetControlsTimeout = () => {
+    setShowControls(true);
+    if (hideControlsTimerRef.current) {
+      clearTimeout(hideControlsTimerRef.current);
+    }
+    if (isPlaying && !showSettingsMenu && !showAudioMenu && !showCameraMenu && !showStatsOverlay) {
+      hideControlsTimerRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 2500);
+    }
+  };
+
+  useEffect(() => {
+    if (!isPlaying || showSettingsMenu || showAudioMenu || showCameraMenu || showStatsOverlay) {
+      setShowControls(true);
+      if (hideControlsTimerRef.current) {
+        clearTimeout(hideControlsTimerRef.current);
+      }
+    } else {
+      resetControlsTimeout();
+    }
+    return () => {
+      if (hideControlsTimerRef.current) {
+        clearTimeout(hideControlsTimerRef.current);
+      }
+    };
+  }, [isPlaying, showSettingsMenu, showAudioMenu, showCameraMenu, showStatsOverlay]);
+
   // Audio simulation using Web Audio API for stadium buzz and whistle
   const audioCtxRef = useRef<AudioContext | null>(null);
 
@@ -433,7 +465,17 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`relative bg-[#060911] rounded-2xl overflow-hidden shadow-2xl border border-slate-800/80 transition-all duration-300 group ${
+      onMouseMove={resetControlsTimeout}
+      onTouchStart={resetControlsTimeout}
+      onPointerMove={resetControlsTimeout}
+      onMouseLeave={() => {
+        if (isPlaying && !showSettingsMenu && !showAudioMenu && !showCameraMenu && !showStatsOverlay) {
+          setShowControls(false);
+        }
+      }}
+      className={`relative bg-[#060911] rounded-2xl overflow-hidden shadow-2xl border border-slate-800/80 transition-all duration-300 group select-none ${
+        !showControls && isPlaying ? 'cursor-none' : 'cursor-default'
+      } ${
         isTheaterMode ? 'w-full aspect-[16/9] max-h-[85vh]' : 'w-full aspect-[16/9]'
       }`}
     >
@@ -593,41 +635,12 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         </div>
       )}
 
-      {/* TOP OVERLAYS */}
-      {/* 1. Official TV Scoreboard Bug (Toggleable) */}
-      {streamSettings?.overlayScoreboardVisible !== false && (
-        <div className="absolute top-3 left-3 z-20 flex items-center shadow-2xl select-none">
-          <div className="flex items-center bg-[#090e1a]/95 backdrop-blur-md border border-slate-700/80 rounded-lg overflow-hidden text-xs">
-            {/* Home team */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-r border-slate-700/60" style={{ backgroundColor: `${homeClub.primaryColor}25` }}>
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: homeClub.primaryColor }} />
-              <span className="font-bold text-white tracking-wider">{homeClub.shortName.slice(0, 3).toUpperCase()}</span>
-              <span className="font-mono text-sm font-extrabold text-white px-1 tabular-nums">{homeScore}</span>
-            </div>
-            {/* Away team */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-r border-slate-700/60" style={{ backgroundColor: `${awayClub.primaryColor}25` }}>
-              <span className="font-mono text-sm font-extrabold text-white px-1 tabular-nums">{awayScore}</span>
-              <span className="font-bold text-white tracking-wider">{awayClub.shortName.slice(0, 3).toUpperCase()}</span>
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: awayClub.primaryColor }} />
-            </div>
-            {/* Match minute */}
-            <div className="px-2.5 py-1.5 font-mono text-[11px] font-semibold text-emerald-400 bg-slate-900/90 flex items-center gap-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{matchMinute}&apos; {streamSettings?.period || '2T'}</span>
-            </div>
-          </div>
-
-          {/* Tournament name unboxed metadata */}
-          <div className="hidden sm:flex items-center text-[10px] text-slate-300 ml-2 font-medium px-2 py-1 bg-black/60 backdrop-blur-sm rounded">
-            <span>{streamSettings?.tournamentName || 'División Profesional Boliviana'}</span>
-            <span className="mx-1.5">·</span>
-            <span>{streamSettings?.stadiumName || 'Estadio Siles'}</span>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Top Right Broadcast Live Badge & Ingest Indicator */}
-      <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+      {/* 1. Top Right Broadcast Live Badge & Ingest Indicator (Auto-hiding) */}
+      <div
+        className={`absolute top-3 right-3 z-20 flex items-center gap-2 transition-all duration-300 ${
+          showControls ? 'opacity-100 pointer-events-auto translate-y-0' : 'opacity-0 pointer-events-none -translate-y-2'
+        }`}
+      >
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-600/90 text-white text-[11px] font-bold tracking-wider uppercase shadow-lg shadow-red-950/50">
           <span className="w-2 h-2 rounded-full bg-white animate-ping" />
           <span>EN VIVO</span>
@@ -682,8 +695,12 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         </div>
       )}
 
-      {/* FLOATING QUICK REACTIONS TRIGGER BAR ON VIDEO */}
-      <div className="absolute right-3 bottom-16 z-20 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      {/* FLOATING QUICK REACTIONS TRIGGER BAR ON VIDEO (Auto-hiding) */}
+      <div
+        className={`absolute right-3 bottom-16 z-20 flex flex-col gap-1.5 transition-all duration-300 ${
+          showControls ? 'opacity-100 pointer-events-auto translate-x-0' : 'opacity-0 pointer-events-none translate-x-2'
+        }`}
+      >
         <button
           onClick={() => triggerReaction('⚽')}
           className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 border border-slate-700 flex items-center justify-center text-sm hover:scale-110 active:scale-95 transition-all cursor-pointer"
@@ -721,8 +738,12 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         </button>
       </div>
 
-      {/* STREAM CONTROLS BAR (BOTTOM) */}
-      <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-3 pt-6 flex flex-col gap-2">
+      {/* STREAM CONTROLS BAR (BOTTOM - Auto-hiding for clean view) */}
+      <div
+        className={`absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-3 pt-8 flex flex-col gap-2 transition-all duration-300 ${
+          showControls ? 'opacity-100 pointer-events-auto translate-y-0' : 'opacity-0 pointer-events-none translate-y-4'
+        }`}
+      >
         {/* Progress live scrubber line */}
         <div className="w-full h-1 bg-slate-700/80 rounded-full overflow-hidden flex">
           <div className="w-full bg-gradient-to-r from-emerald-500 via-yellow-400 to-red-500 h-full" />
