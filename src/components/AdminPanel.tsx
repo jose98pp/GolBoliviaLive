@@ -100,6 +100,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Status feedback
   const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
+  const [panelVideoUrl, setPanelVideoUrl] = useState<string>(streamSettings.customVideoUrl || '');
+  const [panelVideoSaved, setPanelVideoSaved] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (streamSettings.customVideoUrl) {
+      setPanelVideoUrl(streamSettings.customVideoUrl);
+    }
+  }, [streamSettings.customVideoUrl]);
+
+  const handleSaveVideoFromPanel = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanUrl = panelVideoUrl.trim();
+    onUpdateStreamSettings({
+      customVideoUrl: cleanUrl,
+      broadcastMode: cleanUrl ? 'obs_custom' : 'simulation',
+      isLive: true,
+    });
+    setPanelVideoSaved(true);
+    setTimeout(() => setPanelVideoSaved(false), 4000);
+  };
+
+  const handlePanelPasteCloudflare = () => {
+    const cloudflareUrl = 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8';
+    setPanelVideoUrl(cloudflareUrl);
+    onUpdateStreamSettings({
+      customVideoUrl: cloudflareUrl,
+      broadcastMode: 'obs_custom',
+      isLive: true,
+    });
+    setPanelVideoSaved(true);
+    setTimeout(() => setPanelVideoSaved(false), 4000);
+  };
 
   const showFeedback = (msg: string) => {
     setSavedFeedback(msg);
@@ -553,24 +585,56 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* Real Video Stream / HLS URL */}
-          <div className="p-4 bg-[#0d1424] rounded-xl border border-slate-800">
-            <div className="flex items-center justify-between mb-2">
+          <div className="p-4 sm:p-5 bg-gradient-to-r from-[#0d162b] to-[#0a1224] rounded-xl border-2 border-emerald-500/40 space-y-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Link className="w-3.5 h-3.5 text-yellow-400" />
-                URL de Stream de Video Real (HLS / m3u8 o MP4)
+                <Video className="w-4 h-4 text-emerald-400" />
+                <span>URL de Stream de Video Real (HLS / m3u8 o MP4)</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono font-bold">
+                  {streamSettings.customVideoUrl ? 'ENLACE ACTIVO' : 'OPCIONAL'}
+                </span>
               </label>
-              <span className="text-[10px] text-slate-400">Opcional</span>
+
+              <button
+                type="button"
+                onClick={handlePanelPasteCloudflare}
+                className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <span>Pegar enlace Cloudflare</span>
+              </button>
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">
-              Si cuentas con una señal HLS (.m3u8) o video directo desde tu servidor OBS/transcoder, pégalo aquí para reproducir el stream de video real en el reproductor.
+
+            <p className="text-[11px] text-slate-300">
+              Pega aquí el enlace de tu transmisión desde MediaMTX o Cloudflare. Al presionar <strong>Guardar y Conectar</strong>, el reproductor cargará automáticamente el video en vivo para todos los espectadores.
             </p>
-            <input
-              type="text"
-              value={streamSettings.customVideoUrl}
-              onChange={(e) => onUpdateStreamSettings({ customVideoUrl: e.target.value })}
-              placeholder="https://tu-servidor-streaming.com/hls/live.m3u8"
-              className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-yellow-400"
-            />
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={panelVideoUrl}
+                onChange={(e) => setPanelVideoUrl(e.target.value)}
+                placeholder="https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8"
+                className="flex-1 bg-slate-900 border-2 border-slate-700 focus:border-emerald-500 rounded-lg p-2.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
+              />
+
+              <button
+                type="button"
+                onClick={handleSaveVideoFromPanel}
+                className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 transition-all cursor-pointer whitespace-nowrap"
+              >
+                <Save className="w-4 h-4" />
+                <span>GUARDAR Y CONECTAR SEÑAL</span>
+              </button>
+            </div>
+
+            {panelVideoSaved && (
+              <div className="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl text-xs text-emerald-200 flex items-center gap-2 animate-pulse">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  <strong>¡Enlace guardado y conectado con éxito!</strong> El reproductor ahora está transmitiendo la señal de video externa.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* OBS RTMP Server & Key Details */}

@@ -50,20 +50,25 @@ export default function App() {
   };
 
   // Broadcaster & Page Settings
-  const [streamSettings, setStreamSettings] = useState<StreamSettings>({
-    title: 'Bolívar vs The Strongest — Fecha 22 Torneo Clausura',
-    tournamentName: 'División Profesional de Bolivia',
-    homeClubId: 'bolivar',
-    awayClubId: 'strongest',
-    stadiumName: 'Estadio Olímpico Hernando Siles',
-    altitudeMeters: 3637,
-    period: '2T',
-    isLive: true,
-    rtmpServer: 'rtmp://live.boliviagol.tv/live',
-    streamKey: 'live_bol_cl4s1co_99482',
-    customVideoUrl: '',
-    chatMode: 'all',
-    officialAnnouncement: 'Transmisión oficial de GolBolivia Live desde el Hernando Siles.',
+  const [streamSettings, setStreamSettings] = useState<StreamSettings>(() => {
+    const savedUrl = typeof window !== 'undefined' ? localStorage.getItem('golbolivia_custom_video_url') : null;
+    const defaultUrl = savedUrl || 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8';
+    return {
+      title: 'Bolívar vs The Strongest — Fecha 22 Torneo Clausura',
+      tournamentName: 'División Profesional de Bolivia',
+      homeClubId: 'bolivar',
+      awayClubId: 'strongest',
+      stadiumName: 'Estadio Olímpico Hernando Siles',
+      altitudeMeters: 3637,
+      period: '2T',
+      isLive: true,
+      broadcastMode: 'obs_custom',
+      rtmpServer: 'rtmp://localhost:1935/live',
+      streamKey: 'partido',
+      customVideoUrl: defaultUrl,
+      chatMode: 'all',
+      officialAnnouncement: 'Transmisión oficial de GolBolivia Live desde el Hernando Siles.',
+    };
   });
 
   // Stream state
@@ -141,6 +146,11 @@ export default function App() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleUpdateStreamSettings = (newSettings: Partial<StreamSettings>) => {
+    if (newSettings.customVideoUrl !== undefined && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('golbolivia_custom_video_url', newSettings.customVideoUrl);
+      } catch {}
+    }
     setStreamSettings((prev) => ({ ...prev, ...newSettings }));
   };
 

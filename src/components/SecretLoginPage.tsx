@@ -73,6 +73,54 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [activeTab, setActiveTab] = useState<'deck' | 'settings'>('deck');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
+  // Video stream URL input state
+  const [videoUrlInput, setVideoUrlInput] = useState<string>(
+    streamSettings.customVideoUrl || 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8'
+  );
+  const [urlSaveSuccess, setUrlSaveSuccess] = useState<boolean>(false);
+
+  // Sync if customVideoUrl changes externally
+  React.useEffect(() => {
+    if (streamSettings.customVideoUrl) {
+      setVideoUrlInput(streamSettings.customVideoUrl);
+    }
+  }, [streamSettings.customVideoUrl]);
+
+  const handleSaveVideoUrl = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanUrl = videoUrlInput.trim();
+    onUpdateStreamSettings({
+      customVideoUrl: cleanUrl,
+      broadcastMode: cleanUrl ? 'obs_custom' : 'simulation',
+      isLive: true,
+    });
+    setUrlSaveSuccess(true);
+    setPreviewKey((prev) => prev + 1);
+    setTimeout(() => setUrlSaveSuccess(false), 4500);
+  };
+
+  const handleQuickPasteCloudflare = () => {
+    const cloudflareUrl = 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8';
+    setVideoUrlInput(cloudflareUrl);
+    onUpdateStreamSettings({
+      customVideoUrl: cloudflareUrl,
+      broadcastMode: 'obs_custom',
+      isLive: true,
+    });
+    setUrlSaveSuccess(true);
+    setPreviewKey((prev) => prev + 1);
+    setTimeout(() => setUrlSaveSuccess(false), 4500);
+  };
+
+  const handleClearVideoUrl = () => {
+    setVideoUrlInput('');
+    onUpdateStreamSettings({
+      customVideoUrl: '',
+      broadcastMode: 'simulation',
+    });
+    setPreviewKey((prev) => prev + 1);
+  };
+
   const homeClub = BOLIVIAN_CLUBS[streamSettings.homeClubId] || BOLIVIAN_CLUBS.bolivar;
   const awayClub = BOLIVIAN_CLUBS[streamSettings.awayClubId] || BOLIVIAN_CLUBS.strongest;
 
@@ -214,6 +262,97 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           {activeTab === 'deck' ? (
             /* TABLERO CENTRALIZADO: VISTA PREVIA EN VIVO + PANEL DE INTERRUPTORES */
             <div className="space-y-6">
+              {/* TARJETA DESTACADA: CONEXIÓN Y GUARDADO DE SEÑAL DE VIDEO REAL */}
+              <div className="bg-gradient-to-r from-[#0d162b] via-[#0e1830] to-[#0a1226] border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-emerald-950/20">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                      <Video className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-sm sm:text-base font-bold text-white font-display">
+                          Conexión de Señal en Vivo (OBS / MediaMTX / Cloudflare)
+                        </h2>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold uppercase ${
+                          streamSettings.customVideoUrl
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                        }`}>
+                          {streamSettings.customVideoUrl ? 'SEÑAL EXTERNA ACTIVA' : 'SIMULACIÓN CANCHA'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        Pega tu enlace de transmisión <code className="text-emerald-300 font-mono">.m3u8</code> y presiona <strong>GUARDAR Y CONECTAR SEÑAL</strong> para emitirla a los hinchas.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleQuickPasteCloudflare}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                    title="Cargar automáticamente el enlace de Cloudflare Tunnel generado"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Pegar tu enlace Cloudflare</span>
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveVideoUrl} className="space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="url"
+                        value={videoUrlInput}
+                        onChange={(e) => setVideoUrlInput(e.target.value)}
+                        placeholder="https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8"
+                        className="w-full bg-[#060a14] border-2 border-emerald-500/60 focus:border-emerald-400 rounded-xl px-4 py-3 text-xs sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        required
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500 hover:from-emerald-400 hover:to-emerald-300 text-black font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/80 transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-black" />
+                      <span>GUARDAR Y CONECTAR SEÑAL</span>
+                    </button>
+
+                    {streamSettings.customVideoUrl && (
+                      <button
+                        type="button"
+                        onClick={handleClearVideoUrl}
+                        className="px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center justify-center gap-1 border border-slate-700 cursor-pointer"
+                        title="Desconectar señal de video y volver a la simulación interactiva"
+                      >
+                        <span>Quitar</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {urlSaveSuccess && (
+                    <div className="p-3 bg-emerald-950/90 border border-emerald-500 rounded-xl text-xs text-emerald-200 flex items-center gap-2 shadow-lg animate-pulse">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>
+                        <strong>¡Señal guardada y conectada con éxito!</strong> El reproductor ahora está transmitiendo en directo tu video desde OBS Studio.
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                    <span className="truncate">
+                      Enlace activo configurado:{' '}
+                      <strong className="text-emerald-400 font-mono select-all">
+                        {streamSettings.customVideoUrl || '(Ninguno - usando animación interactiva)'}
+                      </strong>
+                    </span>
+                    <span className="text-emerald-400/90 font-medium">✓ Queda guardado automáticamente en el navegador</span>
+                  </div>
+                </form>
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* 1. MONITOR DE SALIDA EN TIEMPO REAL (IFRAME) */}
                 <div className="lg:col-span-7 space-y-3">
