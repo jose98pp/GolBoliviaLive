@@ -1,5 +1,7 @@
 import React from 'react';
 import { Radio, Bell, Tv, ShieldCheck, Menu, X } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
+import { SocialFollowBanner } from './SocialFollowBanner';
 
 interface NavbarProps {
   activeTab: 'stream' | 'stats' | 'exclusive' | 'obs' | 'admin' | string;
@@ -83,7 +85,16 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         {/* Zone 3: 1-2 Primary Action Buttons */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          {/* Creator Social Links (Desktop) */}
+          <div className="hidden lg:flex items-center gap-1.5 border-r border-slate-800 pr-2.5 mr-0.5">
+            <span className="text-[11px] text-slate-400 font-medium">Sígueme:</span>
+            <SocialFollowBanner variant="compact" />
+          </div>
+
+          {/* PWA Install Button */}
+          <PWAInstallButton variant="navbar" />
+
           {/* Push Notifications trigger */}
           <button
             onClick={openPushModal}
@@ -111,6 +122,16 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Mobile drop-down drawer */}
       {mobileMenuOpen && (
         <div className="md:hidden mt-3 pt-3 border-t border-slate-800 flex flex-col gap-2 pb-2">
+          {/* Mobile Social Links Banner */}
+          <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 mb-1">
+            <div className="text-[11px] font-bold text-slate-300 mb-2 flex items-center justify-between">
+              <span>Canales de @josecpp98</span>
+              <span className="text-emerald-400 text-[10px]">Streams & Videos</span>
+            </div>
+            <div className="flex items-center justify-around">
+              <SocialFollowBanner variant="compact" />
+            </div>
+          </div>
           <button
             onClick={() => {
               setActiveTab('stream');

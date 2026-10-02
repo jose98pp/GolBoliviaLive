@@ -17,6 +17,8 @@ import { NotificationItem, StreamSettings, MatchEvent, LivePoll, ChatMessage } f
 import { BOLIVIAN_CLUBS, INITIAL_EVENTS, INITIAL_POLL } from './data/bolivianFootballData';
 import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin } from 'lucide-react';
 import { SecretLoginPage } from './components/SecretLoginPage';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { SocialFollowBanner } from './components/SocialFollowBanner';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'stream' | 'stats' | 'exclusive'>('stream');
@@ -468,8 +470,14 @@ export default function App() {
               </div>
             </div>
 
+            {/* PWA Mobile App Download Prompt Banner */}
+            <PWAInstallButton variant="banner" />
+
+            {/* Official Social Media Follow Banner (Kick, YouTube, TikTok, Facebook) */}
+            <SocialFollowBanner variant="cards" />
+
             {/* Embedded Live Stats Section underneath for easy browsing */}
-            <div className="pt-6">
+            <div className="pt-2 sm:pt-4">
               <MatchStats
                 homeScore={homeScore}
                 awayScore={awayScore}
@@ -500,6 +508,9 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* FOOTER WITH CREATOR PROFILE & SOCIAL LINKS */}
+      <SocialFollowBanner variant="footer" />
 
       {/* PUSH NOTIFICATION MODAL */}
       <PushNotificationModal

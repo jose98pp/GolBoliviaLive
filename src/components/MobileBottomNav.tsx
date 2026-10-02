@@ -1,5 +1,6 @@
 import React from 'react';
-import { Tv, MessageSquare, Activity, ShieldCheck, Video } from 'lucide-react';
+import { Tv, MessageSquare, Activity, ShieldCheck } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface MobileBottomNavProps {
   activeTab: string;
@@ -17,14 +18,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#070b15]/95 backdrop-blur-lg border-t border-slate-800 pb-safe">
-      <div className="grid grid-cols-4 items-center h-14">
+      <div className="flex items-center justify-around h-14 px-1">
         {/* Stream view */}
         <button
           onClick={() => {
             setActiveTab('stream');
             setMobileViewMode('stream');
           }}
-          className={`flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
+          className={`flex-1 flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
             activeTab === 'stream' && mobileViewMode === 'stream'
               ? 'text-emerald-400 font-semibold'
               : 'text-slate-400 hover:text-slate-200'
@@ -40,7 +41,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             setActiveTab('stream');
             setMobileViewMode('chat');
           }}
-          className={`flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
+          className={`flex-1 flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
             activeTab === 'stream' && mobileViewMode === 'chat'
               ? 'text-emerald-400 font-semibold'
               : 'text-slate-400 hover:text-slate-200'
@@ -53,7 +54,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         {/* Stats */}
         <button
           onClick={() => setActiveTab('stats')}
-          className={`flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
+          className={`flex-1 flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
             activeTab === 'stats'
               ? 'text-emerald-400 font-semibold'
               : 'text-slate-400 hover:text-slate-200'
@@ -66,7 +67,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         {/* Exclusive VIP */}
         <button
           onClick={() => setActiveTab('exclusive')}
-          className={`flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
+          className={`flex-1 flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
             activeTab === 'exclusive'
               ? 'text-amber-400 font-semibold'
               : 'text-slate-400 hover:text-slate-200'
@@ -75,6 +76,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <ShieldCheck className="w-5 h-5" />
           <span className="text-[10px] tracking-tight mt-1">Zona VIP</span>
         </button>
+
+        {/* PWA Mobile App Download Button */}
+        <div className="flex-1 flex items-center justify-center">
+          <PWAInstallButton variant="bottomNav" />
+        </div>
       </div>
     </div>
   );

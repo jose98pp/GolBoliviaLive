@@ -1,18 +1,56 @@
 {
+  "id": "/",
   "name": "GolBolivia Live — Transmisión en Vivo del Fútbol Boliviano",
   "short_name": "GolBolivia",
-  "description": "Plataforma oficial de streaming en vivo de la División Profesional de Bolivia, chat en directo, estadísticas y OBS Studio.",
+  "description": "Mira la División Profesional del Fútbol Boliviano en vivo en HD con chat en tiempo real, estadísticas oficiales y soporte para OBS Studio.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#070b14",
   "theme_color": "#070b14",
+  "lang": "es",
+  "categories": ["sports", "entertainment", "video"],
   "icons": [
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ver Partido en Vivo",
+      "short_name": "En Vivo",
+      "description": "Ver la transmisión oficial en directo",
+      "url": "/?tab=stream",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Tabla de Posiciones",
+      "short_name": "Posiciones",
+      "description": "Consulta la tabla acumulada del fútbol boliviano",
+      "url": "/?tab=standings",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
     }
   ]
 }
