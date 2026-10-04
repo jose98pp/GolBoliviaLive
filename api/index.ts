@@ -6,8 +6,14 @@ export default function handler(req: Request, res: Response) {
   const matchedPath = (req.headers['x-matched-path'] || req.headers['x-vercel-matched-path']) as string | undefined;
   if (matchedPath && typeof matchedPath === 'string') {
     req.url = matchedPath;
-  } else if ((req as any).query?.path) {
-    req.url = `/api/${(req as any).query.path}`;
+  } else {
+    try {
+      const parsed = new URL(req.url, 'http://localhost');
+      const pathParam = parsed.searchParams.get('path');
+      if (pathParam) {
+        req.url = pathParam.startsWith('/') ? `/api${pathParam}` : `/api/${pathParam}`;
+      }
+    } catch {}
   }
   return app(req, res);
 }

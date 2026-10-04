@@ -20,8 +20,14 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   const xMatched = (req.headers['x-matched-path'] || req.headers['x-vercel-matched-path']) as string | undefined;
   if (xMatched && typeof xMatched === 'string') {
     req.url = xMatched;
-  } else if (req.query && typeof req.query.path === 'string') {
-    req.url = '/api/' + req.query.path;
+  } else {
+    try {
+      const parsed = new URL(req.url, 'http://localhost');
+      const pathParam = parsed.searchParams.get('path');
+      if (pathParam) {
+        req.url = pathParam.startsWith('/') ? `/api${pathParam}` : `/api/${pathParam}`;
+      }
+    } catch {}
   }
   next();
 });
@@ -353,60 +359,12 @@ const state: AppState = {
 };
 
 // ==========================================
-// PERSISTENT STORAGE FOR ALL DEVICES
+// PERSISTENT STORAGE (Local Filesystem /tmp or data)
 // ==========================================
 const DATA_DIR = process.env.VERCEL
   ? path.resolve('/tmp', 'data')
   : path.resolve(appDirname, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'stream-state.json');
-
-// Global Cloud Object Sync for stateless serverless functions (e.g. Vercel)
-const GLOBAL_STORE_ID = 'ff808181a09d98f701a1054cf26b7060';
-const GLOBAL_STORE_URL = `https://api.restful-api.dev/objects/${GLOBAL_STORE_ID}`;
-
-async function syncWithGlobalCloud(): Promise<void> {
-  try {
-    const res = await fetch(GLOBAL_STORE_URL, {
-      signal: AbortSignal.timeout(2500),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json && json.data) {
-        if (json.data.streamSettings) {
-          state.streamSettings = { ...state.streamSettings, ...json.data.streamSettings };
-        }
-        if (json.data.scoreboard) {
-          state.scoreboard = { ...state.scoreboard, ...json.data.scoreboard };
-        }
-        console.log('[GolBolivia Backend] Sincronización global con la nube exitosa:', state.streamSettings.customVideoUrl);
-      }
-    }
-  } catch (err) {
-    // Non-blocking fallback to local state
-  }
-}
-
-async function pushToGlobalCloud(): Promise<void> {
-  try {
-    const payload = {
-      name: 'golbolivia_stream_state',
-      data: {
-        streamSettings: state.streamSettings,
-        scoreboard: state.scoreboard,
-        updatedAt: Date.now(),
-      },
-    };
-    await fetch(GLOBAL_STORE_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(3500),
-    });
-    console.log('[GolBolivia Backend] Transmisión guardada globalmente en la nube para todos los dispositivos.');
-  } catch (err) {
-    // Local persistence will keep state
-  }
-}
 
 function loadPersistedState(): void {
   try {
@@ -430,9 +388,6 @@ function loadPersistedState(): void {
   } catch (err) {
     console.error('[GolBolivia Backend] Error al cargar estado persistido:', err);
   }
-
-  // Also sync with global cloud store
-  syncWithGlobalCloud().catch(() => {});
 }
 
 function persistState(): void {
@@ -446,13 +401,10 @@ function persistState(): void {
       updatedAt: Date.now(),
     };
     fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
-    console.log('[GolBolivia Backend] Configuración de transmisión persistida en disco para todos los dispositivos.');
+    console.log('[GolBolivia Backend] Configuración de transmisión persistida en disco.');
   } catch (err) {
     console.error('[GolBolivia Backend] Error al guardar estado en disco:', err);
   }
-
-  // Push to global cloud so all serverless instances across all devices see it
-  pushToGlobalCloud().catch(() => {});
 }
 
 // Cargar estado persistido al arrancar
@@ -537,12 +489,12 @@ app.post(['/api/auth/login', '/auth/login'], (req: Request, res: Response) => {
 });
 
 // 2. Auth Current User: Validate token on server
-app.get('/api/auth/me', authenticate, (req: Request, res: Response) => {
+app.get(['/api/auth/me', '/auth/me'], authenticate, (req: Request, res: Response) => {
   res.json({ user: (req as any).user });
 });
 
 // 3. Auth Logout
-app.post('/api/auth/logout', authenticate, (req: Request, res: Response) => {
+app.post(['/api/auth/logout', '/auth/logout'], authenticate, (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     activeSessions.delete(authHeader.substring(7));
@@ -651,7 +603,7 @@ app.get(['/api/live', '/live'], (_req: Request, res: Response) => {
 });
 
 // 6. Public Streams Metadata API (NO streamKey)
-app.get('/api/streams', (_req: Request, res: Response) => {
+app.get(['/api/streams', '/streams'], (_req: Request, res: Response) => {
   const publicPayload = getPublicStreamPayload();
   res.json({
     live: state.streamSettings.isLive,
@@ -671,7 +623,7 @@ app.get('/api/streams', (_req: Request, res: Response) => {
 
 // 6.1 Private Ingestion Credentials API (Strictly protected for ADMIN and TRANSMISOR)
 app.get(
-  '/api/streams/private-ingest',
+  ['/api/streams/private-ingest', '/streams/private-ingest'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR']),
   (_req: Request, res: Response) => {
@@ -689,7 +641,7 @@ app.get(
 
 // 6.2 Update Streams Configuration (Admin or Transmisor required)
 app.post(
-  '/api/streams',
+  ['/api/streams', '/streams'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR']),
   (req: Request, res: Response) => {
@@ -706,7 +658,7 @@ app.post(
 
 // 6.3 Instant Failover Switcher: Switch between OBS, Backup M3U8, or 2D Simulation
 app.post(
-  '/api/streams/failover',
+  ['/api/streams/failover', '/streams/failover'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR']),
   (req: Request, res: Response) => {
@@ -741,12 +693,12 @@ app.post(
 );
 
 // 7. Scoreboard API (Admin, Transmisor, or Editor required to update)
-app.get('/api/scoreboard', (_req: Request, res: Response) => {
+app.get(['/api/scoreboard', '/scoreboard'], (_req: Request, res: Response) => {
   res.json({ scoreboard: state.scoreboard });
 });
 
 app.post(
-  '/api/scoreboard',
+  ['/api/scoreboard', '/scoreboard'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
   (req: Request, res: Response) => {
@@ -767,7 +719,7 @@ app.post(
 );
 
 // 8. Matches & Events API (Admin or Editor required to add/edit)
-app.get('/api/matches', (_req: Request, res: Response) => {
+app.get(['/api/matches', '/matches'], (_req: Request, res: Response) => {
   res.json({
     scoreboard: state.scoreboard,
     matchStats: state.matchStats,
@@ -776,7 +728,7 @@ app.get('/api/matches', (_req: Request, res: Response) => {
 });
 
 app.post(
-  '/api/matches/events',
+  ['/api/matches/events', '/matches/events'],
   authenticate,
   requireRoles(['ADMIN', 'EDITOR']),
   (req: Request, res: Response) => {
@@ -796,11 +748,11 @@ app.post(
 );
 
 // 9. Chat API
-app.get('/api/chat', (_req: Request, res: Response) => {
+app.get(['/api/chat', '/chat'], (_req: Request, res: Response) => {
   res.json({ messages: state.chatMessages });
 });
 
-app.post('/api/chat', (req: Request, res: Response) => {
+app.post(['/api/chat', '/chat'], (req: Request, res: Response) => {
   const { sender, clubId, text, isVip } = req.body;
   if (!text || !sender) {
     res.status(400).json({ error: 'Texto y remitente requeridos' });
@@ -831,7 +783,7 @@ app.post('/api/chat', (req: Request, res: Response) => {
 
 // Delete chat message (Moderator or Admin)
 app.delete(
-  '/api/chat/:id',
+  ['/api/chat/:id', '/chat/:id'],
   authenticate,
   requireRoles(['ADMIN', 'MODERADOR']),
   (req: Request, res: Response) => {
@@ -843,7 +795,7 @@ app.delete(
 );
 
 // 10. Viewers API & Heartbeat
-app.get('/api/viewers', (_req: Request, res: Response) => {
+app.get(['/api/viewers', '/viewers'], (_req: Request, res: Response) => {
   res.json({
     activeRealSessions: viewerSessions.size,
     broadcastViewerCount: Math.max(14820, viewerSessions.size),
@@ -858,45 +810,46 @@ app.post(['/api/viewers/heartbeat', '/viewers/heartbeat'], (req: Request, res: R
   res.json({ ok: true, activeViewers: Math.max(14820, viewerSessions.size) });
 });
 
-// Universal fallback handler for Vercel rewrites (e.g. /api/index, /api/index?path=live)
+// 11. Health & Build SHA / Version Endpoint
+const APP_VERSION = '1.4.3';
+const DEPLOY_COMMIT_SHA = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || 'df267ec';
+
+app.get(['/api/health', '/health'], (_req: Request, res: Response) => {
+  res.json({
+    status: 'healthy',
+    app: 'GolBolivia Live',
+    version: APP_VERSION,
+    commitSha: DEPLOY_COMMIT_SHA,
+    timestamp: new Date().toISOString(),
+    uptime: Math.round(process.uptime()),
+    environment: process.env.NODE_ENV || 'production',
+    isVercel: Boolean(process.env.VERCEL),
+    streamSettings: getPublicStreamPayload(),
+  });
+});
+
+app.get(['/api/version', '/version'], (_req: Request, res: Response) => {
+  res.json({
+    version: APP_VERSION,
+    commitSha: DEPLOY_COMMIT_SHA,
+    builtAt: '2026-10-04T07:15:00Z',
+  });
+});
+
+// Universal 404 Handler for unmatched routes
 app.all('*', (req: Request, res: Response) => {
-  const rawUrl = (req.originalUrl || req.url || '').toLowerCase();
-  if (rawUrl.includes('live')) {
-    const publicPayload = getPublicStreamPayload();
-    return res.json({
-      live: state.streamSettings.isLive,
-      playbackUrl: publicPayload.playbackUrl,
-      match: state.streamSettings.title,
-      quality: [
-        '1080p60 (Full HD 6 Mbps)',
-        '720p60 (HD 3 Mbps)',
-        '480p (Estándar 1.5 Mbps)',
-        '360p (Móvil Ahorro)',
-        'Automática (Adaptive HLS)',
-      ],
-      stream: publicPayload,
-      streamSettings: publicPayload,
-      scoreboard: state.scoreboard,
-      matchStats: state.matchStats,
-      events: state.events,
-      viewersCount: Math.max(14820, viewerSessions.size),
-      serverTimestamp: Date.now(),
-    });
-  }
-  if (rawUrl.includes('events')) {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.write(`event: INITIAL_STATE\ndata: ${JSON.stringify({
-      stream: getPublicStreamPayload(),
-      streamSettings: getPublicStreamPayload(),
-      scoreboard: state.scoreboard,
-      matchStats: state.matchStats,
-      events: state.events,
-      viewersCount: Math.max(14820, viewerSessions.size),
-    })}\n\n`);
-    return res.end();
-  }
-  res.status(200).json({ ok: true, app: 'GolBolivia Live Serverless API' });
+  res.status(404).json({
+    error: `Ruta no encontrada: ${req.method} ${req.originalUrl || req.url}`,
+    availableEndpoints: [
+      'GET /api/live',
+      'GET /api/streams',
+      'GET /api/auth/me',
+      'POST /api/auth/login',
+      'GET /api/scoreboard',
+      'GET /api/health',
+      'GET /api/version'
+    ]
+  });
 });
 
 export { app, SYSTEM_USERS };

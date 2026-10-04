@@ -501,6 +501,13 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-emerald-300 font-semibold">v1.4.3</span>
+              <span className="text-slate-600">•</span>
+              <span className="text-slate-400">SHA: df267ec</span>
+            </div>
+
             <button
               onClick={onReturnToPublic}
               className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
@@ -2228,8 +2235,9 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           </button>
         </form>
 
-        <div className="mt-5 pt-3 border-t border-slate-800/80 text-center text-[10px] text-slate-500">
-          <span>La sesión se valida mediante tokens HMAC emitidos exclusivamente por el servidor.</span>
+        <div className="mt-5 pt-3 border-t border-slate-800/80 text-center text-[10px] text-slate-500 space-y-1">
+          <div>La sesión se valida mediante tokens HMAC emitidos exclusivamente por el servidor.</div>
+          <div className="font-mono text-[9px] text-slate-400">Versión: v1.4.3 • Commit: df267ec • Salud: /api/health</div>
         </div>
       </div>
     </div>
