@@ -18,6 +18,7 @@ import {
   STANDINGS_DATA,
   LINEUPS_DATA
 } from '../data/bolivianFootballData';
+import { useClubs } from '../hooks/useClubs';
 
 interface MatchStatsProps {
   homeScore: number;
@@ -37,9 +38,10 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
   const [statsTab, setStatsTab] = useState<'timeline' | 'stats' | 'lineups' | 'table'>('timeline');
   const [matchStats] = useState<IMatchStats>(INITIAL_MATCH_STATS);
   const events = propEvents || INITIAL_EVENTS;
+  const { clubs } = useClubs();
 
-  const homeClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.homeClubId]) || BOLIVIAN_CLUBS.bolivar;
-  const awayClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.awayClubId]) || BOLIVIAN_CLUBS.strongest;
+  const homeClub = (streamSettings && clubs[streamSettings.homeClubId]) || clubs.bolivar || BOLIVIAN_CLUBS.bolivar;
+  const awayClub = (streamSettings && clubs[streamSettings.awayClubId]) || clubs.strongest || BOLIVIAN_CLUBS.strongest;
 
   return (
     <div className="bg-[#0a0f1d] border border-slate-800/80 rounded-2xl p-4 md:p-6 shadow-xl">
@@ -171,7 +173,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
 
           <div className="space-y-2.5">
             {events.slice().reverse().map((ev) => {
-              const club = ev.clubId ? BOLIVIAN_CLUBS[ev.clubId] : null;
+              const club = ev.clubId ? (clubs[ev.clubId] || BOLIVIAN_CLUBS[ev.clubId]) : null;
 
               return (
                 <div
@@ -365,7 +367,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
             <tbody className="divide-y divide-slate-800/60 font-mono">
               {STANDINGS_DATA.map((row) => {
                 const isSelectedMatch = row.clubId === 'bolivar' || row.clubId === 'strongest';
-                const club = BOLIVIAN_CLUBS[row.clubId];
+                const club = clubs[row.clubId] || BOLIVIAN_CLUBS[row.clubId];
 
                 return (
                   <tr

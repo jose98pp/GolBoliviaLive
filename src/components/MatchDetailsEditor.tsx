@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { StreamSettings } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
+import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
 
 interface MatchDetailsEditorProps {
@@ -47,6 +48,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const { clubs } = useClubs();
+
   // Sync internal state when external props change
   useEffect(() => {
     setTitle(streamSettings.title || '');
@@ -61,14 +64,14 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   }, [streamSettings]);
 
   const handleGenerateTitle = () => {
-    const home = BOLIVIAN_CLUBS[homeClubId]?.name || 'Local';
-    const away = BOLIVIAN_CLUBS[awayClubId]?.name || 'Visitante';
+    const home = clubs[homeClubId]?.name || 'Local';
+    const away = clubs[awayClubId]?.name || 'Visitante';
     const generated = `${home} vs ${away} — Fútbol Boliviano en Vivo`;
     setTitle(generated);
   };
 
   const handleAutofillStadiumFromHomeClub = () => {
-    const club = BOLIVIAN_CLUBS[homeClubId];
+    const club = clubs[homeClubId];
     if (club) {
       setStadiumName(`${club.stadium} - ${club.city}`);
       setAltitudeMeters(club.altitudeMeters);
@@ -232,7 +235,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                 onChange={(e) => setHomeClubId(e.target.value)}
                 className="w-full bg-[#060a14] border border-sky-500/40 focus:border-sky-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
               >
-                {Object.values(BOLIVIAN_CLUBS).map((c) => (
+                {Object.values(clubs).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.badgeEmoji} {c.name} ({c.city})
                   </option>
@@ -250,7 +253,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                 onChange={(e) => setAwayClubId(e.target.value)}
                 className="w-full bg-[#060a14] border border-amber-500/40 focus:border-amber-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
               >
-                {Object.values(BOLIVIAN_CLUBS).map((c) => (
+                {Object.values(clubs).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.badgeEmoji} {c.name} ({c.city})
                   </option>

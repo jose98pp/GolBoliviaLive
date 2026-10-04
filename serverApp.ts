@@ -4,6 +4,8 @@ import http from 'http';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
+import { BOLIVIAN_CLUBS } from './src/data/bolivianFootballData';
+import type { Club } from './src/types/football';
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
@@ -278,9 +280,11 @@ interface AppState {
     isOfficialRelator?: boolean;
     superChatAmount?: number;
   }>;
+  clubs: Record<string, Club>;
 }
 
 const state: AppState = {
+  clubs: { ...BOLIVIAN_CLUBS },
   streamSettings: {
     title: 'Bolívar vs The Strongest - Clásico Paceño N° 234',
     tournamentName: 'Liga Tigo División Profesional - Torneo Clausura',
@@ -401,6 +405,9 @@ function loadPersistedState(): void {
         if (saved.scoreboard) {
           state.scoreboard = { ...state.scoreboard, ...saved.scoreboard };
         }
+        if (saved.clubs && typeof saved.clubs === 'object') {
+          state.clubs = { ...BOLIVIAN_CLUBS, ...saved.clubs };
+        }
         console.log(`[GolBolivia Backend] Estado persistido cargado con éxito desde ${STATE_FILE}`);
         console.log(`[GolBolivia Backend] Señal activa: ${state.streamSettings.customVideoUrl || '(simulación)'}`);
       }
@@ -418,6 +425,7 @@ function persistState(): void {
     const dataToSave = {
       streamSettings: state.streamSettings,
       scoreboard: state.scoreboard,
+      clubs: state.clubs,
       updatedAt: Date.now(),
     };
     fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
@@ -617,6 +625,7 @@ app.get(['/api/live', '/live'], (_req: Request, res: Response) => {
     scoreboard: state.scoreboard,
     matchStats: state.matchStats,
     events: state.events,
+    clubs: state.clubs,
     viewersCount: Math.max(14820, viewerSessions.size),
     serverTimestamp: Date.now(),
   });
@@ -736,7 +745,9 @@ app.post(
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR']),
   (req: Request, res: Response) => {
-    const { customVideoUrl, backupVideoUrl, backupChannelName, activeStreamSource, autoFailoverEnabled, isLive, broadcastMode } = req.body;
+    const { title, tournamentName, customVideoUrl, backupVideoUrl, backupChannelName, activeStreamSource, autoFailoverEnabled, isLive, broadcastMode } = req.body;
+    if (typeof title === 'string') state.streamSettings.title = title.trim();
+    if (typeof tournamentName === 'string') state.streamSettings.tournamentName = tournamentName.trim();
     if (typeof customVideoUrl === 'string') state.streamSettings.customVideoUrl = customVideoUrl.trim();
     if (typeof backupVideoUrl === 'string') state.streamSettings.backupVideoUrl = backupVideoUrl.trim();
     if (typeof backupChannelName === 'string') state.streamSettings.backupChannelName = backupChannelName.trim();
@@ -816,6 +827,45 @@ app.post(
   }
 );
 
+// Update Match Event (Admin or Editor required)
+app.put(
+  ['/api/matches/events/:id', '/matches/events/:id'],
+  authenticate,
+  requireRoles(['ADMIN', 'EDITOR']),
+  (req: Request, res: Response) => {
+    const id = req.params.id;
+    const index = state.events.findIndex((e) => e.id === id);
+    if (index === -1) {
+      res.status(404).json({ error: 'Evento no encontrado' });
+      return;
+    }
+    state.events[index] = {
+      ...state.events[index],
+      ...req.body,
+    };
+    broadcastSseEvent('MATCH_EVENT_UPDATED', state.events[index]);
+    res.json({ success: true, event: state.events[index] });
+  }
+);
+
+// Delete Match Event (Admin or Editor required)
+app.delete(
+  ['/api/matches/events/:id', '/matches/events/:id'],
+  authenticate,
+  requireRoles(['ADMIN', 'EDITOR']),
+  (req: Request, res: Response) => {
+    const id = req.params.id;
+    const initialLen = state.events.length;
+    state.events = state.events.filter((e) => e.id !== id);
+    if (state.events.length === initialLen) {
+      res.status(404).json({ error: 'Evento no encontrado' });
+      return;
+    }
+    broadcastSseEvent('MATCH_EVENT_DELETED', { id });
+    res.json({ success: true, message: `Evento ${id} eliminado correctamente.` });
+  }
+);
+
 // 9. Chat API
 app.get(['/api/chat', '/chat'], (_req: Request, res: Response) => {
   res.json({ messages: state.chatMessages });
@@ -878,6 +928,64 @@ app.post(['/api/viewers/heartbeat', '/viewers/heartbeat'], (req: Request, res: R
   }
   res.json({ ok: true, activeViewers: Math.max(14820, viewerSessions.size) });
 });
+
+// 10.5 Clubs & Teams Management API (Customizable Bolivian football clubs)
+app.get(['/api/clubs', '/clubs'], (_req: Request, res: Response) => {
+  res.json({ success: true, clubs: state.clubs });
+});
+
+app.post(
+  ['/api/clubs', '/clubs'],
+  authenticate,
+  requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
+  (req: Request, res: Response) => {
+    const club = req.body as Partial<Club>;
+    if (!club.id || !club.name || !club.shortName) {
+      res.status(400).json({ error: 'ID, nombre y nombre corto son obligatorios para el equipo.' });
+      return;
+    }
+    const cleanId = String(club.id).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_');
+    const existing = state.clubs[cleanId] || {};
+    const updatedClub: Club = {
+      id: cleanId,
+      name: String(club.name).trim(),
+      shortName: String(club.shortName).trim(),
+      city: String(club.city || existing.city || 'Bolivia').trim(),
+      primaryColor: String(club.primaryColor || existing.primaryColor || '#0284c7').trim(),
+      secondaryColor: String(club.secondaryColor || existing.secondaryColor || '#ffffff').trim(),
+      textColor: String(club.textColor || existing.textColor || '#ffffff').trim(),
+      badgeEmoji: String(club.badgeEmoji || existing.badgeEmoji || '⚽').trim(),
+      stadium: String(club.stadium || existing.stadium || 'Estadio Departamental').trim(),
+      altitudeMeters: Number(club.altitudeMeters || existing.altitudeMeters || 2500),
+    };
+
+    state.clubs[cleanId] = updatedClub;
+    persistState();
+    broadcastSseEvent('CLUBS_UPDATED', state.clubs);
+    res.json({ success: true, club: updatedClub, clubs: state.clubs });
+  }
+);
+
+app.delete(
+  ['/api/clubs/:id', '/clubs/:id'],
+  authenticate,
+  requireRoles(['ADMIN']),
+  (req: Request, res: Response) => {
+    const id = req.params.id;
+    if (state.streamSettings.homeClubId === id || state.streamSettings.awayClubId === id) {
+      res.status(400).json({ error: 'No se puede eliminar un equipo que está jugando en el partido activo.' });
+      return;
+    }
+    if (!state.clubs[id]) {
+      res.status(404).json({ error: 'Equipo no encontrado.' });
+      return;
+    }
+    delete state.clubs[id];
+    persistState();
+    broadcastSseEvent('CLUBS_UPDATED', state.clubs);
+    res.json({ success: true, message: `Equipo ${id} eliminado correctamente.`, clubs: state.clubs });
+  }
+);
 
 // 11. Health & Build SHA / Version Endpoint
 const APP_VERSION = '1.4.3';

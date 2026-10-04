@@ -5,6 +5,8 @@ import {
   doc,
   setDoc,
   getDoc,
+  updateDoc,
+  deleteDoc,
   onSnapshot,
   collection,
   addDoc,
@@ -15,7 +17,7 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { StreamSettings, MatchEvent, ChatMessage, LivePoll } from '../types/football';
+import { StreamSettings, MatchEvent, ChatMessage, LivePoll, Club } from '../types/football';
 
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -275,5 +277,153 @@ export function subscribeConfirmationLogsFirebase(
     );
   } catch {
     return () => {};
+  }
+}
+
+/**
+ * 7. UPDATE & DELETE OPERATIONS (CLOUDFIRESTORE CRUD)
+ */
+export async function updateMatchEventInFirebase(
+  eventId: string,
+  updates: Partial<MatchEvent>
+): Promise<void> {
+  const ref = doc(db, 'events', eventId);
+  await setDoc(
+    ref,
+    {
+      ...updates,
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
+}
+
+export async function deleteMatchEventFromFirebase(eventId: string): Promise<void> {
+  const ref = doc(db, 'events', eventId);
+  await deleteDoc(ref);
+}
+
+export async function deleteChatMessageFromFirebase(messageId: string): Promise<void> {
+  const ref = doc(db, 'chat', messageId);
+  await deleteDoc(ref);
+}
+
+export async function deleteConfirmationLogFromFirebase(confirmId: string): Promise<void> {
+  const ref = doc(db, 'confirmations', confirmId);
+  await deleteDoc(ref);
+}
+
+export async function deletePollFromFirebase(): Promise<void> {
+  const ref = doc(db, 'polls', 'current');
+  await deleteDoc(ref);
+}
+
+export async function resetStreamSettingsInFirebase(): Promise<void> {
+  const ref = doc(db, 'config', 'stream_settings');
+  await setDoc(ref, {
+    customVideoUrl: '',
+    backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    activeStreamSource: 'obs',
+    backupChannelName: 'GolBolivia 24/7 Señal HD',
+    autoFailoverEnabled: true,
+    isLive: true,
+    broadcastMode: 'obs_custom',
+    title: 'Bolívar vs The Strongest — Fecha 22 Torneo Clausura',
+    updatedAt: Date.now(),
+  });
+}
+
+/**
+ * 8. CUSTOMIZABLE CLUBS & TEAMS MANAGEMENT (CLOUDFIRESTORE CRUD)
+ */
+export async function saveClubsToFirebase(clubs: Record<string, Club>): Promise<void> {
+  const ref = doc(db, 'config', 'clubs');
+  await setDoc(ref, {
+    clubs,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function getClubsFromFirebase(): Promise<Record<string, Club> | null> {
+  try {
+    const ref = doc(db, 'config', 'clubs');
+    const snap = await getDoc(ref);
+    if (snap.exists() && snap.data()?.clubs) {
+      return snap.data()?.clubs as Record<string, Club>;
+    }
+  } catch (err) {
+    console.warn('[Firebase] Error al cargar equipos desde Firestore:', err);
+  }
+  return null;
+}
+
+export function subscribeClubsFirebase(
+  callback: (clubs: Record<string, Club>) => void
+): () => void {
+  try {
+    const ref = doc(db, 'config', 'clubs');
+    return onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists() && snap.data()?.clubs) {
+          callback(snap.data()?.clubs as Record<string, Club>);
+        }
+      },
+      (error) => {
+        console.warn('[Firebase] Error en snapshot de clubes:', error);
+      }
+    );
+  } catch {
+    return () => {};
+  }
+}
+
+export async function saveSingleClubToFirebase(club: Club): Promise<void> {
+  const ref = doc(db, 'config', 'clubs');
+  const snap = await getDoc(ref);
+  const currentClubs = snap.exists() && snap.data()?.clubs ? snap.data().clubs : {};
+  currentClubs[club.id] = club;
+  await setDoc(ref, {
+    clubs: currentClubs,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function deleteClubFromFirebase(clubId: string): Promise<void> {
+  const ref = doc(db, 'config', 'clubs');
+  const snap = await getDoc(ref);
+  if (snap.exists() && snap.data()?.clubs) {
+    const currentClubs = { ...snap.data().clubs };
+    delete currentClubs[clubId];
+    await setDoc(ref, {
+      clubs: currentClubs,
+      updatedAt: Date.now(),
+    });
+  }
+}
+
+/**
+ * 9. PURGE NON-REAL / TEST CONFIRMATIONS
+ */
+export async function purgeTestConfirmations(): Promise<void> {
+  try {
+    const colRef = collection(db, 'confirmations');
+    const q = query(colRef);
+    const snap = await getDoc(doc(db, 'confirmations', 'dummy_never_exists')).catch(() => null);
+    // Delete documents that contain test actions
+    // Use onSnapshot or query to find docs
+    const querySnapshot = await import('firebase/firestore').then(m => m.getDocs(colRef));
+    for (const d of querySnapshot.docs) {
+      const data = d.data();
+      if (
+        data.action?.includes('TEST') ||
+        data.details?.includes('Prueba') ||
+        data.operator?.includes('Test')
+      ) {
+        await deleteDoc(d.ref);
+      }
+    }
+  } catch (err) {
+    console.warn('[Firebase] Error al purgar confirmaciones de prueba:', err);
   }
 }

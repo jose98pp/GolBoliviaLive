@@ -1,10 +1,20 @@
-import { StreamSettings, MatchEvent, ChatMessage, MatchStats, PublicStreamState, PrivateIngestCredentials } from '../types/football';
+import { StreamSettings, MatchEvent, ChatMessage, MatchStats, PublicStreamState, PrivateIngestCredentials, Club } from '../types/football';
+import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { authService, AuthUser, UserRole } from './auth';
 import {
   saveStreamSettingsToFirebase,
   saveScoreboardToFirebase,
   addMatchEventToFirebase,
+  updateMatchEventInFirebase,
+  deleteMatchEventFromFirebase,
   sendChatMessageToFirebase,
+  deleteChatMessageFromFirebase,
+  deleteConfirmationLogFromFirebase,
+  resetStreamSettingsInFirebase,
+  saveSingleClubToFirebase,
+  deleteClubFromFirebase,
+  getClubsFromFirebase,
+  subscribeClubsFirebase,
   subscribeStreamSettingsFirebase,
   subscribeScoreboardFirebase,
   logConfirmationToFirebase,
@@ -455,6 +465,39 @@ class GolBoliviaApiClient {
     return data.event;
   }
 
+  // 7.1 Update Match Event (Edit event in Backend + Firebase)
+  async updateMatchEvent(id: string, updates: Partial<MatchEvent>): Promise<MatchEvent> {
+    // Mirror to Firebase
+    updateMatchEventInFirebase(id, updates).catch(() => {});
+
+    const res = await fetch(`/api/matches/events/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al actualizar evento');
+    }
+    return data.event;
+  }
+
+  // 7.2 Delete Match Event (Delete event in Backend + Firebase)
+  async deleteMatchEvent(id: string): Promise<boolean> {
+    // Mirror to Firebase
+    deleteMatchEventFromFirebase(id).catch(() => {});
+
+    const res = await fetch(`/api/matches/events/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al eliminar evento');
+    }
+    return true;
+  }
+
   // 8. Chat
   async sendChat(sender: string, clubId: string, text: string, isVip?: boolean): Promise<ChatMessage> {
     const chatMsg = {
@@ -478,6 +521,140 @@ class GolBoliviaApiClient {
       throw new Error(data.error || 'Error al enviar mensaje');
     }
     return data.message;
+  }
+
+  // 8.1 Delete Chat Message (Moderation in Backend + Firebase)
+  async deleteChatMessage(id: string): Promise<boolean> {
+    // Mirror to Firebase
+    deleteChatMessageFromFirebase(id).catch(() => {});
+
+    const res = await fetch(`/api/chat/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al eliminar mensaje de chat');
+    }
+    return true;
+  }
+
+  // 8.2 Delete / Purge Confirmation Log (Firebase audit cleanup)
+  async deleteConfirmationLog(id: string): Promise<boolean> {
+    await deleteConfirmationLogFromFirebase(id).catch(() => {});
+    return true;
+  }
+
+  // 8.3 Reset Stream Configuration (Reset / Clear in Backend + Firebase)
+  async resetStreamSettings(): Promise<boolean> {
+    await resetStreamSettingsInFirebase().catch(() => {});
+    await this.syncStreamConfig({
+      customVideoUrl: '',
+      backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+      activeStreamSource: 'obs',
+    }).catch(() => {});
+    return true;
+  }
+
+  // 8.4 Get Clubs (Customizable teams list from Firebase / Backend)
+  async getClubs(): Promise<Record<string, Club>> {
+    // Try from Firebase Firestore first for true cloud persistence
+    try {
+      const cloudClubs = await getClubsFromFirebase();
+      if (cloudClubs && Object.keys(cloudClubs).length > 0) {
+        return cloudClubs;
+      }
+    } catch {}
+
+    // Fallback to backend /api/clubs
+    try {
+      const res = await fetch('/api/clubs');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.clubs && Object.keys(data.clubs).length > 0) {
+          return data.clubs;
+        }
+      }
+    } catch {}
+
+    return BOLIVIAN_CLUBS;
+  }
+
+  // 8.5 Add or Update a Club (Save to Firebase Firestore & Backend)
+  async saveClub(club: Club): Promise<{ success: boolean; club: Club; clubs: Record<string, Club> }> {
+    // 1. Mirror to Firebase Firestore instantly
+    saveSingleClubToFirebase(club).catch(() => {});
+
+    // 2. Post to backend
+    const res = await fetch('/api/clubs', {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(club),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al guardar equipo en el servidor');
+    }
+
+    logConfirmationToFirebase({
+      action: 'UPDATE_CLUB_RECORD',
+      operator: authService.getUser()?.name || 'Administrador',
+      role: authService.getUser()?.role || 'ADMIN',
+      details: `Guardado / edición del equipo: ${club.name} (${club.shortName})`,
+      payload: club,
+      timestamp: Date.now(),
+    }).catch(() => {});
+
+    return data;
+  }
+
+  // 8.6 Delete a Club (Delete from Firebase Firestore & Backend)
+  async deleteClub(clubId: string): Promise<{ success: boolean; clubs: Record<string, Club> }> {
+    // 1. Mirror to Firebase Firestore
+    deleteClubFromFirebase(clubId).catch(() => {});
+
+    // 2. Delete on backend
+    const res = await fetch(`/api/clubs/${encodeURIComponent(clubId)}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al eliminar equipo en el servidor');
+    }
+
+    logConfirmationToFirebase({
+      action: 'DELETE_CLUB_RECORD',
+      operator: authService.getUser()?.name || 'Administrador',
+      role: 'ADMIN',
+      details: `Eliminación del equipo con identificador: ${clubId}`,
+      timestamp: Date.now(),
+    }).catch(() => {});
+
+    return data;
+  }
+
+  // 8.7 Real-time Subscribe to Clubs changes
+  subscribeClubs(onClubs: (clubs: Record<string, Club>) => void): () => void {
+    if (typeof window === 'undefined') return () => {};
+
+    // Initial immediate load
+    this.getClubs().then(onClubs);
+
+    // Firebase real-time snapshot
+    const unsubFirebase = subscribeClubsFirebase(onClubs);
+
+    // SSE listener
+    const unsubSSE = this.subscribeLiveEvents((type, data) => {
+      if (type === 'CLUBS_UPDATED' && data) {
+        onClubs(data);
+      }
+    });
+
+    return () => {
+      unsubFirebase();
+      unsubSSE();
+    };
   }
 
   // 9. Viewers Heartbeat

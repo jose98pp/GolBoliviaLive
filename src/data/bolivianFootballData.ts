@@ -8,7 +8,7 @@ export const RESOLUTIONS: ResolutionConfig[] = [
   { id: 'auto', label: 'Automático', bitrate: 'Dinámico', fps: 60, qualityBadge: 'Auto' },
 ];
 
-export const BOLIVIAN_CLUBS: Record<string, Club> = {
+export let BOLIVIAN_CLUBS: Record<string, Club> = {
   bolivar: {
     id: 'bolivar',
     name: 'Club Bolívar',
@@ -104,8 +104,108 @@ export const BOLIVIAN_CLUBS: Record<string, Club> = {
     badgeEmoji: '⭐',
     stadium: 'Estadio Félix Capriles',
     altitudeMeters: 2558,
+  },
+  san_antonio: {
+    id: 'san_antonio',
+    name: 'San Antonio Bulo Bulo',
+    shortName: 'San Antonio',
+    city: 'Entre Ríos / Cochabamba',
+    primaryColor: '#059669',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🌟',
+    stadium: 'Estadio Dr. Carlos Villegas',
+    altitudeMeters: 232,
+  },
+  gv_san_jose: {
+    id: 'gv_san_jose',
+    name: 'GV San José',
+    shortName: 'GV San José',
+    city: 'Oruro',
+    primaryColor: '#1d4ed8',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🛡️',
+    stadium: 'Estadio Jesús Bermúdez',
+    altitudeMeters: 3735,
+  },
+  tomayapo: {
+    id: 'tomayapo',
+    name: 'Real Tomayapo',
+    shortName: 'Tomayapo',
+    city: 'Tarija',
+    primaryColor: '#15803d',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🦁',
+    stadium: 'Estadio IV Centenario',
+    altitudeMeters: 1854,
+  },
+  independiente: {
+    id: 'independiente',
+    name: 'Independiente Petrolero',
+    shortName: 'Independiente',
+    city: 'Sucre',
+    primaryColor: '#b91c1c',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🔴',
+    stadium: 'Estadio Olímpico Patria',
+    altitudeMeters: 2790,
+  },
+  u_vinto: {
+    id: 'u_vinto',
+    name: 'FC Universitario de Vinto',
+    shortName: 'U de Vinto',
+    city: 'Vinto / Cochabamba',
+    primaryColor: '#65a30d',
+    secondaryColor: '#1e293b',
+    textColor: '#ffffff',
+    badgeEmoji: '🎓',
+    stadium: 'Estadio Hipólito Lazarte / Capriles',
+    altitudeMeters: 2558,
+  },
+  guabira: {
+    id: 'guabira',
+    name: 'Club Deportivo Guabirá',
+    shortName: 'Guabirá',
+    city: 'Montero / Santa Cruz',
+    primaryColor: '#dc2626',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '👹',
+    stadium: 'Estadio Gilberto Parada',
+    altitudeMeters: 298,
+  },
+  royal_pari: {
+    id: 'royal_pari',
+    name: 'Royal Pari FC',
+    shortName: 'Royal Pari',
+    city: 'Santa Cruz',
+    primaryColor: '#ea580c',
+    secondaryColor: '#1e293b',
+    textColor: '#ffffff',
+    badgeEmoji: '🦁',
+    stadium: 'Estadio Ramón Tahuichi Aguilera',
+    altitudeMeters: 416,
+  },
+  real_santa_cruz: {
+    id: 'real_santa_cruz',
+    name: 'Real Santa Cruz',
+    shortName: 'Real Santa Cruz',
+    city: 'Santa Cruz',
+    primaryColor: '#334155',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '⚪',
+    stadium: 'Estadio Real Santa Cruz',
+    altitudeMeters: 416,
   }
 };
+
+export function setGlobalClubs(newClubs: Record<string, Club>) {
+  BOLIVIAN_CLUBS = { ...newClubs };
+}
 
 export const INITIAL_MATCH_STATS: MatchStats = {
   possession: [56, 44],

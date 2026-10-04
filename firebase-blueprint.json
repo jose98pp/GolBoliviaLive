@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "StreamSettings": {
+      "title": "StreamSettings",
+      "description": "Configuración de transmisión y URLs m3u8",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "tournamentName": { "type": "string", "maxLength": 100 },
+        "homeClubId": { "type": "string", "maxLength": 50 },
+        "awayClubId": { "type": "string", "maxLength": 50 },
+        "stadiumName": { "type": "string", "maxLength": 100 },
+        "period": { "type": "string", "maxLength": 20 },
+        "isLive": { "type": "boolean" },
+        "broadcastMode": { "type": "string", "maxLength": 50 },
+        "customVideoUrl": { "type": "string", "maxLength": 500 },
+        "backupVideoUrl": { "type": "string", "maxLength": 500 },
+        "backupChannelName": { "type": "string", "maxLength": 100 },
+        "activeStreamSource": { "type": "string", "enum": ["obs", "backup", "simulation"] },
+        "autoFailoverEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["isLive", "activeStreamSource"]
+    },
+    "Club": {
+      "title": "Club",
+      "description": "Equipo del fútbol boliviano",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 100 },
+        "shortName": { "type": "string", "maxLength": 50 },
+        "city": { "type": "string", "maxLength": 50 },
+        "primaryColor": { "type": "string", "maxLength": 20 },
+        "secondaryColor": { "type": "string", "maxLength": 20 },
+        "textColor": { "type": "string", "maxLength": 20 },
+        "badgeEmoji": { "type": "string", "maxLength": 20 },
+        "stadium": { "type": "string", "maxLength": 100 },
+        "altitudeMeters": { "type": "number" }
+      },
+      "required": ["id", "name", "shortName", "city", "primaryColor"]
+    },
+    "Scoreboard": {
+      "title": "Scoreboard",
+      "description": "Marcador del partido en tiempo real",
+      "type": "object",
+      "properties": {
+        "homeScore": { "type": "number" },
+        "awayScore": { "type": "number" },
+        "matchMinute": { "type": "number" },
+        "period": { "type": "string", "maxLength": 20 },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["homeScore", "awayScore", "matchMinute"]
+    },
+    "MatchEvent": {
+      "title": "MatchEvent",
+      "description": "Evento de la línea de tiempo (goles, tarjetas, sustituciones, VAR)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "minute": { "type": "number" },
+        "type": { "type": "string", "maxLength": 30 },
+        "clubId": { "type": "string", "maxLength": 50 },
+        "player": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 500 },
+        "scoreAfter": { "type": "string", "maxLength": 20 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["minute", "type"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Mensaje del chat en vivo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "sender": { "type": "string", "maxLength": 60 },
+        "clubId": { "type": "string", "maxLength": 50 },
+        "text": { "type": "string", "maxLength": 300 },
+        "timestamp": { "type": "string", "maxLength": 20 },
+        "isVip": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["sender", "text"]
+    },
+    "LivePoll": {
+      "title": "LivePoll",
+      "description": "Encuesta interactiva en vivo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "question": { "type": "string", "maxLength": 250 },
+        "options": { "type": "object" },
+        "totalVotes": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      }
+    },
+    "ConfirmationLog": {
+      "title": "ConfirmationLog",
+      "description": "Registro de auditoría y confirmación de cambios",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "action": { "type": "string", "maxLength": 80 },
+        "operator": { "type": "string", "maxLength": 80 },
+        "role": { "type": "string", "maxLength": 30 },
+        "details": { "type": "string", "maxLength": 500 },
+        "payload": { "type": "object" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["action", "operator", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/config/stream_settings": {
+      "schema": "StreamSettings",
+      "description": "Configuración y URLs de la señal de streaming"
+    },
+    "/config/clubs": {
+      "schema": "Club",
+      "description": "Lista de equipos personalizables del torneo"
+    },
+    "/match/scoreboard": {
+      "schema": "Scoreboard",
+      "description": "Marcador del partido actual"
+    },
+    "/events/{eventId}": {
+      "schema": "MatchEvent",
+      "description": "Línea de tiempo de eventos del partido"
+    },
+    "/chat/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Mensajes enviados al chat en vivo"
+    },
+    "/polls/{pollId}": {
+      "schema": "LivePoll",
+      "description": "Encuestas activas"
+    },
+    "/confirmations/{confirmId}": {
+      "schema": "ConfirmationLog",
+      "description": "Auditoría de confirmaciones administrativas"
+    }
+  }
+}

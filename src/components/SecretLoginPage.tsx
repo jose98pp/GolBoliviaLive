@@ -47,6 +47,8 @@ import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { RealPresenceStats } from '../hooks/useRealPresence';
 import { FailoverChannelPanel } from './FailoverChannelPanel';
 import { MatchDetailsEditor } from './MatchDetailsEditor';
+import { TeamsManager } from './TeamsManager';
+import { useClubs } from '../hooks/useClubs';
 import { verifyStreamLatency, LatencyTestResult } from '../services/latencyChecker';
 
 interface SecretLoginPageProps {
@@ -158,8 +160,11 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [previewKey, setPreviewKey] = useState(0);
   const [isRefreshingPreview, setIsRefreshingPreview] = useState(false);
 
+  // Dynamic clubs management from Firebase & Backend
+  const { clubs, saveClub, deleteClub } = useClubs();
+
   // Active section inside the private dashboard
-  const [activeTab, setActiveTab] = useState<'deck' | 'match_details' | 'failover' | 'vip_management' | 'settings' | 'analytics'>('deck');
+  const [activeTab, setActiveTab] = useState<'deck' | 'match_details' | 'teams' | 'failover' | 'vip_management' | 'settings' | 'analytics'>('deck');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
@@ -579,6 +584,17 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             >
               <Trophy className="w-3.5 h-3.5 text-amber-400" />
               <span>Datos del Partido (Web)</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('teams')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'teams'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5 text-amber-400" />
+              <span>Equipos ({Object.keys(clubs).length})</span>
             </button>
             <button
               onClick={() => setActiveTab('failover')}
@@ -1783,6 +1799,15 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                 onUpdateStreamSettings={onUpdateStreamSettings}
               />
             </div>
+          ) : activeTab === 'teams' ? (
+            /* GESTIÓN DE EQUIPOS EDITABLES Y NUEVOS EQUIPOS */
+            <TeamsManager
+              clubs={clubs}
+              onSaveClub={saveClub}
+              onDeleteClub={deleteClub}
+              currentHomeClubId={streamSettings.homeClubId}
+              currentAwayClubId={streamSettings.awayClubId}
+            />
           ) : activeTab === 'vip_management' ? (
             /* GESTIÓN DE SUSCRIPCIÓN VIP Y PASARELA DE PAGOS BOLIVIA */
             <AdminVipManagement />

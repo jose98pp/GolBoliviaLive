@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Heart, Flame, Trophy, Shield, DollarSign, BarChart2, Smile, Sparkles, Filter, X } from 'lucide-react';
 import { ChatMessage, LivePoll, Club } from '../types/football';
 import { BOLIVIAN_CLUBS, INITIAL_CHAT, INITIAL_POLL } from '../data/bolivianFootballData';
+import { useClubs } from '../hooks/useClubs';
 
 interface LiveChatProps {
   onTriggerFloatingReaction: (emoji: string) => void;
@@ -24,6 +25,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_CHAT);
   const [inputText, setInputText] = useState('');
+  const { clubs } = useClubs();
   const [selectedClubId, setSelectedClubId] = useState<string>('bolivar');
   const [activeFilter, setActiveFilter] = useState<'all' | 'vip' | 'relator'>('all');
   const [showEmotePicker, setShowEmotePicker] = useState(false);
@@ -175,7 +177,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
     });
   };
 
-  const currentClub = BOLIVIAN_CLUBS[selectedClubId] || BOLIVIAN_CLUBS.bolivar;
+  const currentClub = clubs[selectedClubId] || clubs.bolivar || BOLIVIAN_CLUBS.bolivar;
 
   // Filter messages
   const filteredMessages = messages.filter((m) => {
@@ -288,7 +290,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
             onChange={(e) => setSelectedClubId(e.target.value)}
             className="bg-slate-800 text-slate-200 text-[11px] font-medium rounded px-2 py-0.5 border border-slate-700 focus:outline-none cursor-pointer"
           >
-            {Object.values(BOLIVIAN_CLUBS).map((c) => (
+            {Object.values(clubs).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.badgeEmoji} {c.shortName}
               </option>
@@ -345,7 +347,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
       {/* MESSAGES SCROLL AREA */}
       <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[220px]">
         {filteredMessages.map((msg) => {
-          const club = BOLIVIAN_CLUBS[msg.clubId] || BOLIVIAN_CLUBS.bolivar;
+          const club = clubs[msg.clubId] || BOLIVIAN_CLUBS[msg.clubId] || clubs.bolivar || BOLIVIAN_CLUBS.bolivar;
 
           // Super Chat Card Style
           if (msg.superChatAmount) {

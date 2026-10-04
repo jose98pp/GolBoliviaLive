@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { ExclusiveContent } from '../types/football';
 import { EXCLUSIVE_ITEMS, BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
+import { useClubs } from '../hooks/useClubs';
 import { VipSubscriptionModal, VipPlan } from './VipSubscriptionModal';
 
 interface ExclusiveClubZoneProps {
@@ -34,6 +35,7 @@ export const ExclusiveClubZone: React.FC<ExclusiveClubZoneProps> = ({
   const [selectedClubFilter, setSelectedClubFilter] = useState<string>('all');
   const [activeVideoModal, setActiveVideoModal] = useState<ExclusiveContent | null>(null);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState<boolean>(false);
+  const { clubs } = useClubs();
 
   const filteredContent = EXCLUSIVE_ITEMS.filter((item) => {
     if (selectedClubFilter === 'all') return true;
@@ -210,7 +212,7 @@ export const ExclusiveClubZone: React.FC<ExclusiveClubZoneProps> = ({
         >
           Todos los Clubes
         </button>
-        {Object.values(BOLIVIAN_CLUBS).map((c) => (
+        {Object.values(clubs).map((c) => (
           <button
             key={c.id}
             onClick={() => setSelectedClubFilter(c.id)}
@@ -229,7 +231,7 @@ export const ExclusiveClubZone: React.FC<ExclusiveClubZoneProps> = ({
       {/* CONTENT GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredContent.map((item) => {
-          const club = BOLIVIAN_CLUBS[item.clubId] || BOLIVIAN_CLUBS.bolivar;
+          const club = clubs[item.clubId] || BOLIVIAN_CLUBS[item.clubId] || clubs.bolivar || BOLIVIAN_CLUBS.bolivar;
           const isItemLocked = item.isLocked && !isVipMember;
 
           return (

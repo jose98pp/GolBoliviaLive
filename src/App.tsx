@@ -171,6 +171,10 @@ export default function App() {
         if (data.matchMinute !== undefined) setMatchMinute(data.matchMinute);
       } else if (type === 'MATCH_EVENT_ADDED') {
         setEvents((prev) => [data, ...prev]);
+      } else if (type === 'MATCH_EVENT_UPDATED') {
+        setEvents((prev) => prev.map((e) => (e.id === data.id ? { ...e, ...data } : e)));
+      } else if (type === 'MATCH_EVENT_DELETED') {
+        setEvents((prev) => prev.filter((e) => e.id !== data.id));
       }
     });
 
