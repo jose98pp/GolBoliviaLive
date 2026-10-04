@@ -239,18 +239,7 @@ class GolBoliviaApiClient {
   }
 
   // 6.2 Dedicated Endpoint: Fetch Authoritative Stream & Backup M3U8 Config (Global Synchronization)
-  async getStreamConfig(): Promise<{
-    customVideoUrl: string;
-    backupVideoUrl: string;
-    backupChannelName: string;
-    activeStreamSource: 'obs' | 'backup' | 'simulation';
-    autoFailoverEnabled: boolean;
-    playbackUrl: string;
-    isLive: boolean;
-    title: string;
-    broadcastMode: string;
-    updatedAt: number;
-  }> {
+  async getStreamConfig(): Promise<Partial<StreamSettings>> {
     try {
       const res = await fetch(`/api/streams/config?_t=${Date.now()}`, {
         cache: 'no-store',
@@ -262,45 +251,23 @@ class GolBoliviaApiClient {
       }
     } catch {}
 
-    // Fallback: fetch from /api/streams
+    // Fallback: fetch from Firebase Firestore
     try {
-      const altRes = await fetch(`/api/streams?_t=${Date.now()}`);
-      if (altRes.ok) {
-        const altData = await altRes.json();
-        const ss = altData.streamSettings || altData.stream || {};
-        return {
-          customVideoUrl: ss.customVideoUrl || '',
-          backupVideoUrl: ss.backupVideoUrl || '',
-          backupChannelName: ss.backupChannelName || 'Canal Alternativo',
-          activeStreamSource: ss.activeStreamSource || 'obs',
-          autoFailoverEnabled: ss.autoFailoverEnabled ?? true,
-          playbackUrl: altData.playbackUrl || ss.playbackUrl || '',
-          isLive: altData.live ?? true,
-          title: altData.match || ss.title || 'Bolívar vs The Strongest',
-          broadcastMode: ss.broadcastMode || 'obs_custom',
-          updatedAt: Date.now(),
-        };
-      }
+      const fbConfig = await getStreamSettingsFromFirebase();
+      if (fbConfig) return fbConfig;
     } catch {}
 
-    return {
-      customVideoUrl: localStorage.getItem('golbolivia_custom_video_url') || '',
-      backupVideoUrl: localStorage.getItem('golbolivia_backup_m3u8_url') || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-      backupChannelName: 'GolBolivia 24/7 Señal Alternativa HD',
-      activeStreamSource: (localStorage.getItem('golbolivia_active_stream_source') as any) || 'obs',
-      autoFailoverEnabled: true,
-      playbackUrl: '',
-      isLive: true,
-      title: 'Bolívar vs The Strongest',
-      broadcastMode: 'obs_custom',
-      updatedAt: Date.now(),
-    };
+    return {};
   }
 
   // 6.3 Dedicated Endpoint: Synchronize Stream & Backup M3U8 URLs Globally to Backend
   async syncStreamConfig(config: Partial<StreamSettings>): Promise<{ success: boolean; config?: any }> {
-    // 1. Save locally for instant offline feedback
+    // 1. Save locally for instant offline feedback and permanent persistence
     try {
+      const raw = localStorage.getItem('golbolivia_stream_settings');
+      const existing = raw ? JSON.parse(raw) : {};
+      const merged = { ...existing, ...config };
+      localStorage.setItem('golbolivia_stream_settings', JSON.stringify(merged));
       if (config.customVideoUrl !== undefined) localStorage.setItem('golbolivia_custom_video_url', config.customVideoUrl);
       if (config.backupVideoUrl !== undefined) localStorage.setItem('golbolivia_backup_m3u8_url', config.backupVideoUrl);
       if (config.activeStreamSource !== undefined) localStorage.setItem('golbolivia_active_stream_source', config.activeStreamSource);
@@ -318,6 +285,13 @@ class GolBoliviaApiClient {
       });
       if (res.ok) {
         const json = await res.json();
+        return json;
+      }
+    } catch {}
+
+    // 4. Fallback to /api/streams
+    return this.updateStreamSettings(config);
+  }
         return json;
       }
     } catch {}

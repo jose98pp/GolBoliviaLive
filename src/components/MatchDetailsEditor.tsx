@@ -50,17 +50,17 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
   const { clubs } = useClubs();
 
-  // Sync internal state when external props change
+  // Sync internal state when external props change (guard against empty overwrites)
   useEffect(() => {
-    setTitle(streamSettings.title || '');
-    setTournamentName(streamSettings.tournamentName || '');
-    setHomeClubId(streamSettings.homeClubId || 'bolivar');
-    setAwayClubId(streamSettings.awayClubId || 'strongest');
-    setStadiumName(streamSettings.stadiumName || '');
-    setAltitudeMeters(streamSettings.altitudeMeters || 3637);
-    setOfficialAnnouncement(streamSettings.officialAnnouncement || '');
-    setPeriod(streamSettings.period || '2T');
-    setIsLive(streamSettings.isLive !== false);
+    if (streamSettings.title) setTitle(streamSettings.title);
+    if (streamSettings.tournamentName) setTournamentName(streamSettings.tournamentName);
+    if (streamSettings.homeClubId) setHomeClubId(streamSettings.homeClubId);
+    if (streamSettings.awayClubId) setAwayClubId(streamSettings.awayClubId);
+    if (streamSettings.stadiumName) setStadiumName(streamSettings.stadiumName);
+    if (streamSettings.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
+    if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
+    if (streamSettings.period) setPeriod(streamSettings.period);
+    if (streamSettings.isLive !== undefined) setIsLive(streamSettings.isLive);
   }, [streamSettings]);
 
   const handleGenerateTitle = () => {
@@ -103,11 +103,11 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     };
 
     try {
-      // 1. Update state in parent and push to backend API
+      // 1. Update state in parent and save locally
       onUpdateStreamSettings(payload);
 
-      // 2. Direct server call ensuring server persistence
-      await apiClient.updateStreamSettings(payload);
+      // 2. Direct server call ensuring server and cloud persistence
+      await apiClient.syncStreamConfig(payload);
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 5000);

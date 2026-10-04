@@ -301,8 +301,17 @@ export default function App() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleUpdateStreamSettings = (newSettings: Partial<StreamSettings>) => {
-    setStreamSettings((prev) => ({ ...prev, ...newSettings }));
-    // Push authoritative global update to dedicated backend endpoint
+    setStreamSettings((prev) => {
+      const updated = { ...prev, ...newSettings };
+      try {
+        localStorage.setItem('golbolivia_stream_settings', JSON.stringify(updated));
+        if (updated.customVideoUrl) localStorage.setItem('golbolivia_custom_video_url', updated.customVideoUrl);
+        if (updated.backupVideoUrl) localStorage.setItem('golbolivia_backup_m3u8_url', updated.backupVideoUrl);
+        if (updated.activeStreamSource) localStorage.setItem('golbolivia_active_stream_source', updated.activeStreamSource);
+      } catch {}
+      return updated;
+    });
+    // Push authoritative global update to dedicated backend endpoint & Firebase
     apiClient.syncStreamConfig(newSettings).catch((err) => {
       console.error('Error al sincronizar señal global:', err);
     });

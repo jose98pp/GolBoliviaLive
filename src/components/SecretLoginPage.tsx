@@ -34,12 +34,14 @@ import {
   Trophy,
   Save,
   Database,
-  Check
+  Check,
+  MessageSquare
 } from 'lucide-react';
 import { AdminPanel } from './AdminPanel';
 import { AdminVipManagement } from './AdminVipManagement';
 import { MediaMtxTelemetryPanel } from './MediaMtxTelemetryPanel';
 import { MediaMtxGuideModal } from './MediaMtxGuideModal';
+import { EventsAndChatModeration } from './EventsAndChatModeration';
 import { authService, AuthUser, UserRole } from '../services/auth';
 import { apiClient } from '../services/apiClient';
 import { StreamSettings, MatchEvent, LivePoll, NotificationItem, PrivateIngestCredentials } from '../types/football';
@@ -163,8 +165,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   // Dynamic clubs management from Firebase & Backend
   const { clubs, saveClub, deleteClub } = useClubs();
 
-  // Active section inside the private dashboard
-  const [activeTab, setActiveTab] = useState<'deck' | 'match_details' | 'teams' | 'failover' | 'vip_management' | 'settings' | 'analytics'>('deck');
+  // Active section inside the private dashboard (Streamlined 5-tab console with zero duplicated options)
+  const [activeTab, setActiveTab] = useState<'stream' | 'match' | 'teams' | 'events_chat' | 'vip_analytics'>('stream');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
@@ -560,34 +562,34 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           </div>
         </header>
 
-        {/* Sub-Header Navigation Tabs: Tablero en Vivo vs Configuración Detallada */}
-        <div className="bg-[#090e1c] border-b border-slate-800/90 px-4 sm:px-6 py-2 flex items-center justify-between">
+        {/* Sub-Header Navigation Tabs: 5 Pestañas Claras y Sin Opciones Repetidas */}
+        <div className="bg-[#090e1c] border-b border-slate-800/90 px-4 sm:px-6 py-2 flex items-center justify-between overflow-x-auto">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setActiveTab('deck')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                activeTab === 'deck'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40'
+              onClick={() => setActiveTab('stream')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                activeTab === 'stream'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              <Tv className="w-3.5 h-3.5" />
-              <span>Tablero Central</span>
+              <Radio className="w-3.5 h-3.5 text-amber-400" />
+              <span>Transmisión & Señal</span>
             </button>
             <button
-              onClick={() => setActiveTab('match_details')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                activeTab === 'match_details'
+              onClick={() => setActiveTab('match')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                activeTab === 'match'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
               <Trophy className="w-3.5 h-3.5 text-amber-400" />
-              <span>Datos del Partido (Web)</span>
+              <span>Partido & Marcador</span>
             </button>
             <button
               onClick={() => setActiveTab('teams')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'teams'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -597,63 +599,36 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <span>Equipos ({Object.keys(clubs).length})</span>
             </button>
             <button
-              onClick={() => setActiveTab('failover')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                activeTab === 'failover'
+              onClick={() => setActiveTab('events_chat')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                activeTab === 'events_chat'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              <Radio className="w-3.5 h-3.5 text-amber-400" />
-              <span>Canal de Respaldo M3U8</span>
+              <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
+              <span>Eventos & Moderación</span>
             </button>
             <button
-              onClick={() => setActiveTab('vip_management')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                activeTab === 'vip_management'
+              onClick={() => setActiveTab('vip_analytics')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                activeTab === 'vip_analytics'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              <Crown className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110" />
-              <span>Gestión Suscripción VIP</span>
+              <Crown className="w-3.5 h-3.5 text-amber-400" />
+              <span>VIP & Audiencia</span>
             </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                activeTab === 'settings'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>Configuración Completa & Servidores</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                activeTab === 'analytics'
-                  ? 'bg-emerald-500 text-black shadow-md shadow-emerald-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5" />
-              <span>Telemetría y Audiencia Real</span>
-              {presenceStats && (
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                  activeTab === 'analytics' ? 'bg-black/30 text-black' : 'bg-emerald-500/20 text-emerald-400'
-                }`}>
-                  {presenceStats.totalOnSite.toLocaleString()}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setIsGuideOpen(true)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-colors cursor-pointer"
-            >
-              <Radio className="w-3.5 h-3.5 text-amber-400" />
-              <span>Guía MediaMTX & OBS</span>
-            </button>
+          </div>
+
+          <div className="hidden lg:flex items-center gap-2">
+            {presenceStats && (
+              <span className="text-[11px] px-2.5 py-1 rounded-lg font-mono font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{presenceStats.totalOnSite.toLocaleString()} en vivo</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -692,8 +667,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
         {/* Main Body */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
-          {activeTab === 'deck' ? (
-            /* TABLERO CENTRALIZADO: VISTA PREVIA EN VIVO + PANEL DE INTERRUPTORES */
+          {activeTab === 'stream' ? (
+            /* PESTAÑA 1: TRANSMISIÓN & SEÑALES M3U8 */
             <div className="space-y-6">
               {/* TARJETA DESTACADA: CONEXIÓN Y GUARDADO DE SEÑAL DE VIDEO REAL */}
               <div className="bg-gradient-to-r from-[#0d162b] via-[#0e1830] to-[#0a1226] border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-emerald-950/20">
@@ -1670,16 +1645,19 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   </div>
                 </div>
               </div>
-
+            </div>
+          ) : activeTab === 'match' ? (
+            /* PESTAÑA 2: PARTIDO & MARCADOR */
+            <div className="space-y-6">
               {/* Controles Rápidos de Marcador & Minuto en Tiempo Real */}
               <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
                   <div>
                     <h3 className="text-sm font-bold text-white font-display flex items-center gap-2">
-                      <span>Control Rápido de Marcador en Directo</span>
+                      <span>Control de Marcador en Vivo</span>
                     </h3>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Los cambios actualizan el marcador en el monitor y en las pantallas de todos los espectadores.
+                      Los cambios actualizan el marcador en el monitor y en las pantallas de todos los espectadores en tiempo real.
                     </p>
                   </div>
 
@@ -1787,20 +1765,9 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                 streamSettings={streamSettings}
                 onUpdateStreamSettings={onUpdateStreamSettings}
               />
-
-              {/* TELEMETRÍA REAL MEDIAMTX EN VIVO (SIN SIMULACIÓN) */}
-              <MediaMtxTelemetryPanel />
-            </div>
-          ) : activeTab === 'match_details' ? (
-            /* EDITOR DE DATOS DEL PARTIDO Y PÁGINA PRINCIPAL */
-            <div className="space-y-6">
-              <MatchDetailsEditor
-                streamSettings={streamSettings}
-                onUpdateStreamSettings={onUpdateStreamSettings}
-              />
             </div>
           ) : activeTab === 'teams' ? (
-            /* GESTIÓN DE EQUIPOS EDITABLES Y NUEVOS EQUIPOS */
+            /* PESTAÑA 3: GESTIÓN DE EQUIPOS */
             <TeamsManager
               clubs={clubs}
               onSaveClub={saveClub}
@@ -1808,10 +1775,26 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               currentHomeClubId={streamSettings.homeClubId}
               currentAwayClubId={streamSettings.awayClubId}
             />
-          ) : activeTab === 'vip_management' ? (
-            /* GESTIÓN DE SUSCRIPCIÓN VIP Y PASARELA DE PAGOS BOLIVIA */
-            <AdminVipManagement />
-          ) : activeTab === 'analytics' ? (
+          ) : activeTab === 'events_chat' ? (
+            /* PESTAÑA 4: EVENTOS DE LÍNEA DE TIEMPO & MODERACIÓN DE CHAT */
+            <EventsAndChatModeration
+              streamSettings={streamSettings}
+              onUpdateStreamSettings={onUpdateStreamSettings}
+              homeScore={homeScore}
+              awayScore={awayScore}
+              matchMinute={matchMinute}
+              onUpdateScore={onUpdateScore}
+              onAddMatchEvent={onAddMatchEvent}
+              onDispatchPushNotification={onDispatchPushNotification}
+              onPostOfficialMessage={onPostOfficialMessage}
+              onUpdatePoll={onUpdatePoll}
+              onClearChat={onClearChat}
+              clubs={clubs}
+            />
+          ) : (
+            /* PESTAÑA 5: SUSCRIPCIONES VIP & AUDIENCIA */
+            <div className="space-y-6">
+              <AdminVipManagement />
             /* TELEMETRÍA Y ESTADÍSTICAS REALES DE AUDIENCIA (EXCLUSIVO ADMINISTRADOR) */
             <div className="space-y-6">
               {/* TELEMETRÍA REAL MEDIAMTX PROMETHEUS METRICS */}

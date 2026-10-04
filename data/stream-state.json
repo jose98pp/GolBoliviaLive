@@ -1,6 +1,6 @@
 {
   "streamSettings": {
-    "title": "Bolívar vs The Strongest — Clásico Paceño N° 234",
+    "title": "Nuevo Partido 2",
     "tournamentName": "Liga Tigo División Profesional - Torneo Clausura",
     "homeClubId": "bolivar",
     "awayClubId": "strongest",
@@ -222,5 +222,5 @@
       "altitudeMeters": 416
     }
   },
-  "updatedAt": 1791127737467
+  "updatedAt": 1791132574129
 }
