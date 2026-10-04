@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Radio, Bell, Tv, ShieldCheck, Menu, X, Users, Eye, Sparkles, ChevronRight, Activity, Zap } from 'lucide-react';
+import { Radio, Bell, Tv, ShieldCheck, Menu, X, Users, Eye, Sparkles, ChevronRight, Activity, Zap, RefreshCw } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { SocialFollowBanner } from './SocialFollowBanner';
 
@@ -39,6 +39,32 @@ export const Navbar: React.FC<NavbarProps> = ({
   matchMinute = 78,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isPurgingCache, setIsPurgingCache] = useState(false);
+
+  const handleForceUpdateApp = async () => {
+    setIsPurgingCache(true);
+    try {
+      if (typeof (window as any).__purgeGolBoliviaCache === 'function') {
+        await (window as any).__purgeGolBoliviaCache();
+        return;
+      }
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const r of registrations) {
+          await r.unregister();
+        }
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) {
+          await caches.delete(k);
+        }
+      }
+      window.location.reload();
+    } catch {
+      window.location.reload();
+    }
+  };
 
   const displayActive = activeCount || Math.round(viewerCount * 0.74);
   const displayTotal = totalCount || viewerCount;
@@ -134,6 +160,21 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="hidden sm:block">
             <PWAInstallButton variant="navbar" />
           </div>
+
+          {/* Force Cache Purge / Update to Latest Commit button */}
+          <button
+            onClick={handleForceUpdateApp}
+            disabled={isPurgingCache}
+            aria-label="Actualizar a la última versión"
+            className="p-1.5 sm:p-2 rounded-xl text-slate-300 hover:text-emerald-400 hover:bg-slate-800/80 transition-colors cursor-pointer border border-transparent hover:border-slate-700"
+            title="Actualizar a la última versión (Limpiar caché del navegador)"
+          >
+            <RefreshCw
+              className={`w-4 h-4 sm:w-5 sm:h-5 ${
+                isPurgingCache ? 'animate-spin text-emerald-400' : ''
+              }`}
+            />
+          </button>
 
           {/* Essential Notifications trigger */}
           <button
@@ -273,8 +314,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* 4. Install App button on mobile */}
-          <div className="pt-1">
+          <div className="pt-1 space-y-2">
             <PWAInstallButton variant="banner" />
+            
+            {/* Force App Update & Cache Purge on Mobile */}
+            <button
+              onClick={handleForceUpdateApp}
+              disabled={isPurgingCache}
+              className="w-full p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-850 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isPurgingCache ? 'animate-spin text-emerald-400' : 'text-emerald-400'}`} />
+              <span>{isPurgingCache ? 'Actualizando página y limpiando caché...' : 'Actualizar a Última Versión (Limpiar Caché)'}</span>
+            </button>
           </div>
 
           {/* 5. Mobile Social Channels Card */}
