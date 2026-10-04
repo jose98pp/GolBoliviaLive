@@ -100,6 +100,8 @@ class AuthService {
     try {
       sessionStorage.setItem(TOKEN_KEY, data.token);
       sessionStorage.setItem(USER_KEY, JSON.stringify(data.user));
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
     } catch {}
 
     this.notify();
@@ -133,6 +135,7 @@ class AuthService {
       this.currentUser = data.user;
       try {
         sessionStorage.setItem(USER_KEY, JSON.stringify(data.user));
+        localStorage.setItem(USER_KEY, JSON.stringify(data.user));
       } catch {}
       this.notify();
       return data.user;

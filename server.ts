@@ -16,6 +16,18 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Parse JSON request bodies
 app.use(express.json());
 
+// Enable CORS for all devices (Smart TVs, Mobile phones, Tablets, External PCs)
+app.use((_req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (_req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
+  next();
+});
+
 // Server Secret Key for signing HMAC session tokens
 const SERVER_SECRET = process.env.SERVER_SECRET || 'golbolivia_secure_secret_key_2026_lapaz';
 
@@ -104,13 +116,36 @@ function verifyToken(token: string): SessionData['user'] | null {
   const expectedSig = crypto.createHmac('sha256', SERVER_SECRET).update(data).digest('base64url');
   if (signature !== expectedSig) return null;
 
-  const session = activeSessions.get(token);
-  if (!session || Date.now() > session.expiresAt) {
-    activeSessions.delete(token);
+  try {
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
+    if (!payload || !payload.userId || !payload.role || !payload.createdAt) {
+      return null;
+    }
+    // Token valid for 24h
+    if (Date.now() - payload.createdAt > 24 * 60 * 60 * 1000) {
+      activeSessions.delete(token);
+      return null;
+    }
+
+    let session = activeSessions.get(token);
+    if (!session) {
+      const systemUser = SYSTEM_USERS.find((u) => u.id === payload.userId || u.username === payload.username);
+      session = {
+        user: {
+          id: payload.userId,
+          username: payload.username,
+          name: systemUser?.name || (payload.username === 'admin' ? 'Director General de Transmisión' : 'Operador OBS & MediaMTX'),
+          role: payload.role,
+        },
+        expiresAt: payload.createdAt + 24 * 60 * 60 * 1000,
+      };
+      activeSessions.set(token, session);
+    }
+
+    return session.user;
+  } catch {
     return null;
   }
-
-  return session.user;
 }
 
 // Authentication Middleware
@@ -307,6 +342,56 @@ const state: AppState = {
   ],
 };
 
+// ==========================================
+// PERSISTENT STORAGE FOR ALL DEVICES
+// ==========================================
+const DATA_DIR = path.resolve(__dirname, 'data');
+const STATE_FILE = path.join(DATA_DIR, 'stream-state.json');
+
+function loadPersistedState(): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(STATE_FILE)) {
+      const raw = fs.readFileSync(STATE_FILE, 'utf-8');
+      const saved = JSON.parse(raw);
+      if (saved && typeof saved === 'object') {
+        if (saved.streamSettings) {
+          state.streamSettings = { ...state.streamSettings, ...saved.streamSettings };
+        }
+        if (saved.scoreboard) {
+          state.scoreboard = { ...state.scoreboard, ...saved.scoreboard };
+        }
+        console.log(`[GolBolivia Backend] Estado persistido cargado con éxito desde ${STATE_FILE}`);
+        console.log(`[GolBolivia Backend] Señal activa: ${state.streamSettings.customVideoUrl || '(simulación)'}`);
+      }
+    }
+  } catch (err) {
+    console.error('[GolBolivia Backend] Error al cargar estado persistido:', err);
+  }
+}
+
+function persistState(): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const dataToSave = {
+      streamSettings: state.streamSettings,
+      scoreboard: state.scoreboard,
+      updatedAt: Date.now(),
+    };
+    fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
+    console.log('[GolBolivia Backend] Configuración de transmisión persistida en disco para todos los dispositivos.');
+  } catch (err) {
+    console.error('[GolBolivia Backend] Error al guardar estado en disco:', err);
+  }
+}
+
+// Cargar estado persistido al arrancar
+loadPersistedState();
+
 // Real active viewers sessions tracker (heartbeat every 15s)
 const viewerSessions = new Map<string, number>();
 
@@ -458,9 +543,10 @@ app.get('/api/events', (req: Request, res: Response) => {
 
 // 5. Public Live State API: Only returns public, sanitized data (NO streamKey or rtmpServer)
 app.get('/api/live', (_req: Request, res: Response) => {
+  const publicPayload = getPublicStreamPayload();
   res.json({
     live: state.streamSettings.isLive,
-    playbackUrl: state.streamSettings.customVideoUrl,
+    playbackUrl: publicPayload.playbackUrl,
     match: state.streamSettings.title,
     quality: [
       '1080p60 (Full HD 6 Mbps)',
@@ -469,8 +555,8 @@ app.get('/api/live', (_req: Request, res: Response) => {
       '360p (Móvil Ahorro)',
       'Automática (Adaptive HLS)'
     ],
-    stream: getPublicStreamPayload(),
-    streamSettings: getPublicStreamPayload(),
+    stream: publicPayload,
+    streamSettings: publicPayload,
     scoreboard: state.scoreboard,
     matchStats: state.matchStats,
     events: state.events,
@@ -481,9 +567,10 @@ app.get('/api/live', (_req: Request, res: Response) => {
 
 // 6. Public Streams Metadata API (NO streamKey)
 app.get('/api/streams', (_req: Request, res: Response) => {
+  const publicPayload = getPublicStreamPayload();
   res.json({
     live: state.streamSettings.isLive,
-    playbackUrl: state.streamSettings.customVideoUrl,
+    playbackUrl: publicPayload.playbackUrl,
     match: state.streamSettings.title,
     quality: [
       '1080p60',
@@ -492,8 +579,8 @@ app.get('/api/streams', (_req: Request, res: Response) => {
       '360p',
       'Auto'
     ],
-    stream: getPublicStreamPayload(),
-    streamSettings: getPublicStreamPayload()
+    stream: publicPayload,
+    streamSettings: publicPayload
   });
 });
 
@@ -525,6 +612,7 @@ app.post(
       ...state.streamSettings,
       ...req.body,
     };
+    persistState();
     // Broadcast sanitized public data only
     broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
     res.json({ success: true, streamSettings: getPublicStreamPayload() });
@@ -550,6 +638,8 @@ app.post(
     if (typeof autoFailoverEnabled === 'boolean') {
       state.streamSettings.autoFailoverEnabled = autoFailoverEnabled;
     }
+
+    persistState();
 
     // Broadcast instant update across all connected fans via SSE
     const payload = getPublicStreamPayload();
@@ -584,6 +674,7 @@ app.post(
       state.streamSettings.period = period;
     }
     state.scoreboard.updatedAt = Date.now();
+    persistState();
 
     broadcastSseEvent('SCOREBOARD_UPDATED', state.scoreboard);
     res.json({ success: true, scoreboard: state.scoreboard });

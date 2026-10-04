@@ -1,0 +1,32 @@
+{
+  "streamSettings": {
+    "title": "Bolívar vs The Strongest - Clásico Paceño N° 234",
+    "tournamentName": "Liga Tigo División Profesional - Torneo Clausura",
+    "homeClubId": "bolivar",
+    "awayClubId": "strongest",
+    "stadiumName": "Estadio Hernando Siles - La Paz",
+    "altitudeMeters": 3637,
+    "period": "2T",
+    "isLive": true,
+    "rtmpServer": "rtmp://localhost:1935/live",
+    "streamKey": "bolivia",
+    "customVideoUrl": "https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8",
+    "chatMode": "all",
+    "officialAnnouncement": "Transmisión Oficial en HD para toda Bolivia por GolBolivia TV.",
+    "broadcastMode": "obs_custom",
+    "overlayScoreboardVisible": true,
+    "lowLatencyMode": true,
+    "backupVideoUrl": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    "backupChannelName": "GolBolivia 24/7 Señal Alternativa HD",
+    "activeStreamSource": "obs",
+    "autoFailoverEnabled": true
+  },
+  "scoreboard": {
+    "homeScore": 2,
+    "awayScore": 1,
+    "matchMinute": 78,
+    "period": "2T",
+    "updatedAt": 1791074988393
+  },
+  "updatedAt": 1791074992913
+}

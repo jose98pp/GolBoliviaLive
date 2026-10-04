@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   LogOut,
   AlertCircle,
+  AlertTriangle,
   RefreshCw,
   ExternalLink,
   Tv,
@@ -159,50 +160,115 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
-  const [videoUrlInput, setVideoUrlInput] = useState<string>(
-    streamSettings.customVideoUrl || 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8'
-  );
+  const [videoUrlInput, setVideoUrlInput] = useState<string>(() => {
+    try {
+      return (
+        localStorage.getItem('golbolivia_custom_video_url') ||
+        streamSettings.customVideoUrl ||
+        'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8'
+      );
+    } catch {
+      return (
+        streamSettings.customVideoUrl ||
+        'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8'
+      );
+    }
+  });
   const [urlSaveSuccess, setUrlSaveSuccess] = useState<boolean>(false);
+  const [urlSaveError, setUrlSaveError] = useState<string | null>(null);
+  const [isSavingUrl, setIsSavingUrl] = useState<boolean>(false);
 
   // Sync if customVideoUrl changes externally
   React.useEffect(() => {
     if (streamSettings.customVideoUrl) {
       setVideoUrlInput(streamSettings.customVideoUrl);
+      try {
+        localStorage.setItem('golbolivia_custom_video_url', streamSettings.customVideoUrl);
+      } catch {}
     }
   }, [streamSettings.customVideoUrl]);
 
-  const handleSaveVideoUrl = (e?: React.FormEvent) => {
+  const handleSaveVideoUrl = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const cleanUrl = videoUrlInput.trim();
-    onUpdateStreamSettings({
+    setIsSavingUrl(true);
+    setUrlSaveError(null);
+
+    let cleanUrl = videoUrlInput.trim();
+
+    // Auto-fix: Cloudflare tunnels must use HTTPS to work on any mobile device or Smart TV without Mixed Content blocks
+    if (cleanUrl.startsWith('http://') && (cleanUrl.includes('trycloudflare.com') || cleanUrl.includes('cloudflarestream.com'))) {
+      cleanUrl = cleanUrl.replace('http://', 'https://');
+      setVideoUrlInput(cleanUrl);
+    }
+
+    try {
+      localStorage.setItem('golbolivia_custom_video_url', cleanUrl);
+    } catch {}
+
+    const payload = {
       customVideoUrl: cleanUrl,
-      broadcastMode: cleanUrl ? 'obs_custom' : 'simulation',
+      broadcastMode: cleanUrl ? ('obs_custom' as const) : ('simulation' as const),
+      activeStreamSource: 'obs' as const,
       isLive: true,
-    });
-    setUrlSaveSuccess(true);
-    setPreviewKey((prev) => prev + 1);
-    setTimeout(() => setUrlSaveSuccess(false), 4500);
+    };
+
+    onUpdateStreamSettings(payload);
+
+    try {
+      await apiClient.updateStreamSettings(payload);
+      setUrlSaveSuccess(true);
+      setPreviewKey((prev) => prev + 1);
+      setTimeout(() => setUrlSaveSuccess(false), 5000);
+    } catch (err: any) {
+      console.error('Error al guardar señal en servidor:', err);
+      setUrlSaveError(err.message || 'Error al conectar con el servidor.');
+      setPreviewKey((prev) => prev + 1);
+    } finally {
+      setIsSavingUrl(false);
+    }
   };
 
-  const handleQuickPasteCloudflare = () => {
+  const handleQuickPasteCloudflare = async () => {
     const cloudflareUrl = 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8';
     setVideoUrlInput(cloudflareUrl);
-    onUpdateStreamSettings({
+    try {
+      localStorage.setItem('golbolivia_custom_video_url', cloudflareUrl);
+    } catch {}
+
+    const payload = {
       customVideoUrl: cloudflareUrl,
-      broadcastMode: 'obs_custom',
+      broadcastMode: 'obs_custom' as const,
+      activeStreamSource: 'obs' as const,
       isLive: true,
-    });
-    setUrlSaveSuccess(true);
-    setPreviewKey((prev) => prev + 1);
-    setTimeout(() => setUrlSaveSuccess(false), 4500);
+    };
+
+    onUpdateStreamSettings(payload);
+    try {
+      await apiClient.updateStreamSettings(payload);
+      setUrlSaveSuccess(true);
+      setPreviewKey((prev) => prev + 1);
+      setTimeout(() => setUrlSaveSuccess(false), 5000);
+    } catch (err: any) {
+      setUrlSaveError(err.message || 'Error al conectar con el servidor');
+    }
   };
 
-  const handleClearVideoUrl = () => {
+  const handleClearVideoUrl = async () => {
     setVideoUrlInput('');
-    onUpdateStreamSettings({
+    try {
+      localStorage.removeItem('golbolivia_custom_video_url');
+    } catch {}
+
+    const payload = {
       customVideoUrl: '',
-      broadcastMode: 'simulation',
-    });
+      broadcastMode: 'simulation' as const,
+      activeStreamSource: 'simulation' as const,
+    };
+
+    onUpdateStreamSettings(payload);
+    try {
+      await apiClient.updateStreamSettings(payload);
+    } catch {}
     setPreviewKey((prev) => prev + 1);
   };
 
@@ -506,10 +572,15 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
                     <button
                       type="submit"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500 hover:from-emerald-400 hover:to-emerald-300 text-black font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/80 transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                      disabled={isSavingUrl}
+                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500 hover:from-emerald-400 hover:to-emerald-300 disabled:opacity-50 text-black font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/80 transition-all cursor-pointer whitespace-nowrap active:scale-95"
                     >
-                      <CheckCircle2 className="w-4 h-4 text-black" />
-                      <span>GUARDAR Y CONECTAR SEÑAL</span>
+                      {isSavingUrl ? (
+                        <RefreshCw className="w-4 h-4 text-black animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-black" />
+                      )}
+                      <span>{isSavingUrl ? 'GUARDANDO EN SERVIDOR...' : 'GUARDAR Y CONECTAR SEÑAL'}</span>
                     </button>
 
                     {streamSettings.customVideoUrl && (
@@ -524,11 +595,35 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     )}
                   </div>
 
+                  {/* Localhost / Insecure HTTP warning banner */}
+                  {(videoUrlInput.includes('localhost') || videoUrlInput.includes('127.0.0.1')) && (
+                    <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex items-start gap-2 shadow-md">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="font-bold text-amber-300">
+                          Importante para ver en cualquier celular, tablet o Smart TV:
+                        </p>
+                        <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                          La dirección <code className="bg-black/40 px-1 py-0.5 rounded text-amber-300 font-mono">localhost</code> o <code className="bg-black/40 px-1 py-0.5 rounded text-amber-300 font-mono">127.0.0.1</code> solo es visible en tu propia computadora. Para que cualquier usuario en otro dispositivo pueda ver tu transmisión, usa el enlace público HTTPS de <strong>Cloudflare Tunnel</strong> (ej: <code className="text-white font-mono">https://xxxx.trycloudflare.com/.../index.m3u8</code>).
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {urlSaveError && (
+                    <div className="p-3 bg-red-950/90 border border-red-500 rounded-xl text-xs text-red-200 flex items-center gap-2 shadow-lg">
+                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                      <span>
+                        <strong>Error al guardar:</strong> {urlSaveError}
+                      </span>
+                    </div>
+                  )}
+
                   {urlSaveSuccess && (
                     <div className="p-3 bg-emerald-950/90 border border-emerald-500 rounded-xl text-xs text-emerald-200 flex items-center gap-2 shadow-lg animate-pulse">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span>
-                        <strong>¡Señal guardada y conectada con éxito!</strong> El reproductor ahora está transmitiendo en directo tu video desde OBS Studio.
+                        <strong>¡Señal guardada y lista para cualquier dispositivo!</strong> Enlace de transmisión sincronizado en el servidor (persistido en disco) para celulares, Smart TVs, computadoras y tablets.
                       </span>
                     </div>
                   )}
@@ -540,7 +635,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         {streamSettings.customVideoUrl || '(Ninguno - usando animación interactiva)'}
                       </strong>
                     </span>
-                    <span className="text-emerald-400/90 font-medium">✓ Sincronizado en tiempo real con el servidor</span>
+                    <span className="text-emerald-400/90 font-medium">✓ Sincronizado en tiempo real con el servidor y guardado en disco</span>
                   </div>
                 </form>
 
