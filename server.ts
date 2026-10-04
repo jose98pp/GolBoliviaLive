@@ -780,20 +780,26 @@ async function startServer() {
   if (!isProduction) {
     // Dynamic import of createServer from Vite
     const { createServer: createViteServer } = await import('vite');
-    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: isHmrDisabled ? false : { server },
+        hmr: false, // HMR disabled in AI Studio container environment to eliminate WebSocket connection errors
       },
-      appType: 'spa',
+      appType: 'custom',
     });
     app.use(vite.middlewares);
 
     // Fallback for SPA routing in development
     app.use('*', async (req: Request, res: Response, next: NextFunction) => {
       const url = req.originalUrl;
-      if (url.startsWith('/api')) {
+      // Do not serve HTML for API endpoints, internal vite modules or asset files
+      if (
+        url.startsWith('/api') ||
+        url.startsWith('/@') ||
+        url.startsWith('/node_modules') ||
+        url.startsWith('/src') ||
+        /\.[a-zA-Z0-9]+(\?.*)?$/.test(url)
+      ) {
         return next();
       }
       try {
@@ -818,10 +824,15 @@ async function startServer() {
     }
   }
 
-  server.listen(PORT, () => {
-    console.log(`[GolBolivia Backend] Servidor ejecutándose en http://0.0.0.0:${PORT}`);
-    console.log(`[GolBolivia Backend] Endpoints API listos: /api/live, /api/auth/login, /api/scoreboard, /api/streams, /api/events`);
-  });
+  if (!process.env.VERCEL) {
+    server.listen(PORT, () => {
+      console.log(`[GolBolivia Backend] Servidor ejecutándose en http://0.0.0.0:${PORT}`);
+      console.log(`[GolBolivia Backend] Endpoints API listos: /api/live, /api/auth/login, /api/scoreboard, /api/streams, /api/events`);
+    });
+  }
 }
 
 startServer();
+
+export { app };
+export default app;

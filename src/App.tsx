@@ -73,6 +73,10 @@ export default function App() {
       } catch {}
       const savedUrl = localStorage.getItem('golbolivia_custom_video_url');
       if (savedUrl) saved.customVideoUrl = savedUrl;
+      const savedBackup = localStorage.getItem('golbolivia_backup_m3u8_url');
+      if (savedBackup) saved.backupVideoUrl = savedBackup;
+      const savedSource = localStorage.getItem('golbolivia_active_stream_source');
+      if (savedSource) saved.activeStreamSource = savedSource as any;
     }
     const finalUrl = (saved.customVideoUrl && saved.customVideoUrl.trim().length > 5)
       ? saved.customVideoUrl.trim()
@@ -87,8 +91,12 @@ export default function App() {
       altitudeMeters: saved.altitudeMeters || 3637,
       period: saved.period || '2T',
       isLive: saved.isLive ?? true,
-      broadcastMode: saved.broadcastMode || 'obs_custom',
+      broadcastMode: saved.broadcastMode || (finalUrl ? 'obs_custom' : 'simulation'),
       customVideoUrl: finalUrl,
+      backupVideoUrl: saved.backupVideoUrl || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+      backupChannelName: saved.backupChannelName || 'GolBolivia 24/7 Señal HD',
+      activeStreamSource: saved.activeStreamSource || 'obs',
+      autoFailoverEnabled: saved.autoFailoverEnabled ?? true,
       chatMode: saved.chatMode || 'all',
       officialAnnouncement: saved.officialAnnouncement || 'Transmisión oficial de GolBolivia Live desde el Hernando Siles.',
       overlayScoreboardVisible: saved.overlayScoreboardVisible ?? true,

@@ -1,6 +1,32 @@
 <!doctype html>
 <html lang="es" class="dark">
   <head>
+    <script>
+      /* Ignore Vite WebSocket / HMR logs in iframe preview environment per runtime guidelines */
+      (function() {
+        var isViteMsg = function(msg) {
+          if (!msg) return false;
+          var str = typeof msg === 'string' ? msg : (msg.message || msg.toString() || '');
+          return str.indexOf('[vite]') !== -1 || str.indexOf('WebSocket') !== -1 || str.indexOf('websocket') !== -1;
+        };
+        var origError = console.error;
+        console.error = function() {
+          if (isViteMsg(arguments[0])) return;
+          return origError.apply(console, arguments);
+        };
+        var origWarn = console.warn;
+        console.warn = function() {
+          if (isViteMsg(arguments[0])) return;
+          return origWarn.apply(console, arguments);
+        };
+        window.addEventListener('error', function(e) {
+          if (e && isViteMsg(e.message)) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+          }
+        }, true);
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>GolBolivia Live — Transmisión en Vivo del Fútbol Boliviano</title>

@@ -47,6 +47,7 @@ import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { RealPresenceStats } from '../hooks/useRealPresence';
 import { FailoverChannelPanel } from './FailoverChannelPanel';
 import { MatchDetailsEditor } from './MatchDetailsEditor';
+import { verifyStreamLatency, LatencyTestResult } from '../services/latencyChecker';
 
 interface SecretLoginPageProps {
   streamSettings: StreamSettings;
@@ -311,7 +312,52 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
     setTimeout(() => setBackupSaveSuccess(false), 4500);
   };
 
-  const handleSwitchStreamSource = (source: 'obs' | 'backup') => {
+  // Latency & Health check state for MediaMTX (OBS) and Backup CDN streams
+  const [latencyResults, setLatencyResults] = useState<{
+    obs?: LatencyTestResult;
+    backup?: LatencyTestResult;
+  }>({});
+  const [isTestingLatency, setIsTestingLatency] = useState<{
+    obs?: boolean;
+    backup?: boolean;
+  }>({});
+  const [verifyBeforeSwitch, setVerifyBeforeSwitch] = useState<boolean>(true);
+  const [isVerifyingSwitch, setIsVerifyingSwitch] = useState<boolean>(false);
+  const [switchWarning, setSwitchWarning] = useState<{
+    targetSource: 'obs' | 'backup';
+    targetUrl: string;
+    result: LatencyTestResult;
+  } | null>(null);
+  const [switchSuccessToast, setSwitchSuccessToast] = useState<{
+    source: 'obs' | 'backup';
+    latencyMs: number;
+  } | null>(null);
+
+  // Latency verification function via HTTP HEAD
+  const handleTestLatency = async (
+    target: 'obs' | 'backup',
+    manualUrl?: string
+  ): Promise<LatencyTestResult> => {
+    const url = (
+      manualUrl !== undefined
+        ? manualUrl
+        : target === 'backup'
+        ? backupM3u8Input
+        : videoUrlInput
+    ).trim();
+
+    setIsTestingLatency((prev) => ({ ...prev, [target]: true }));
+    try {
+      const res = await verifyStreamLatency(url, 4000);
+      setLatencyResults((prev) => ({ ...prev, [target]: res }));
+      return res;
+    } finally {
+      setIsTestingLatency((prev) => ({ ...prev, [target]: false }));
+    }
+  };
+
+  // Immediate authoritative stream source execution
+  const executeSwitchStreamSource = (source: 'obs' | 'backup') => {
     try {
       localStorage.setItem('golbolivia_active_stream_source', source);
     } catch {}
@@ -331,13 +377,65 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
     }
 
     onUpdateStreamSettings(updates);
-    apiClient.failoverStream({
-      activeStreamSource: source,
-      backupVideoUrl: backupM3u8Input.trim(),
-      backupChannelName: streamSettings.backupChannelName || 'Canal de Respaldo M3U8',
-    }).catch(() => {});
+    apiClient
+      .failoverStream({
+        activeStreamSource: source,
+        backupVideoUrl: backupM3u8Input.trim(),
+        backupChannelName: streamSettings.backupChannelName || 'Canal de Respaldo M3U8',
+      })
+      .catch(() => {});
 
     setPreviewKey((prev) => prev + 1);
+    setSwitchWarning(null);
+  };
+
+  // Pre-switch handler with HEAD latency verification
+  const handleSwitchStreamSource = async (source: 'obs' | 'backup') => {
+    const targetUrl = (source === 'backup' ? backupM3u8Input : videoUrlInput).trim();
+
+    // If pre-switch verification is turned off, apply immediately
+    if (!verifyBeforeSwitch) {
+      executeSwitchStreamSource(source);
+      return;
+    }
+
+    // If no URL is configured, warn immediately
+    if (!targetUrl) {
+      setSwitchWarning({
+        targetSource: source,
+        targetUrl: '',
+        result: {
+          ok: false,
+          latencyMs: 0,
+          httpStatus: 0,
+          quality: 'offline',
+          error: `No hay URL de ${source === 'obs' ? 'OBS Studio / MediaMTX' : 'Respaldo .M3U8'} configurada.`,
+          checkedAt: Date.now(),
+          methodUsed: 'HEAD',
+        },
+      });
+      return;
+    }
+
+    setIsVerifyingSwitch(true);
+    try {
+      const testResult = await handleTestLatency(source, targetUrl);
+
+      if (testResult.ok) {
+        executeSwitchStreamSource(source);
+        setSwitchSuccessToast({ source, latencyMs: testResult.latencyMs });
+        setTimeout(() => setSwitchSuccessToast(null), 4500);
+      } else {
+        // MediaMTX or CDN did not respond to fetch HEAD; require explicit confirmation before forcing switch
+        setSwitchWarning({
+          targetSource: source,
+          targetUrl,
+          result: testResult,
+        });
+      }
+    } finally {
+      setIsVerifyingSwitch(false);
+    }
   };
 
   const homeClub = BOLIVIAN_CLUBS[streamSettings.homeClubId] || BOLIVIAN_CLUBS.bolivar;
@@ -583,6 +681,22 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                       <span>{isSavingUrl ? 'GUARDANDO EN SERVIDOR...' : 'GUARDAR Y CONECTAR SEÑAL'}</span>
                     </button>
 
+                    {/* Botón de Verificación de Latencia HEAD para MediaMTX / OBS */}
+                    <button
+                      type="button"
+                      onClick={() => handleTestLatency('obs')}
+                      disabled={isTestingLatency.obs}
+                      className="px-4 py-3 rounded-xl bg-slate-900 hover:bg-slate-850 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shadow-md active:scale-95"
+                      title="Probar latencia y conectividad del servidor MediaMTX mediante petición HTTP HEAD"
+                    >
+                      {isTestingLatency.obs ? (
+                        <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                      ) : (
+                        <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                      )}
+                      <span>{isTestingLatency.obs ? 'PROBANDO HEAD...' : 'VERIFICAR LATENCIA HEAD'}</span>
+                    </button>
+
                     {streamSettings.customVideoUrl && (
                       <button
                         type="button"
@@ -625,6 +739,74 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                       <span>
                         <strong>¡Señal guardada y lista para cualquier dispositivo!</strong> Enlace de transmisión sincronizado en el servidor (persistido en disco) para celulares, Smart TVs, computadoras y tablets.
                       </span>
+                    </div>
+                  )}
+
+                  {/* OBS / MediaMTX Latency Diagnostic Result */}
+                  {latencyResults.obs && (
+                    <div
+                      className={`p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-lg transition-all ${
+                        latencyResults.obs.ok
+                          ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-200'
+                          : 'bg-red-950/70 border-red-500/60 text-red-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        {latencyResults.obs.ok ? (
+                          <div className="w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          </div>
+                        ) : (
+                          <div className="w-6 h-6 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center shrink-0">
+                            <AlertTriangle className="w-4 h-4 text-red-400" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-bold flex items-center gap-2">
+                            <span>
+                              {latencyResults.obs.ok
+                                ? 'Servidor MediaMTX (OBS) en Línea y Respondiendo'
+                                : 'Servidor MediaMTX (OBS) Sin Respuesta'}
+                            </span>
+                            <span
+                              className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-black ${
+                                latencyResults.obs.ok
+                                  ? latencyResults.obs.quality === 'ultra-low'
+                                    ? 'bg-emerald-400 text-black'
+                                    : 'bg-amber-400 text-black'
+                                  : 'bg-red-500 text-white'
+                              }`}
+                            >
+                              {latencyResults.obs.ok
+                                ? `${latencyResults.obs.latencyMs} ms (${latencyResults.obs.quality === 'ultra-low' ? 'Ultra-baja' : 'Buena'})`
+                                : 'Offline / Error'}
+                            </span>
+                          </p>
+                          <p className="text-[11px] opacity-90 mt-0.5">
+                            {latencyResults.obs.ok
+                              ? `Verificación HTTP ${latencyResults.obs.methodUsed} exitosa (HTTP ${latencyResults.obs.httpStatus}). El flujo HLS está listo para conmutarse sin interrupciones.`
+                              : latencyResults.obs.error ||
+                                'No se recibió respuesta en el tiempo límite. Verifica que OBS y MediaMTX estén encendidos y transmitiendo.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <span className="text-[10px] font-mono text-slate-400">
+                          {new Date(latencyResults.obs.checkedAt).toLocaleTimeString()}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleTestLatency('obs')}
+                          disabled={isTestingLatency.obs}
+                          className="px-2.5 py-1 rounded-lg bg-black/40 hover:bg-black/60 border border-white/10 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                        >
+                          <RefreshCw
+                            className={`w-3 h-3 ${isTestingLatency.obs ? 'animate-spin' : ''}`}
+                          />
+                          <span>Repetir</span>
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -707,6 +889,22 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         <Save className="w-4 h-4 text-black" />
                         <span>GUARDAR EN LOCALSTORAGE</span>
                       </button>
+
+                      {/* Botón de Verificación de Latencia HEAD para CDN de Respaldo */}
+                      <button
+                        type="button"
+                        onClick={() => handleTestLatency('backup')}
+                        disabled={isTestingLatency.backup}
+                        className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-amber-500/40 text-amber-400 hover:text-amber-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shadow-md active:scale-95"
+                        title="Probar latencia y disponibilidad de la CDN de respaldo mediante HTTP HEAD"
+                      >
+                        {isTestingLatency.backup ? (
+                          <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                        ) : (
+                          <Activity className="w-3.5 h-3.5 text-amber-400" />
+                        )}
+                        <span>{isTestingLatency.backup ? 'PROBANDO CDN...' : 'VERIFICAR LATENCIA CDN'}</span>
+                      </button>
                     </div>
 
                     {/* Quick Presets for Backup M3U8 */}
@@ -767,21 +965,189 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         </span>
                       </div>
                     )}
+
+                    {/* Backup CDN Latency Diagnostic Result */}
+                    {latencyResults.backup && (
+                      <div
+                        className={`p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-lg transition-all ${
+                          latencyResults.backup.ok
+                            ? 'bg-amber-950/70 border-amber-500/60 text-amber-200'
+                            : 'bg-red-950/70 border-red-500/60 text-red-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {latencyResults.backup.ok ? (
+                            <div className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                              <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                            </div>
+                          ) : (
+                            <div className="w-6 h-6 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center shrink-0">
+                              <AlertTriangle className="w-4 h-4 text-red-400" />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-bold flex items-center gap-2">
+                              <span>
+                                {latencyResults.backup.ok
+                                  ? 'CDN de Respaldo HLS en Línea y Lista'
+                                  : 'CDN de Respaldo Sin Respuesta'}
+                              </span>
+                              <span
+                                className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-black ${
+                                  latencyResults.backup.ok
+                                    ? latencyResults.backup.quality === 'ultra-low'
+                                      ? 'bg-emerald-400 text-black'
+                                      : 'bg-amber-400 text-black'
+                                    : 'bg-red-500 text-white'
+                                }`}
+                              >
+                                {latencyResults.backup.ok
+                                  ? `${latencyResults.backup.latencyMs} ms (${latencyResults.backup.quality === 'ultra-low' ? 'Ultra-baja' : 'Buena'})`
+                                  : 'Offline / Error'}
+                              </span>
+                            </p>
+                            <p className="text-[11px] opacity-90 mt-0.5">
+                              {latencyResults.backup.ok
+                                ? `Verificación HTTP ${latencyResults.backup.methodUsed} exitosa (HTTP ${latencyResults.backup.httpStatus}). La lista M3U8 responde adecuadamente para failover inmediato.`
+                                : latencyResults.backup.error ||
+                                  'No se pudo conectar a la URL de respaldo. Comprueba el enlace o elige otro preajuste.'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {new Date(latencyResults.backup.checkedAt).toLocaleTimeString()}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleTestLatency('backup')}
+                            disabled={isTestingLatency.backup}
+                            className="px-2.5 py-1 rounded-lg bg-black/40 hover:bg-black/60 border border-white/10 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                          >
+                            <RefreshCw
+                              className={`w-3 h-3 ${isTestingLatency.backup ? 'animate-spin' : ''}`}
+                            />
+                            <span>Repetir</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </form>
 
                   {/* BOTONES DEDICADOS PARA ALTERNAR ENTRE FUENTE LOCAL Y FUENTE DE RESPALDO */}
-                  <div className="p-3.5 bg-[#060a14] rounded-xl border border-slate-800 space-y-2.5">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
-                      <Zap className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Alternar Fuente de Streaming en Vivo (1 Clic):</span>
-                    </span>
+                  <div className="p-3.5 bg-[#060a14] rounded-xl border border-slate-800 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Alternar Fuente de Streaming en Vivo (1 Clic):</span>
+                      </span>
+
+                      {/* Checkbox: Verificación de Latencia HEAD antes de Conmutar */}
+                      <label className="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer select-none bg-slate-900/90 hover:bg-slate-850 px-2.5 py-1 rounded-lg border border-slate-750 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={verifyBeforeSwitch}
+                          onChange={(e) => setVerifyBeforeSwitch(e.target.checked)}
+                          className="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <span className="flex items-center gap-1">
+                          <Activity className="w-3 h-3 text-emerald-400" />
+                          <span>Verificar latencia HEAD antes de conmutar</span>
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Alerta de Éxito de Conmutación Verificada */}
+                    {switchSuccessToast && (
+                      <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-500/70 text-emerald-200 text-xs flex items-center justify-between gap-2 shadow-lg animate-in fade-in">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>
+                            <strong>¡Transmisión verificada!</strong> El servidor{' '}
+                            {switchSuccessToast.source === 'obs'
+                              ? 'MediaMTX (OBS)'
+                              : 'CDN de Respaldo'}{' '}
+                            respondió al HEAD en{' '}
+                            <strong className="font-mono text-emerald-300">
+                              {switchSuccessToast.latencyMs} ms
+                            </strong>
+                            . Señal en vivo conmutada exitosamente.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSwitchSuccessToast(null)}
+                          className="text-emerald-400 hover:text-white px-2 py-0.5 rounded text-xs font-bold cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    {/* ALERTA DE ADVERTENCIA CUANDO EL FETCH HEAD FALLA ANTES DE FORZAR EL CAMBIO */}
+                    {switchWarning && (
+                      <div className="p-4 rounded-xl bg-red-950/95 border-2 border-red-500 shadow-2xl space-y-3 animate-in fade-in">
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center shrink-0">
+                            <AlertTriangle className="w-5 h-5 text-red-400 animate-bounce" />
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                              <span>⚠️ Servidor Sin Respuesta (Fallo de Verificación HEAD)</span>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-red-500 text-white font-black">
+                                {switchWarning.targetSource === 'obs' ? 'OBS / MediaMTX' : 'CDN Respaldo'}
+                              </span>
+                            </h4>
+                            <p className="text-xs text-red-200 leading-relaxed">
+                              La prueba de latencia (HTTP HEAD) a la URL{' '}
+                              <code className="bg-black/60 px-1.5 py-0.5 rounded font-mono text-red-300 break-all select-all">
+                                {switchWarning.targetUrl || '(URL vacía o no configurada)'}
+                              </code>{' '}
+                              no recibió respuesta positiva del servidor.
+                            </p>
+                            <p className="text-[11px] text-red-300/90">
+                              <strong>Diagnóstico del test:</strong> {switchWarning.result.error}. Si fuerzas la conmutación sin que el servidor esté emitiendo la lista .m3u8, la pantalla de los hinchas quedará en negro.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-red-900/60">
+                          <button
+                            type="button"
+                            onClick={() => setSwitchWarning(null)}
+                            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-750 cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchStreamSource(switchWarning.targetSource)}
+                            disabled={isVerifyingSwitch}
+                            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold flex items-center gap-1.5 border border-slate-700 cursor-pointer"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isVerifyingSwitch ? 'animate-spin' : ''}`} />
+                            <span>Reintentar Ping HEAD</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => executeSwitchStreamSource(switchWarning.targetSource)}
+                            className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white text-xs font-black shadow-lg shadow-red-950 flex items-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            <span>Forzar Cambio de Fuente de Todos Modos</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {/* Alternador Opción 1: Fuente Local OBS Studio */}
                       <button
                         type="button"
                         onClick={() => handleSwitchStreamSource('obs')}
-                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative ${
+                        disabled={isVerifyingSwitch}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative ${
                           streamSettings.activeStreamSource !== 'backup' && streamSettings.activeStreamSource !== 'simulation'
                             ? 'bg-gradient-to-r from-emerald-950/80 to-slate-900 border-emerald-500 shadow-lg shadow-emerald-950/40 ring-1 ring-emerald-500/40'
                             : 'bg-slate-900/80 hover:bg-slate-850 border-slate-800 text-slate-400 hover:text-white'
@@ -792,14 +1158,32 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                             <Video className="w-3.5 h-3.5 text-emerald-400" />
                             <span>1. Fuente Local (OBS Studio)</span>
                           </span>
-                          {streamSettings.activeStreamSource !== 'backup' && streamSettings.activeStreamSource !== 'simulation' && (
-                            <span className="text-[10px] px-2 py-0.5 rounded font-mono font-black bg-emerald-500 text-black">
-                              AL AIRE
-                            </span>
-                          )}
+
+                          <div className="flex items-center gap-1.5">
+                            {latencyResults.obs && (
+                              <span
+                                className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold flex items-center gap-1 ${
+                                  latencyResults.obs.ok
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                    : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                                }`}
+                              >
+                                <Activity className="w-2.5 h-2.5" />
+                                {latencyResults.obs.ok ? `${latencyResults.obs.latencyMs}ms` : 'Sin Señal'}
+                              </span>
+                            )}
+
+                            {streamSettings.activeStreamSource !== 'backup' && streamSettings.activeStreamSource !== 'simulation' && (
+                              <span className="text-[10px] px-2 py-0.5 rounded font-mono font-black bg-emerald-500 text-black">
+                                AL AIRE
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <p className="text-[11px] text-slate-400">
-                          Transmite la señal en directo desde tu OBS o MediaMTX local.
+                          {isVerifyingSwitch
+                            ? 'Verificando respuesta HEAD de MediaMTX...'
+                            : 'Transmite la señal en directo desde tu OBS o MediaMTX local.'}
                         </p>
                       </button>
 
@@ -807,7 +1191,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                       <button
                         type="button"
                         onClick={() => handleSwitchStreamSource('backup')}
-                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative ${
+                        disabled={isVerifyingSwitch}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative ${
                           streamSettings.activeStreamSource === 'backup'
                             ? 'bg-gradient-to-r from-amber-950/80 to-slate-900 border-amber-500 shadow-lg shadow-amber-950/40 ring-1 ring-amber-500/40'
                             : 'bg-slate-900/80 hover:bg-slate-850 border-slate-800 text-slate-400 hover:text-white'
@@ -818,14 +1203,32 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                             <Radio className="w-3.5 h-3.5 text-amber-400" />
                             <span>2. Fuente de Respaldo (.m3u8)</span>
                           </span>
-                          {streamSettings.activeStreamSource === 'backup' && (
-                            <span className="text-[10px] px-2 py-0.5 rounded font-mono font-black bg-amber-400 text-black animate-pulse">
-                              AL AIRE
-                            </span>
-                          )}
+
+                          <div className="flex items-center gap-1.5">
+                            {latencyResults.backup && (
+                              <span
+                                className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold flex items-center gap-1 ${
+                                  latencyResults.backup.ok
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                    : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                                }`}
+                              >
+                                <Activity className="w-2.5 h-2.5" />
+                                {latencyResults.backup.ok ? `${latencyResults.backup.latencyMs}ms` : 'Inaccesible'}
+                              </span>
+                            )}
+
+                            {streamSettings.activeStreamSource === 'backup' && (
+                              <span className="text-[10px] px-2 py-0.5 rounded font-mono font-black bg-amber-400 text-black animate-pulse">
+                                AL AIRE
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <p className="text-[11px] text-slate-400">
-                          Transmite la URL M3U8 de respaldo guardada en localStorage cuando el OBS esté apagado.
+                          {isVerifyingSwitch
+                            ? 'Verificando respuesta HEAD de la CDN...'
+                            : 'Transmite la URL M3U8 de respaldo guardada en localStorage cuando el OBS esté apagado.'}
                         </p>
                       </button>
                     </div>
@@ -841,7 +1244,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         </strong>
                       </span>
                       <span className="text-slate-500">
-                        Cambio en caliente sin desconectar a los espectadores
+                        Cambio en caliente protegido con verificación de latencia HTTP HEAD
                       </span>
                     </div>
                   </div>
