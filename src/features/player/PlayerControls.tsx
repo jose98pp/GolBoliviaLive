@@ -17,7 +17,9 @@ import {
   RefreshCw,
   Sliders,
   Check,
-  Zap
+  Zap,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { FullscreenController } from './FullscreenController';
 
@@ -43,6 +45,8 @@ interface PlayerControlsProps {
   currentResolution: string;
   triggerReaction: (emoji: string) => void;
   viewerCount: number;
+  isCleanScreen?: boolean;
+  onToggleCleanScreen?: () => void;
 }
 
 export const PlayerControls: React.FC<PlayerControlsProps> = ({
@@ -67,6 +71,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   currentResolution,
   triggerReaction,
   viewerCount,
+  isCleanScreen = false,
+  onToggleCleanScreen,
 }) => {
   const [showVolumeSlider, setShowVolumeSlider] = useState<boolean>(false);
 
@@ -75,22 +81,29 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
       onClick={(e) => e.stopPropagation()}
       onMouseEnter={onControlsInteraction}
       onMouseMove={onControlsInteraction}
-      className={`absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3 sm:p-4 pt-10 transition-opacity duration-300 ${
-        showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      className={`absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/95 via-black/65 to-transparent p-3 sm:p-4 pt-10 transition-all duration-300 ${
+        showControls && !isCleanScreen
+          ? 'opacity-100 translate-y-0'
+          : 'opacity-0 translate-y-2 pointer-events-none'
       }`}
     >
       {/* Bottom Bar Controls */}
       <div className="flex items-center justify-between gap-2">
         {/* Left Side: Play, Volume, Live Badge */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Play/Pause */}
+          {/* Play/Pause Button */}
           <button
             type="button"
             onClick={onTogglePlay}
             className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-            aria-label={isPlaying ? 'Pausar' : 'Reproducir'}
+            aria-label={isPlaying ? 'Pausar transmisión' : 'Reproducir transmisión'}
+            title={isPlaying ? 'Pausar (o doble toque en video)' : 'Reproducir'}
           >
-            {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
+            {isPlaying ? (
+              <Pause className="w-4 h-4 fill-white" />
+            ) : (
+              <Play className="w-4 h-4 fill-white ml-0.5" />
+            )}
           </button>
 
           {/* Volume with Hover Slider */}
@@ -161,8 +174,25 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
           ))}
         </div>
 
-        {/* Right Side: Audio, Quality, Cast, Theater, Fullscreen */}
+        {/* Right Side: Clean Screen, Audio, Quality, Cast, Theater, Fullscreen */}
         <div className="flex items-center gap-1 sm:gap-2">
+          {/* Clean Screen Mode Toggle */}
+          {onToggleCleanScreen && (
+            <button
+              type="button"
+              onClick={onToggleCleanScreen}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-xs ${
+                isCleanScreen
+                  ? 'bg-amber-500/20 text-amber-300'
+                  : 'text-slate-300 hover:text-white hover:bg-white/10'
+              }`}
+              title="Pantalla limpia (Ocultar botones e información para ver el partido despejado)"
+            >
+              <EyeOff className="w-4 h-4" />
+              <span className="hidden xl:inline text-[11px]">Pantalla Limpia</span>
+            </button>
+          )}
+
           {/* Audio Selector Toggle */}
           <button
             type="button"
@@ -193,8 +223,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
           <button
             type="button"
             onClick={onOpenCastModal}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-            title="Transmitir a Smart TV"
+            className="p-1.5 rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors cursor-pointer"
+            title="Transmitir a Smart TV / Chromecast / AirPlay"
           >
             <Cast className="w-4 h-4" />
           </button>
@@ -211,7 +241,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
             <Layers className="w-4 h-4" />
           </button>
 
-          {/* Fullscreen Toggle */}
+          {/* Fullscreen Toggle (Auto-rotates to landscape on mobile) */}
           <FullscreenController
             isFullscreen={isFullscreen}
             onToggleFullscreen={onToggleFullscreen}

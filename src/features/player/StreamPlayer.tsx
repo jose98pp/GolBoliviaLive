@@ -54,21 +54,35 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   const [showAudioMenu, setShowAudioMenu] = useState<boolean>(false);
   const [showStatsOverlay, setShowStatsOverlay] = useState<boolean>(false);
   const [showControls, setShowControls] = useState<boolean>(true);
+  const [isCleanScreen, setIsCleanScreen] = useState<boolean>(false);
 
   const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Custom Hooks
-  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
+  // Custom Fullscreen Hook with auto landscape rotation
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef, videoRef);
 
+  const effectiveSrc = streamSettings?.activeStreamSource === 'backup'
+    ? (streamSettings?.backupVideoUrl || streamSettings?.customVideoUrl)
+    : (streamSettings?.activeStreamSource === 'simulation' ? '' : (streamSettings?.customVideoUrl || streamSettings?.backupVideoUrl));
+
+  // Custom Cast Hook for Smart TV, Chromecast and AirPlay
   const {
     castStatus,
     castError,
     castDevice,
+    isAirPlayAvailable,
+    isRemotePlaybackAvailable,
     showCastModal,
     setShowCastModal,
     startCast,
+    triggerAirPlay,
+    triggerRemotePlayback,
     disconnectCast,
-  } = useCast(streamSettings?.title || 'Transmisión Oficial GolBolivia');
+  } = useCast(
+    streamSettings?.title || 'Transmisión Oficial GolBolivia',
+    effectiveSrc,
+    videoRef
+  );
 
   const handleReloadStream = () => {
     if (videoRef.current) {
@@ -88,10 +102,6 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
 
   const [failoverBanner, setFailoverBanner] = useState<string | null>(null);
 
-  const effectiveSrc = streamSettings?.activeStreamSource === 'backup'
-    ? (streamSettings?.backupVideoUrl || streamSettings?.customVideoUrl)
-    : (streamSettings?.activeStreamSource === 'simulation' ? '' : (streamSettings?.customVideoUrl || streamSettings?.backupVideoUrl));
-
   const handleHlsError = useCallback((err: string) => {
     triggerRecovery(err);
   }, [triggerRecovery]);
@@ -102,7 +112,11 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
 
   const handleHlsFailover = useCallback((source: 'backup' | 'primary') => {
     if (source === 'backup') {
-      setFailoverBanner(streamSettings?.backupChannelName ? `Señal conmutada a respaldo: ${streamSettings.backupChannelName}` : 'Señal conmutada a canal de respaldo HLS.');
+      setFailoverBanner(
+        streamSettings?.backupChannelName
+          ? `Señal conmutada a respaldo: ${streamSettings.backupChannelName}`
+          : 'Señal conmutada a canal de respaldo HLS.'
+      );
       setTimeout(() => setFailoverBanner(null), 8000);
     } else {
       setFailoverBanner(null);
@@ -137,17 +151,40 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   }, [volume, isMuted]);
 
   // Controls auto-hide timeout
-  const resetControlsTimeout = () => {
+  const resetControlsTimeout = useCallback(() => {
     setShowControls(true);
+    setIsCleanScreen(false);
     if (hideControlsTimerRef.current) {
       clearTimeout(hideControlsTimerRef.current);
     }
     if (isPlaying && !showQualityMenu && !showAudioMenu && !showStatsOverlay) {
       hideControlsTimerRef.current = setTimeout(() => {
         setShowControls(false);
-      }, 3000);
+      }, 3500);
     }
-  };
+  }, [isPlaying, showQualityMenu, showAudioMenu, showStatsOverlay]);
+
+  // Single tap handler (toggles overlay visibility cleanly without pausing)
+  const handleSingleTap = useCallback(() => {
+    if (!showControls || isCleanScreen) {
+      resetControlsTimeout();
+    } else {
+      setShowControls(false);
+      setIsCleanScreen(true);
+      if (hideControlsTimerRef.current) {
+        clearTimeout(hideControlsTimerRef.current);
+      }
+    }
+  }, [showControls, isCleanScreen, resetControlsTimeout]);
+
+  // Toggle clean screen mode directly
+  const handleToggleCleanScreen = useCallback(() => {
+    setIsCleanScreen((prev) => {
+      const next = !prev;
+      setShowControls(!next);
+      return next;
+    });
+  }, []);
 
   const handleTogglePlay = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -183,11 +220,11 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       ref={containerRef}
       onMouseMove={resetControlsTimeout}
       onMouseEnter={resetControlsTimeout}
-      className={`relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800 ${
+      className={`relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800 transition-all ${
         isFullscreen ? 'rounded-none border-none' : ''
       }`}
     >
-      {/* Video Surface (Video Tag or Simulation Canvas) */}
+      {/* Video Surface (Video Tag or Simulation Canvas) with Double-Tap to Pause */}
       <VideoSurface
         videoRef={videoRef}
         streamSettings={streamSettings}
@@ -200,13 +237,23 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         homeScore={homeScore}
         awayScore={awayScore}
         matchMinute={matchMinute}
+        showControls={showControls}
+        onSingleTap={handleSingleTap}
+        isCleanScreen={isCleanScreen}
       />
 
-      {/* Failover / Backup Channel Alert Banner */}
+      {/* Failover / Backup Channel Alert Banner — Fades out with controls for clean viewing */}
       {(failoverBanner || isUsingBackup || streamSettings?.activeStreamSource === 'backup') && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-3.5 py-1.5 rounded-full bg-amber-950/90 border border-amber-500/70 text-amber-200 text-xs font-mono font-bold flex items-center gap-2 shadow-2xl backdrop-blur-md">
+        <div
+          className={`absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-3.5 py-1.5 rounded-full bg-amber-950/90 border border-amber-500/70 text-amber-200 text-xs font-mono font-bold flex items-center gap-2 shadow-2xl backdrop-blur-md transition-all duration-300 ${
+            showControls && !isCleanScreen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
+          }`}
+        >
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-          <span>{failoverBanner || `Canal de Respaldo HLS Activo (${streamSettings?.backupChannelName || 'Señal Alternativa'})`}</span>
+          <span>
+            {failoverBanner ||
+              `Canal de Respaldo HLS Activo (${streamSettings?.backupChannelName || 'Señal Alternativa'})`}
+          </span>
         </div>
       )}
 
@@ -268,6 +315,8 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         currentResolution={currentResolution}
         triggerReaction={triggerReaction}
         viewerCount={viewerCount}
+        isCleanScreen={isCleanScreen}
+        onToggleCleanScreen={handleToggleCleanScreen}
       />
 
       {/* Cast Modal */}
@@ -279,6 +328,11 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         castError={castError}
         onDisconnect={disconnectCast}
         streamTitle={streamSettings?.title || 'Transmisión Oficial GolBolivia'}
+        streamUrl={effectiveSrc}
+        isAirPlayAvailable={isAirPlayAvailable}
+        onTriggerAirPlay={triggerAirPlay}
+        isRemotePlaybackAvailable={isRemotePlaybackAvailable}
+        onTriggerRemotePlayback={triggerRemotePlayback}
       />
     </div>
   );

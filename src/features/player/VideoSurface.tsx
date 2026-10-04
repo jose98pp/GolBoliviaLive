@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, RefObject } from 'react';
-import { Play, AlertCircle, RefreshCw, Loader2, Radio } from 'lucide-react';
+import React, { useEffect, useRef, useState, RefObject } from 'react';
+import { Play, Pause, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { StreamSettings } from '../../types/football';
 import { BOLIVIAN_CLUBS } from '../../data/bolivianFootballData';
 
@@ -15,6 +15,9 @@ interface VideoSurfaceProps {
   homeScore: number;
   awayScore: number;
   matchMinute: number;
+  showControls: boolean;
+  onSingleTap: () => void;
+  isCleanScreen?: boolean;
 }
 
 export const VideoSurface: React.FC<VideoSurfaceProps> = ({
@@ -29,10 +32,18 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   homeScore,
   awayScore,
   matchMinute,
+  showControls,
+  onSingleTap,
+  isCleanScreen = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const homeClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.homeClubId]) || BOLIVIAN_CLUBS.bolivar;
   const awayClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.awayClubId]) || BOLIVIAN_CLUBS.strongest;
+
+  // Double tap / click detection state
+  const lastTapTimeRef = useRef<number>(0);
+  const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [doubleTapFeedback, setDoubleTapFeedback] = useState<'pause' | 'play' | null>(null);
 
   const hasCustomStream = streamSettings?.activeStreamSource === 'simulation'
     ? false
@@ -41,6 +52,39 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
           ? (streamSettings?.backupVideoUrl || streamSettings?.customVideoUrl)
           : (streamSettings?.customVideoUrl || streamSettings?.backupVideoUrl)
       );
+
+  // Handle tap / click with double-tap logic for mobile
+  const handleSurfaceTap = (e: React.MouseEvent | React.TouchEvent) => {
+    // Stop propagation so parent containers don't trigger conflicting actions
+    const now = Date.now();
+    const timeDelta = now - lastTapTimeRef.current;
+    lastTapTimeRef.current = now;
+
+    if (timeDelta < 320) {
+      // DOUBLE TAP / DOUBLE CLICK: Toggle play/pause
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+
+      onTogglePlay();
+
+      // Show tactile animated feedback
+      setDoubleTapFeedback(isPlaying ? 'pause' : 'play');
+      setTimeout(() => {
+        setDoubleTapFeedback(null);
+      }, 700);
+    } else {
+      // SINGLE TAP: Schedule control toggle without pausing video
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+      }
+      singleTapTimerRef.current = setTimeout(() => {
+        singleTapTimerRef.current = null;
+        onSingleTap();
+      }, 300);
+    }
+  };
 
   // Canvas pitch simulation when no custom video URL is provided
   useEffect(() => {
@@ -174,8 +218,10 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
 
   return (
     <div
-      onClick={onTogglePlay}
-      className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden cursor-pointer select-none group"
+      onClick={handleSurfaceTap}
+      className={`relative w-full h-full bg-black flex items-center justify-center overflow-hidden select-none group ${
+        !showControls ? 'cursor-none' : 'cursor-pointer'
+      }`}
     >
       {/* Club Ambient Glow */}
       <div
@@ -205,8 +251,12 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         />
       )}
 
-      {/* TV Corner Badge / Watermark */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 pointer-events-none">
+      {/* TV Corner Badge / Watermark — Fades out when controls hide for 100% clean screen */}
+      <div
+        className={`absolute top-3 left-3 z-10 flex items-center gap-2 pointer-events-none transition-all duration-500 ${
+          showControls && !isCleanScreen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
+        }`}
+      >
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-white font-display text-xs font-bold shadow-lg">
           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
           <span>GOLBOLIVIA</span>
@@ -214,15 +264,42 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         </div>
       </div>
 
+      {/* Double Tap / Double Click Feedback HUD */}
+      {doubleTapFeedback && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none animate-in zoom-in-75 fade-in duration-150">
+          <div className="px-5 py-4 rounded-2xl bg-black/80 backdrop-blur-md border border-white/20 flex flex-col items-center justify-center text-white shadow-2xl scale-110">
+            {doubleTapFeedback === 'pause' ? (
+              <>
+                <Pause className="w-9 h-9 fill-amber-400 text-amber-400 mb-1" />
+                <span className="text-[10px] font-mono font-bold tracking-widest text-amber-300 uppercase">
+                  PAUSA
+                </span>
+              </>
+            ) : (
+              <>
+                <Play className="w-9 h-9 fill-emerald-400 text-emerald-400 ml-1 mb-1" />
+                <span className="text-[10px] font-mono font-bold tracking-widest text-emerald-300 uppercase">
+                  EN VIVO
+                </span>
+              </>
+            )}
+            <span className="text-[9px] text-slate-400 mt-0.5">Doble toque</span>
+          </div>
+        </div>
+      )}
+
       {/* Big Play Overlay when Paused */}
       {!isPlaying && (
-        <div className="absolute inset-0 z-20 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
+        <div className="absolute inset-0 z-20 bg-black/45 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-200">
           <button
-            onClick={onTogglePlay}
-            className="w-16 h-16 rounded-full bg-emerald-500/90 hover:bg-emerald-400 text-black flex items-center justify-center shadow-2xl transition-all scale-100 hover:scale-110 active:scale-95 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePlay();
+            }}
+            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-2xl transition-all scale-100 hover:scale-110 active:scale-95 cursor-pointer border-2 border-emerald-300"
             aria-label="Reproducir transmisión"
           >
-            <Play className="w-8 h-8 fill-black ml-1" />
+            <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-black ml-1" />
           </button>
         </div>
       )}
@@ -241,7 +318,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       {/* Stream Error Notice */}
       {streamError && !isReconnecting && (
         <div className="absolute inset-0 z-25 bg-black/75 backdrop-blur-sm flex flex-col items-center justify-center text-center p-4">
-          <div className="p-3 rounded-2xl bg-red-950/80 border border-red-500/60 max-w-sm">
+          <div className="p-4 rounded-2xl bg-red-950/85 border border-red-500/60 max-w-sm">
             <AlertCircle className="w-7 h-7 text-red-400 mx-auto mb-2" />
             <div className="text-xs font-bold text-white mb-1">Señal no disponible temporalmente</div>
             <p className="text-[11px] text-slate-300 mb-3">{streamError}</p>

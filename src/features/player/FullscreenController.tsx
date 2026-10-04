@@ -15,10 +15,18 @@ export const FullscreenController: React.FC<FullscreenControllerProps> = ({
       type="button"
       onClick={onToggleFullscreen}
       className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-      title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
-      aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+      title={
+        isFullscreen
+          ? 'Salir de pantalla completa'
+          : 'Extender pantalla completa (Gira automáticamente a horizontal en móvil)'
+      }
+      aria-label={
+        isFullscreen
+          ? 'Salir de pantalla completa'
+          : 'Extender pantalla completa (Gira automáticamente a horizontal en móvil)'
+      }
     >
-      {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+      {isFullscreen ? <Minimize2 className="w-4 h-4 text-emerald-400" /> : <Maximize2 className="w-4 h-4" />}
     </button>
   );
 };
