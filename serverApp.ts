@@ -1006,7 +1006,7 @@ app.post(
       return;
     }
     const cleanId = String(club.id).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_');
-    const existing = state.clubs[cleanId] || {};
+    const existing: Partial<Club> = state.clubs[cleanId] || {};
     const updatedClub: Club = {
       id: cleanId,
       name: String(club.name).trim(),
