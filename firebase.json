@@ -1,0 +1,8 @@
+{
+  "firestore": {
+    "databaseId": "ai-studio-golbolivialivest-eea3c7cc-5a47-4322-8400-4a656cb411b2",
+    "rules": "firestore.rules",
+    "edition": "ENTERPRISE",
+    "dataAccessMode": "FIRESTORE_NATIVE"
+  }
+}

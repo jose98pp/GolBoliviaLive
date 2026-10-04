@@ -25,15 +25,21 @@ app.use(express.json());
 
 // Normalize rewritten URLs from Vercel Serverless Function
 app.use((req: Request, _res: Response, next: NextFunction) => {
-  const xMatched = (req.headers['x-matched-path'] || req.headers['x-vercel-matched-path']) as string | undefined;
-  if (xMatched && typeof xMatched === 'string') {
-    req.url = xMatched;
+  const forwardedUri = (req.headers['x-forwarded-uri'] || req.headers['x-vercel-original-url']) as string | undefined;
+  if (forwardedUri && typeof forwardedUri === 'string' && forwardedUri.startsWith('/api/')) {
+    req.url = forwardedUri;
   } else {
     try {
       const parsed = new URL(req.url, 'http://localhost');
       const pathParam = parsed.searchParams.get('path');
       if (pathParam) {
-        req.url = pathParam.startsWith('/') ? `/api${pathParam}` : `/api/${pathParam}`;
+        const cleanPath = pathParam.startsWith('/') ? pathParam : `/${pathParam}`;
+        req.url = cleanPath.startsWith('/api/') ? cleanPath : `/api${cleanPath}`;
+      } else {
+        const matched = (req.headers['x-matched-path'] || req.headers['x-vercel-matched-path']) as string | undefined;
+        if (matched && typeof matched === 'string' && matched.startsWith('/api/') && !matched.startsWith('/api/index')) {
+          req.url = matched;
+        }
       }
     } catch {}
   }
@@ -436,12 +442,31 @@ function loadPersistedState(): void {
           state.clubs = { ...BOLIVIAN_CLUBS, ...saved.clubs };
         }
         console.log(`[GolBolivia Backend] Estado persistido cargado con éxito desde ${STATE_FILE}`);
-        console.log(`[GolBolivia Backend] Señal activa: ${state.streamSettings.customVideoUrl || '(simulación)'}`);
       }
     }
   } catch (err) {
-    console.error('[GolBolivia Backend] Error al cargar estado persistido:', err);
+    console.error('[GolBolivia Backend] Error al cargar estado persistido desde disco:', err);
   }
+
+  // Sincronizar de forma inmediata con Google Firebase Firestore (Fuente de Verdad en la Nube)
+  getStreamSettingsFromFirebase()
+    .then((fbSettings) => {
+      if (fbSettings && Object.keys(fbSettings).length > 0) {
+        state.streamSettings = { ...state.streamSettings, ...fbSettings };
+        console.log(`[GolBolivia Backend] StreamSettings sincronizado desde Firebase Firestore: ${state.streamSettings.title}`);
+      }
+    })
+    .catch((err) => {
+      console.warn('[GolBolivia Backend] Advertencia al sincronizar Firestore inicial:', err?.message || err);
+    });
+
+  getClubsFromFirebase()
+    .then((fbClubs) => {
+      if (fbClubs && Object.keys(fbClubs).length > 0) {
+        state.clubs = { ...BOLIVIAN_CLUBS, ...fbClubs };
+      }
+    })
+    .catch(() => {});
 }
 
 function persistState(): void {
@@ -456,10 +481,14 @@ function persistState(): void {
       updatedAt: Date.now(),
     };
     fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
-    console.log('[GolBolivia Backend] Configuración de transmisión persistida en disco.');
+    console.log('[GolBolivia Backend] Configuración persistida en disco.');
   } catch (err) {
     console.error('[GolBolivia Backend] Error al guardar estado en disco:', err);
   }
+
+  // Guardar siempre copia autoritativa en Google Firebase Firestore
+  saveStreamSettingsToFirebase(state.streamSettings).catch(() => {});
+  saveScoreboardToFirebase(state.scoreboard).catch(() => {});
 }
 
 // Cargar estado persistido al arrancar
@@ -638,9 +667,11 @@ app.get(['/api/events', '/events'], (req: Request, res: Response) => {
 app.get(['/api/live', '/live'], (_req: Request, res: Response) => {
   const publicPayload = getPublicStreamPayload();
   res.json({
+    ...publicPayload,
     live: state.streamSettings.isLive,
     playbackUrl: publicPayload.playbackUrl,
     match: state.streamSettings.title,
+    title: state.streamSettings.title,
     quality: [
       '1080p60 (Full HD 6 Mbps)',
       '720p60 (HD 3 Mbps)',
@@ -1054,9 +1085,20 @@ app.all('*', (req: Request, res: Response) => {
       'POST /api/auth/login',
       'GET /api/scoreboard',
       'GET /api/health',
-      'GET /api/version'
-    ]
+      'GET /api/version',
+    ],
   });
+});
+
+// Universal Error Handler
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[GolBolivia Server Error]', err);
+  if (!res.headersSent) {
+    res.status(500).json({
+      error: 'Error interno del servidor',
+      message: err?.message || 'Ocurrió un error inesperado',
+    });
+  }
 });
 
 export { app, SYSTEM_USERS };

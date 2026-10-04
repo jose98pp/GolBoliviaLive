@@ -3,6 +3,7 @@ import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { authService, AuthUser, UserRole } from './auth';
 import {
   saveStreamSettingsToFirebase,
+  getStreamSettingsFromFirebase,
   saveScoreboardToFirebase,
   addMatchEventToFirebase,
   updateMatchEventInFirebase,
@@ -285,13 +286,6 @@ class GolBoliviaApiClient {
       });
       if (res.ok) {
         const json = await res.json();
-        return json;
-      }
-    } catch {}
-
-    // 4. Fallback to /api/streams
-    return this.updateStreamSettings(config);
-  }
         return json;
       }
     } catch {}

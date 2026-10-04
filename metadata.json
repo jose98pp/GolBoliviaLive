@@ -1,6 +1,1 @@
-{
-  "name": "GolBolivia Live — Transmisión en Vivo del Fútbol Boliviano",
-  "description": "Mira la División Profesional del Fútbol Boliviano en vivo en HD con chat en tiempo real, múltiples resoluciones, estadísticas oficiales y contenido exclusivo de clubes.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
+{"name":"GolBolivia Live - Streaming del Fútbol Boliviano","description":"Mira la División Profesional del Fútbol Boliviano en vivo en HD con chat en tiempo real, múltiples resoluciones, estadísticas oficiales y contenido exclusivo de clubes.","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}

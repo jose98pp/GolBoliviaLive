@@ -16,6 +16,8 @@ import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
 
+import { saveStreamSettingsToFirebase } from '../services/firebase';
+
 interface MatchDetailsEditorProps {
   streamSettings: StreamSettings;
   onUpdateStreamSettings: (newSettings: Partial<StreamSettings>) => void;
@@ -41,8 +43,6 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [stadiumName, setStadiumName] = useState(streamSettings.stadiumName || '');
   const [altitudeMeters, setAltitudeMeters] = useState(streamSettings.altitudeMeters || 3637);
   const [officialAnnouncement, setOfficialAnnouncement] = useState(streamSettings.officialAnnouncement || '');
-  const [period, setPeriod] = useState(streamSettings.period || '2T');
-  const [isLive, setIsLive] = useState(streamSettings.isLive !== false);
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -59,8 +59,6 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     if (streamSettings.stadiumName) setStadiumName(streamSettings.stadiumName);
     if (streamSettings.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
     if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
-    if (streamSettings.period) setPeriod(streamSettings.period);
-    if (streamSettings.isLive !== undefined) setIsLive(streamSettings.isLive);
   }, [streamSettings]);
 
   const handleGenerateTitle = () => {
@@ -98,8 +96,6 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       stadiumName: stadiumName.trim(),
       altitudeMeters: Number(altitudeMeters) || 0,
       officialAnnouncement: officialAnnouncement.trim(),
-      period,
-      isLive,
     };
 
     try {
@@ -108,6 +104,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
       // 2. Direct server call ensuring server and cloud persistence
       await apiClient.syncStreamConfig(payload);
+      await saveStreamSettingsToFirebase(payload).catch(() => {});
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 5000);
@@ -320,62 +317,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           />
         </div>
 
-        {/* Row 6: Match Period & Live status */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-              Período de Juego:
-            </label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {(['1T', 'Descanso', '2T', 'Finalizado'] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPeriod(p)}
-                  className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
-                    period === p
-                      ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40'
-                      : 'bg-[#060a14] text-slate-400 hover:text-white border border-slate-800'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
 
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-              Estado de la Emisión:
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setIsLive(true)}
-                className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  isLive
-                    ? 'bg-red-500/20 text-red-300 border border-red-500/50 shadow-md shadow-red-950/40'
-                    : 'bg-[#060a14] text-slate-500 hover:text-slate-300 border border-slate-800'
-                }`}
-              >
-                <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-slate-600'}`} />
-                <span>EN VIVO (AIR)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsLive(false)}
-                className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  !isLive
-                    ? 'bg-slate-700 text-white border border-slate-600'
-                    : 'bg-[#060a14] text-slate-500 hover:text-slate-300 border border-slate-800'
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-slate-500" />
-                <span>PAUSADO / OFF</span>
-              </button>
-            </div>
-          </div>
-        </div>
 
         {/* Submit Button & Feedback */}
         <div className="pt-2">

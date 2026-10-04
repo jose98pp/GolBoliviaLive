@@ -16,7 +16,7 @@ import {
   serverTimestamp,
   Firestore,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { firebaseConfig } from './firebaseConfig';
 import { StreamSettings, MatchEvent, ChatMessage, LivePoll, Club } from '../types/football';
 
 // Initialize Firebase App

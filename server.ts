@@ -4,7 +4,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import { app, UserRole, SYSTEM_USERS } from './serverApp';
+import { app, SYSTEM_USERS } from './serverApp';
+import type { UserRole } from './serverApp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

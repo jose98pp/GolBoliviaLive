@@ -22,7 +22,12 @@ import { SocialFollowBanner } from './components/SocialFollowBanner';
 import { LiveAudienceModal } from './components/LiveAudienceModal';
 import { useRealPresence } from './hooks/useRealPresence';
 import { apiClient } from './services/apiClient';
-import { subscribeScoreboardFirebase, subscribeMatchEventsFirebase } from './services/firebase';
+import {
+  subscribeScoreboardFirebase,
+  subscribeMatchEventsFirebase,
+  subscribeStreamSettingsFirebase,
+  getStreamSettingsFromFirebase
+} from './services/firebase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'stream' | 'stats' | 'exclusive'>('stream');
@@ -178,7 +183,21 @@ export default function App() {
       }
     });
 
-    // 4. Real-time Firebase Scoreboard & Events Push Listener
+    // 4. Real-time Firebase StreamSettings, Scoreboard & Events Push Listener
+    const unsubscribeStreamSettingsFirebase = subscribeStreamSettingsFirebase((firebaseSettings) => {
+      if (firebaseSettings && Object.keys(firebaseSettings).length > 0) {
+        setStreamSettings((prev) => {
+          const merged = { ...prev, ...firebaseSettings };
+          try {
+            localStorage.setItem('golbolivia_stream_settings', JSON.stringify(merged));
+            if (merged.customVideoUrl) localStorage.setItem('golbolivia_custom_video_url', merged.customVideoUrl);
+            if (merged.backupVideoUrl) localStorage.setItem('golbolivia_backup_m3u8_url', merged.backupVideoUrl);
+          } catch {}
+          return merged;
+        });
+      }
+    });
+
     const unsubscribeScoreboardFirebase = subscribeScoreboardFirebase((scoreData) => {
       if (scoreData) {
         if (typeof scoreData.homeScore === 'number') setHomeScore(scoreData.homeScore);
@@ -203,6 +222,7 @@ export default function App() {
     return () => {
       unsubscribeStream();
       unsubscribeEvents();
+      unsubscribeStreamSettingsFirebase();
       unsubscribeScoreboardFirebase();
       unsubscribeEventsFirebase();
       clearInterval(heartbeatTimer);
