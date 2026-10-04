@@ -443,6 +443,33 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const homeClub = BOLIVIAN_CLUBS[streamSettings.homeClubId] || BOLIVIAN_CLUBS.bolivar;
   const awayClub = BOLIVIAN_CLUBS[streamSettings.awayClubId] || BOLIVIAN_CLUBS.strongest;
 
+  const [isSavingFirebase, setIsSavingFirebase] = useState(false);
+  const [firebaseSavedBanner, setFirebaseSavedBanner] = useState<string | null>(null);
+
+  const handleSaveAndConfirmAllToFirebase = async () => {
+    setIsSavingFirebase(true);
+    try {
+      const res = await apiClient.confirmAndSaveAllData({
+        streamSettings,
+        scoreboard: {
+          homeScore,
+          awayScore,
+          matchMinute,
+          period: streamSettings.period,
+        },
+        operatorName: currentUser?.name,
+        operatorRole: currentUser?.role,
+      });
+      setFirebaseSavedBanner(res.message);
+      setTimeout(() => setFirebaseSavedBanner(null), 6000);
+    } catch {
+      setFirebaseSavedBanner('Copia guardada localmente. Error de conexión con Firebase.');
+      setTimeout(() => setFirebaseSavedBanner(null), 5000);
+    } finally {
+      setIsSavingFirebase(false);
+    }
+  };
+
   const handleReloadPreview = () => {
     setIsRefreshingPreview(true);
     setPreviewKey((prev) => prev + 1);
@@ -613,14 +640,39 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             </button>
           </div>
 
-          <div className="hidden md:flex items-center gap-3 text-xs text-slate-400 font-mono">
-            <span>Marcador: <strong className="text-white">{homeScore} - {awayScore}</strong></span>
-            <span>·</span>
-            <span>Minuto: <strong className="text-emerald-400">{matchMinute}&apos;</strong></span>
-            <span>·</span>
-            <span>Período: <strong className="text-amber-400">{streamSettings.period}</strong></span>
+          <div className="flex items-center gap-3">
+            <div className="hidden xl:flex items-center gap-2 text-xs text-slate-400 font-mono">
+              <span>Marcador: <strong className="text-white">{homeScore} - {awayScore}</strong></span>
+              <span>·</span>
+              <span>Minuto: <strong className="text-emerald-400">{matchMinute}&apos;</strong></span>
+            </div>
+
+            {/* BOTÓN OFICIAL DE GUARDADO Y CONFIRMACIÓN EN FIREBASE */}
+            <button
+              onClick={handleSaveAndConfirmAllToFirebase}
+              disabled={isSavingFirebase}
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-950/60 transition-all cursor-pointer disabled:opacity-50"
+              title="Confirmar y persistir toda la página y señales en Google Firebase Firestore"
+            >
+              <Database className={`w-3.5 h-3.5 ${isSavingFirebase ? 'animate-spin' : 'text-black'}`} />
+              <span>{isSavingFirebase ? 'Guardando...' : 'Confirmar & Guardar en Firebase'}</span>
+            </button>
           </div>
         </div>
+
+        {/* Banner de Confirmación y Persistencia en Firebase */}
+        {firebaseSavedBanner && (
+          <div className="bg-emerald-950/90 border-b border-emerald-500/50 px-4 sm:px-6 py-2.5 text-xs text-emerald-200 flex items-center justify-between shadow-xl animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="font-semibold">{firebaseSavedBanner}</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-2 text-[10px] font-mono text-emerald-400/80">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>Google Cloud Firestore · gen-lang-client-0595946513 (us-west1)</span>
+            </div>
+          </div>
+        )}
 
         {/* Main Body */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">

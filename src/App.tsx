@@ -22,6 +22,7 @@ import { SocialFollowBanner } from './components/SocialFollowBanner';
 import { LiveAudienceModal } from './components/LiveAudienceModal';
 import { useRealPresence } from './hooks/useRealPresence';
 import { apiClient } from './services/apiClient';
+import { subscribeScoreboardFirebase, subscribeMatchEventsFirebase } from './services/firebase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'stream' | 'stats' | 'exclusive'>('stream');
@@ -173,7 +174,22 @@ export default function App() {
       }
     });
 
-    // 4. Heartbeat to report real active viewer session to server
+    // 4. Real-time Firebase Scoreboard & Events Push Listener
+    const unsubscribeScoreboardFirebase = subscribeScoreboardFirebase((scoreData) => {
+      if (scoreData) {
+        if (typeof scoreData.homeScore === 'number') setHomeScore(scoreData.homeScore);
+        if (typeof scoreData.awayScore === 'number') setAwayScore(scoreData.awayScore);
+        if (typeof scoreData.matchMinute === 'number') setMatchMinute(scoreData.matchMinute);
+      }
+    });
+
+    const unsubscribeEventsFirebase = subscribeMatchEventsFirebase((firebaseEvents) => {
+      if (firebaseEvents && firebaseEvents.length > 0) {
+        setEvents(firebaseEvents);
+      }
+    });
+
+    // 5. Heartbeat to report real active viewer session to server
     const heartbeatTimer = setInterval(() => {
       if (sessionIdRef.current) {
         apiClient.sendHeartbeat(sessionIdRef.current);
@@ -183,6 +199,8 @@ export default function App() {
     return () => {
       unsubscribeStream();
       unsubscribeEvents();
+      unsubscribeScoreboardFirebase();
+      unsubscribeEventsFirebase();
       clearInterval(heartbeatTimer);
     };
   }, []);

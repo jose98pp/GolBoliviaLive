@@ -14,6 +14,7 @@ export default defineConfig(() => {
         includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'manifest.json'],
         manifest: false,
         workbox: {
+          maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           skipWaiting: true,
           clientsClaim: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],

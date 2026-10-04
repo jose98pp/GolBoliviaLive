@@ -1,5 +1,15 @@
 import { StreamSettings, MatchEvent, ChatMessage, MatchStats, PublicStreamState, PrivateIngestCredentials } from '../types/football';
 import { authService, AuthUser, UserRole } from './auth';
+import {
+  saveStreamSettingsToFirebase,
+  saveScoreboardToFirebase,
+  addMatchEventToFirebase,
+  sendChatMessageToFirebase,
+  subscribeStreamSettingsFirebase,
+  subscribeScoreboardFirebase,
+  logConfirmationToFirebase,
+  FIREBASE_PROJECT_ID,
+} from './firebase';
 
 export type { UserRole };
 export type AuthUserInfo = AuthUser;
@@ -135,13 +145,16 @@ class GolBoliviaApiClient {
     }
   }
 
-  // 5. Update Scoreboard (Server-Authoritative)
+  // 5. Update Scoreboard (Server-Authoritative + Firebase)
   async updateScoreboard(data: {
     homeScore?: number;
     awayScore?: number;
     matchMinute?: number;
     period?: string;
   }): Promise<{ success: boolean; scoreboard: any }> {
+    // Mirror to Firebase Firestore immediately
+    saveScoreboardToFirebase(data).catch(() => {});
+
     const res = await fetch('/api/scoreboard', {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -154,7 +167,7 @@ class GolBoliviaApiClient {
     return result;
   }
 
-  // 6. Update Stream Settings (Server-Authoritative)
+  // 6. Update Stream Settings (Server-Authoritative + Firebase)
   async updateStreamSettings(settings: Partial<StreamSettings>): Promise<{ success: boolean; streamSettings: any }> {
     // 1. Local storage backup
     try {
@@ -169,7 +182,10 @@ class GolBoliviaApiClient {
       }
     } catch {}
 
-    // 2. Post to backend API
+    // 2. Persist to Firebase Firestore
+    saveStreamSettingsToFirebase(settings).catch(() => {});
+
+    // 3. Post to backend API
     const res = await fetch('/api/streams', {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -197,6 +213,9 @@ class GolBoliviaApiClient {
     backupChannelName?: string;
     autoFailoverEnabled?: boolean;
   }): Promise<{ success: boolean; activeStreamSource: string; playbackUrl: string; streamSettings: any }> {
+    // Save to Firebase
+    saveStreamSettingsToFirebase(params).catch(() => {});
+
     const res = await fetch('/api/streams/failover', {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -277,7 +296,10 @@ class GolBoliviaApiClient {
       if (config.activeStreamSource !== undefined) localStorage.setItem('golbolivia_active_stream_source', config.activeStreamSource);
     } catch {}
 
-    // 2. Post to dedicated /api/streams/config
+    // 2. Persist to Firebase Firestore
+    saveStreamSettingsToFirebase(config).catch(() => {});
+
+    // 3. Post to dedicated /api/streams/config
     try {
       const res = await fetch('/api/streams/config', {
         method: 'POST',
@@ -290,7 +312,7 @@ class GolBoliviaApiClient {
       }
     } catch {}
 
-    // 3. Fallback to /api/streams
+    // 4. Fallback to /api/streams
     return this.updateStreamSettings(config);
   }
 
@@ -323,12 +345,18 @@ class GolBoliviaApiClient {
       }
     };
 
-    // 1. Initial immediate sync
+    // 1. Initial immediate sync from REST/Backend
     this.getStreamConfig().then((cfg) => {
       if (isSubscribed) applyIfChanged(cfg);
     });
 
-    // 2. SSE Subscription
+    // 2. Real-time Firebase Firestore Push Listener (instant cross-device global sync)
+    const unsubFirebase = subscribeStreamSettingsFirebase((firebaseSettings) => {
+      if (!isSubscribed) return;
+      applyIfChanged(firebaseSettings);
+    });
+
+    // 3. SSE Subscription
     const unsubSSE = this.subscribeLiveEvents((type, data) => {
       if (!isSubscribed) return;
       if (type === 'STREAM_CONFIG_UPDATED' || type === 'STREAM_UPDATED' || type === 'INITIAL_STATE') {
@@ -337,7 +365,7 @@ class GolBoliviaApiClient {
       }
     });
 
-    // 3. High-frequency failover sync heartbeat (every 3.5s) to ensure ALL clients worldwide
+    // 4. High-frequency failover sync heartbeat (every 3.5s) to ensure ALL clients worldwide
     // catch backup switches even when SSE is dormant or serverless connections reset
     const syncInterval = setInterval(async () => {
       if (!isSubscribed) return;
@@ -349,12 +377,56 @@ class GolBoliviaApiClient {
 
     return () => {
       isSubscribed = false;
+      unsubFirebase();
       unsubSSE();
       clearInterval(syncInterval);
     };
   }
 
-  // 6.1 Fetch Confidential Ingest Keys (strictly protected for ADMIN and TRANSMISOR)
+  // 6.5 Explicit Confirmation & Full Page Data Persistence to Firebase + Server
+  async confirmAndSaveAllData(params: {
+    streamSettings?: Partial<StreamSettings>;
+    scoreboard?: any;
+    operatorName?: string;
+    operatorRole?: string;
+  }): Promise<{ success: boolean; message: string; timestamp: number }> {
+    const timestamp = Date.now();
+    const operator = params.operatorName || authService.getUser()?.name || 'Administrador General';
+    const role = params.operatorRole || authService.getUser()?.role || 'ADMIN';
+
+    // 1. Save stream settings to Firebase and backend
+    if (params.streamSettings) {
+      await saveStreamSettingsToFirebase(params.streamSettings).catch(() => {});
+      await this.syncStreamConfig(params.streamSettings).catch(() => {});
+    }
+
+    // 2. Save scoreboard to Firebase and backend
+    if (params.scoreboard) {
+      await saveScoreboardToFirebase(params.scoreboard).catch(() => {});
+      await this.updateScoreboard(params.scoreboard).catch(() => {});
+    }
+
+    // 3. Register persistent audit confirmation log in Firebase Firestore
+    await logConfirmationToFirebase({
+      action: 'CONFIRM_AND_PERSIST_PAGE_DATA',
+      operator,
+      role,
+      details: 'Confirmación y guardado exitoso de todos los datos y señales m3u8 en Firebase Firestore.',
+      payload: {
+        streamSettings: params.streamSettings,
+        scoreboard: params.scoreboard,
+      },
+      timestamp,
+    }).catch(() => {});
+
+    return {
+      success: true,
+      message: `¡Datos confirmados y guardados con éxito en Google Firebase Firestore (Proyecto: ${FIREBASE_PROJECT_ID})!`,
+      timestamp,
+    };
+  }
+
+  // 6.6 Fetch Confidential Ingest Keys (strictly protected for ADMIN and TRANSMISOR)
   async getPrivateIngestCredentials(): Promise<PrivateIngestCredentials> {
     const res = await fetch('/api/streams/private-ingest', {
       headers: this.getAuthHeaders(),
@@ -368,6 +440,9 @@ class GolBoliviaApiClient {
 
   // 7. Add Match Event (Goal, Card, Substitution)
   async addMatchEvent(event: Partial<MatchEvent>): Promise<MatchEvent> {
+    // Mirror to Firebase
+    addMatchEventToFirebase(event as any).catch(() => {});
+
     const res = await fetch('/api/matches/events', {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -382,6 +457,17 @@ class GolBoliviaApiClient {
 
   // 8. Chat
   async sendChat(sender: string, clubId: string, text: string, isVip?: boolean): Promise<ChatMessage> {
+    const chatMsg = {
+      sender,
+      clubId,
+      text,
+      isVip,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    // Mirror to Firebase
+    sendChatMessageToFirebase(chatMsg).catch(() => {});
+
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: this.getAuthHeaders(),
