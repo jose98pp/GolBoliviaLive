@@ -17,8 +17,8 @@
     "overlayScoreboardVisible": true,
     "lowLatencyMode": true,
     "backupVideoUrl": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    "backupChannelName": "GolBolivia 24/7 Señal Alternativa HD",
-    "activeStreamSource": "obs",
+    "backupChannelName": "GolBolivia Señal Satelital HD",
+    "activeStreamSource": "backup",
     "autoFailoverEnabled": true
   },
   "scoreboard": {
@@ -28,5 +28,5 @@
     "period": "2T",
     "updatedAt": 1791074988393
   },
-  "updatedAt": 1791086145731
+  "updatedAt": 1791124380710
 }

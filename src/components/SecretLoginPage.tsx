@@ -84,7 +84,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 }) => {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => authService.getUser());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated());
-  const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(true);
+  const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() => {
+    // If we already have stored credentials, don't show loading blocker, render dashboard immediately!
+    return !authService.isAuthenticated() && !!authService.getToken();
+  });
   const [usernameInput, setUsernameInput] = useState<string>('admin');
   const [pinInput, setPinInput] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -109,7 +112,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
       })
       .catch(() => {
         if (isMounted) {
-          setIsAuthenticated(false);
           setIsVerifyingSession(false);
         }
       });
@@ -2084,6 +2086,18 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           isOpen={isGuideOpen}
           onClose={() => setIsGuideOpen(false)}
         />
+      </div>
+    );
+  }
+
+  // If verifying an existing token in background, show minimal loader
+  if (isVerifyingSession) {
+    return (
+      <div className="min-h-screen bg-[#060911] text-slate-100 flex flex-col justify-center items-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-9 h-9 border-2 border-amber-500/20 border-t-amber-400 rounded-full animate-spin" />
+          <span className="text-xs text-slate-400 font-mono tracking-wider">Restaurando sesión segura...</span>
+        </div>
       </div>
     );
   }

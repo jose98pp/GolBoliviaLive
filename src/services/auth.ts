@@ -24,6 +24,37 @@ class AuthService {
   constructor() {
     this.token = this.getStoredToken();
     this.currentUser = this.getStoredUser();
+
+    // If token exists but user not loaded, recover immediately from JWT payload
+    if (this.token && !this.currentUser) {
+      const payload = this.parseJwtPayload(this.token);
+      if (payload && payload.userId && payload.role) {
+        this.currentUser = {
+          id: payload.userId,
+          username: payload.username || 'admin',
+          name: payload.name || 'Director General de Transmisión',
+          role: payload.role,
+        };
+      }
+    }
+  }
+
+  public parseJwtPayload(token: string): any {
+    try {
+      const parts = token.split('.');
+      if (parts.length >= 2) {
+        // Base64url decode payload
+        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(
+          atob(base64)
+            .split('')
+            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join('')
+        );
+        return JSON.parse(jsonPayload);
+      }
+    } catch {}
+    return null;
   }
 
   private getStoredToken(): string | null {
@@ -201,6 +232,13 @@ class AuthService {
       return null;
     }
 
+    // Check JWT expiration locally first
+    const payload = this.parseJwtPayload(token);
+    if (payload && payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
+      this.clearSession();
+      return null;
+    }
+
     try {
       const res = await fetch('/api/auth/me', {
         headers: {
@@ -209,22 +247,31 @@ class AuthService {
         },
       });
 
+      // ONLY clear session if server explicitly rejects credentials (401 Unauthorized or 403 Forbidden)
       if (!res.ok) {
-        this.clearSession();
-        return null;
+        if (res.status === 401 || res.status === 403) {
+          this.clearSession();
+          return null;
+        }
+        // Temporary server error (500, 502, cold boot): preserve operator's active dashboard session!
+        return this.currentUser;
       }
 
       const data = await res.json();
-      this.currentUser = data.user;
-      try {
-        sessionStorage.setItem(USER_KEY, JSON.stringify(data.user));
-        localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-      } catch {}
-      this.notify();
-      return data.user;
+      if (data && data.user) {
+        this.currentUser = data.user;
+        try {
+          sessionStorage.setItem(USER_KEY, JSON.stringify(data.user));
+          localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+        } catch {}
+        this.notify();
+        return data.user;
+      }
+
+      return this.currentUser;
     } catch {
-      this.clearSession();
-      return null;
+      // Offline or network error: retain session so reload does NOT kick out operator
+      return this.currentUser;
     }
   }
 

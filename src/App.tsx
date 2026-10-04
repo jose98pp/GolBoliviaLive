@@ -110,7 +110,7 @@ export default function App() {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  // Authoritative Backend Synchronization: GET /api/live & SSE /api/events
+  // Authoritative Backend Synchronization: Dedicated Stream Sync, GET /api/live & SSE /api/events
   useEffect(() => {
     // 1. Fetch authoritative initial state from backend
     apiClient.getLiveState()
@@ -131,7 +131,28 @@ export default function App() {
         // Fallback gracefully to default match state if offline
       });
 
-    // 2. Subscribe to Real-Time Server-Sent Events (SSE)
+    // 2. Dedicated Global M3U8 Stream & Failover Synchronization Subscriber
+    const unsubscribeStream = apiClient.subscribeStreamSync((newConfig) => {
+      setStreamSettings((prev) => {
+        const isSwitchingToBackup =
+          newConfig.activeStreamSource === 'backup' && prev.activeStreamSource !== 'backup';
+
+        if (isSwitchingToBackup) {
+          setActiveToast({
+            id: `failover-${Date.now()}`,
+            title: '📡 Señal de Respaldo HLS Activada',
+            body: `Transmisión conectada a canal alternativo: ${newConfig.backupChannelName || 'GolBolivia 24/7 HD'}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            type: 'stream_start',
+            read: false,
+          });
+        }
+
+        return { ...prev, ...newConfig };
+      });
+    });
+
+    // 3. Subscribe to Real-Time Server-Sent Events (SSE) for match & chat events
     const unsubscribeEvents = apiClient.subscribeLiveEvents((type, data) => {
       if (type === 'INITIAL_STATE') {
         if (data.streamSettings) setStreamSettings((prev) => ({ ...prev, ...data.streamSettings }));
@@ -141,7 +162,7 @@ export default function App() {
           setMatchMinute(data.scoreboard.matchMinute);
         }
         if (data.events) setEvents(data.events);
-      } else if (type === 'STREAM_UPDATED') {
+      } else if (type === 'STREAM_UPDATED' || type === 'STREAM_CONFIG_UPDATED') {
         setStreamSettings((prev) => ({ ...prev, ...data }));
       } else if (type === 'SCOREBOARD_UPDATED') {
         if (data.homeScore !== undefined) setHomeScore(data.homeScore);
@@ -152,7 +173,7 @@ export default function App() {
       }
     });
 
-    // 3. Heartbeat to report real active viewer session to server
+    // 4. Heartbeat to report real active viewer session to server
     const heartbeatTimer = setInterval(() => {
       if (sessionIdRef.current) {
         apiClient.sendHeartbeat(sessionIdRef.current);
@@ -160,6 +181,7 @@ export default function App() {
     }, 15000);
 
     return () => {
+      unsubscribeStream();
       unsubscribeEvents();
       clearInterval(heartbeatTimer);
     };
@@ -258,8 +280,10 @@ export default function App() {
 
   const handleUpdateStreamSettings = (newSettings: Partial<StreamSettings>) => {
     setStreamSettings((prev) => ({ ...prev, ...newSettings }));
-    // Push authoritative update to backend API
-    apiClient.updateStreamSettings(newSettings).catch(() => {});
+    // Push authoritative global update to dedicated backend endpoint
+    apiClient.syncStreamConfig(newSettings).catch((err) => {
+      console.error('Error al sincronizar señal global:', err);
+    });
   };
 
   const handleAddMatchEvent = (newEvent: Omit<MatchEvent, 'id'>) => {

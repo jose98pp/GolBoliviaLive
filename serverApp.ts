@@ -98,18 +98,23 @@ interface SessionData {
 const activeSessions = new Map<string, SessionData>();
 
 function createToken(user: AuthUser): string {
-  const payload = {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const now = Date.now();
+  const payload = Buffer.from(JSON.stringify({
+    sub: user.id,
     userId: user.id,
-    role: user.role,
     username: user.username,
-    nonce: crypto.randomBytes(16).toString('hex'),
-    createdAt: Date.now(),
-  };
-  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const signature = crypto.createHmac('sha256', SERVER_SECRET).update(data).digest('base64url');
-  const token = `${data}.${signature}`;
+    name: user.name,
+    role: user.role,
+    iat: Math.floor(now / 1000),
+    exp: Math.floor((now + 7 * 24 * 60 * 60 * 1000) / 1000), // Valid for 7 days
+    createdAt: now,
+  })).toString('base64url');
 
-  // Session valid for 24 hours
+  const signature = crypto.createHmac('sha256', SERVER_SECRET).update(`${header}.${payload}`).digest('base64url');
+  const token = `${header}.${payload}.${signature}`;
+
+  // Keep in session cache (valid for 7 days)
   activeSessions.set(token, {
     user: {
       id: user.id,
@@ -117,7 +122,7 @@ function createToken(user: AuthUser): string {
       name: user.name,
       role: user.role,
     },
-    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    expiresAt: now + 7 * 24 * 60 * 60 * 1000,
   });
 
   return token;
@@ -126,42 +131,57 @@ function createToken(user: AuthUser): string {
 function verifyToken(token: string): SessionData['user'] | null {
   if (!token) return null;
   const parts = token.split('.');
-  if (parts.length !== 2) return null;
 
-  const [data, signature] = parts;
-  const expectedSig = crypto.createHmac('sha256', SERVER_SECRET).update(data).digest('base64url');
-  if (signature !== expectedSig) return null;
+  // Standard RFC 7519 3-part JWT
+  if (parts.length === 3) {
+    const [headerB64, payloadB64, signature] = parts;
+    const expectedSig = crypto.createHmac('sha256', SERVER_SECRET).update(`${headerB64}.${payloadB64}`).digest('base64url');
+    if (signature !== expectedSig) return null;
 
-  try {
-    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
-    if (!payload || !payload.userId || !payload.role || !payload.createdAt) {
-      return null;
-    }
-    // Token valid for 24h
-    if (Date.now() - payload.createdAt > 24 * 60 * 60 * 1000) {
-      activeSessions.delete(token);
-      return null;
-    }
+    try {
+      const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8'));
+      if (!payload || !payload.userId || !payload.role) return null;
 
-    let session = activeSessions.get(token);
-    if (!session) {
+      // Check expiration
+      if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
+        activeSessions.delete(token);
+        return null;
+      }
+
       const systemUser = SYSTEM_USERS.find((u) => u.id === payload.userId || u.username === payload.username);
-      session = {
-        user: {
-          id: payload.userId,
-          username: payload.username,
-          name: systemUser?.name || (payload.username === 'admin' ? 'Director General de Transmisión' : 'Operador OBS & MediaMTX'),
-          role: payload.role,
-        },
-        expiresAt: payload.createdAt + 24 * 60 * 60 * 1000,
+      return {
+        id: payload.userId,
+        username: payload.username,
+        name: payload.name || systemUser?.name || 'Operador GolBolivia',
+        role: payload.role,
       };
-      activeSessions.set(token, session);
+    } catch {
+      return null;
     }
-
-    return session.user;
-  } catch {
-    return null;
   }
+
+  // Backward compatibility with legacy 2-part tokens
+  if (parts.length === 2) {
+    const [data, signature] = parts;
+    const expectedSig = crypto.createHmac('sha256', SERVER_SECRET).update(data).digest('base64url');
+    if (signature !== expectedSig) return null;
+
+    try {
+      const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
+      if (!payload || !payload.userId || !payload.role) return null;
+      const systemUser = SYSTEM_USERS.find((u) => u.id === payload.userId || u.username === payload.username);
+      return {
+        id: payload.userId,
+        username: payload.username,
+        name: systemUser?.name || 'Operador GolBolivia',
+        role: payload.role,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 // Authentication Middleware
@@ -272,13 +292,13 @@ const state: AppState = {
     isLive: true,
     rtmpServer: 'rtmp://localhost:1935/live',
     streamKey: 'bolivia',
-    customVideoUrl: 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8',
+    customVideoUrl: process.env.STREAM_URL || process.env.DEFAULT_CUSTOM_VIDEO_URL || 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8',
     chatMode: 'all',
     officialAnnouncement: 'Transmisión Oficial en HD para toda Bolivia por GolBolivia TV.',
     broadcastMode: 'obs_custom',
     overlayScoreboardVisible: true,
     lowLatencyMode: true,
-    backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    backupVideoUrl: process.env.BACKUP_STREAM_URL || process.env.DEFAULT_BACKUP_VIDEO_URL || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
     backupChannelName: 'GolBolivia 24/7 Señal Alternativa HD',
     activeStreamSource: 'obs',
     autoFailoverEnabled: true,
@@ -688,6 +708,55 @@ app.post(
       activeStreamSource: state.streamSettings.activeStreamSource,
       playbackUrl: payload.playbackUrl,
       streamSettings: payload,
+    });
+  }
+);
+
+// 6.4 Dedicated Stream & Backup M3U8 URLs Configuration API (for global synchronization across all devices)
+app.get(['/api/streams/config', '/streams/config'], (_req: Request, res: Response) => {
+  const publicPayload = getPublicStreamPayload();
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.json({
+    success: true,
+    customVideoUrl: state.streamSettings.customVideoUrl,
+    backupVideoUrl: state.streamSettings.backupVideoUrl,
+    backupChannelName: state.streamSettings.backupChannelName,
+    activeStreamSource: state.streamSettings.activeStreamSource,
+    autoFailoverEnabled: state.streamSettings.autoFailoverEnabled,
+    playbackUrl: publicPayload.playbackUrl,
+    isLive: state.streamSettings.isLive,
+    title: state.streamSettings.title,
+    broadcastMode: state.streamSettings.broadcastMode,
+    updatedAt: Date.now(),
+  });
+});
+
+app.post(
+  ['/api/streams/config', '/streams/config'],
+  authenticate,
+  requireRoles(['ADMIN', 'TRANSMISOR']),
+  (req: Request, res: Response) => {
+    const { customVideoUrl, backupVideoUrl, backupChannelName, activeStreamSource, autoFailoverEnabled, isLive, broadcastMode } = req.body;
+    if (typeof customVideoUrl === 'string') state.streamSettings.customVideoUrl = customVideoUrl.trim();
+    if (typeof backupVideoUrl === 'string') state.streamSettings.backupVideoUrl = backupVideoUrl.trim();
+    if (typeof backupChannelName === 'string') state.streamSettings.backupChannelName = backupChannelName.trim();
+    if (activeStreamSource && ['obs', 'backup', 'simulation'].includes(activeStreamSource)) {
+      state.streamSettings.activeStreamSource = activeStreamSource;
+    }
+    if (typeof autoFailoverEnabled === 'boolean') state.streamSettings.autoFailoverEnabled = autoFailoverEnabled;
+    if (typeof isLive === 'boolean') state.streamSettings.isLive = isLive;
+    if (broadcastMode) state.streamSettings.broadcastMode = broadcastMode;
+
+    persistState();
+
+    const payload = getPublicStreamPayload();
+    broadcastSseEvent('STREAM_CONFIG_UPDATED', payload);
+    broadcastSseEvent('STREAM_UPDATED', payload);
+
+    res.json({
+      success: true,
+      message: 'Configuración de señales m3u8 sincronizada globalmente para todos los usuarios.',
+      config: payload,
     });
   }
 );
