@@ -245,43 +245,89 @@ class GolBoliviaApiClient {
 
   // 10. Real-time Server-Sent Events (SSE) Stream
   subscribeLiveEvents(onEvent: (type: string, data: any) => void): () => void {
-    if (typeof window === 'undefined' || !('EventSource' in window)) {
+    if (typeof window === 'undefined') {
       return () => {};
     }
 
     if (this.eventSource) {
-      this.eventSource.close();
+      try {
+        this.eventSource.close();
+      } catch {}
+      this.eventSource = null;
     }
 
-    const es = new EventSource('/api/events');
-    this.eventSource = es;
+    let fallbackPollTimer: any = null;
+    let es: EventSource | null = null;
 
-    const eventTypes = [
-      'INITIAL_STATE',
-      'STREAM_UPDATED',
-      'SCOREBOARD_UPDATED',
-      'MATCH_EVENT_ADDED',
-      'CHAT_MESSAGE_ADDED',
-      'CHAT_MESSAGE_DELETED',
-    ];
-
-    eventTypes.forEach((type) => {
-      es.addEventListener(type, (e: MessageEvent) => {
+    const startPollingFallback = () => {
+      if (fallbackPollTimer) return;
+      fallbackPollTimer = setInterval(async () => {
         try {
-          const parsed = JSON.parse(e.data);
-          onEvent(type, parsed);
+          const liveData = await this.getLiveState();
+          if (liveData && liveData.streamSettings) {
+            onEvent('STREAM_UPDATED', liveData.streamSettings);
+          }
+          if (liveData && liveData.scoreboard) {
+            onEvent('SCOREBOARD_UPDATED', liveData.scoreboard);
+          }
         } catch {}
-      });
-    });
-
-    es.onerror = () => {
-      // Reconnect handled automatically by EventSource
+      }, 10000);
     };
 
+    if ('EventSource' in window) {
+      try {
+        es = new EventSource('/api/events');
+        this.eventSource = es;
+
+        const eventTypes = [
+          'INITIAL_STATE',
+          'STREAM_UPDATED',
+          'SCOREBOARD_UPDATED',
+          'MATCH_EVENT_ADDED',
+          'CHAT_MESSAGE_ADDED',
+          'CHAT_MESSAGE_DELETED',
+        ];
+
+        eventTypes.forEach((type) => {
+          es?.addEventListener(type, (e: MessageEvent) => {
+            try {
+              const parsed = JSON.parse(e.data);
+              onEvent(type, parsed);
+            } catch {}
+          });
+        });
+
+        let errorCount = 0;
+        es.onerror = () => {
+          errorCount++;
+          // If serverless environment (e.g. Vercel) terminates persistent SSE stream
+          if (errorCount >= 2) {
+            try {
+              es?.close();
+            } catch {}
+            es = null;
+            this.eventSource = null;
+            startPollingFallback();
+          }
+        };
+      } catch {
+        startPollingFallback();
+      }
+    } else {
+      startPollingFallback();
+    }
+
     return () => {
-      es.close();
+      if (es) {
+        try {
+          es.close();
+        } catch {}
+      }
       if (this.eventSource === es) {
         this.eventSource = null;
+      }
+      if (fallbackPollTimer) {
+        clearInterval(fallbackPollTimer);
       }
     };
   }

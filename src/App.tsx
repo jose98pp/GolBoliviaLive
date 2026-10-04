@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { StreamPlayer } from './components/StreamPlayer';
 import { LiveChat } from './components/LiveChat';
@@ -104,6 +104,12 @@ export default function App() {
     };
   });
 
+  const sessionId = presence.currentSession?.sessionId;
+  const sessionIdRef = useRef(sessionId);
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
   // Authoritative Backend Synchronization: GET /api/live & SSE /api/events
   useEffect(() => {
     // 1. Fetch authoritative initial state from backend
@@ -148,8 +154,8 @@ export default function App() {
 
     // 3. Heartbeat to report real active viewer session to server
     const heartbeatTimer = setInterval(() => {
-      if (presence.currentSession?.sessionId) {
-        apiClient.sendHeartbeat(presence.currentSession.sessionId);
+      if (sessionIdRef.current) {
+        apiClient.sendHeartbeat(sessionIdRef.current);
       }
     }, 15000);
 
@@ -157,7 +163,7 @@ export default function App() {
       unsubscribeEvents();
       clearInterval(heartbeatTimer);
     };
-  }, [presence.currentSession?.sessionId]);
+  }, []);
 
   // Stream state
   const [isStreamingLive, setIsStreamingLive] = useState(true);

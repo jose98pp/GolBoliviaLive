@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { StreamResolution, StreamSettings } from '../../types/football';
 import { BOLIVIAN_CLUBS } from '../../data/bolivianFootballData';
 import { useFullscreen } from './hooks/useFullscreen';
@@ -92,22 +92,32 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     ? (streamSettings?.backupVideoUrl || streamSettings?.customVideoUrl)
     : (streamSettings?.activeStreamSource === 'simulation' ? '' : (streamSettings?.customVideoUrl || streamSettings?.backupVideoUrl));
 
+  const handleHlsError = useCallback((err: string) => {
+    triggerRecovery(err);
+  }, [triggerRecovery]);
+
+  const handleHlsSuccess = useCallback(() => {
+    resetRecovery();
+  }, [resetRecovery]);
+
+  const handleHlsFailover = useCallback((source: 'backup' | 'primary') => {
+    if (source === 'backup') {
+      setFailoverBanner(streamSettings?.backupChannelName ? `Señal conmutada a respaldo: ${streamSettings.backupChannelName}` : 'Señal conmutada a canal de respaldo HLS.');
+      setTimeout(() => setFailoverBanner(null), 8000);
+    } else {
+      setFailoverBanner(null);
+    }
+  }, [streamSettings?.backupChannelName]);
+
   const { isLoaded, changeLevel, hlsInstance, isUsingBackup } = useHls({
     videoRef,
     src: effectiveSrc,
     backupSrc: streamSettings?.backupVideoUrl,
     autoFailover: streamSettings?.autoFailoverEnabled !== false,
     autoplay: isPlaying,
-    onError: (err) => triggerRecovery(err),
-    onSuccess: () => resetRecovery(),
-    onFailoverTriggered: (source) => {
-      if (source === 'backup') {
-        setFailoverBanner(streamSettings?.backupChannelName ? `Señal conmutada a respaldo: ${streamSettings.backupChannelName}` : 'Señal conmutada a canal de respaldo HLS.');
-        setTimeout(() => setFailoverBanner(null), 8000);
-      } else {
-        setFailoverBanner(null);
-      }
-    },
+    onError: handleHlsError,
+    onSuccess: handleHlsSuccess,
+    onFailoverTriggered: handleHlsFailover,
   });
 
   const telemetry = usePlayerTelemetry({

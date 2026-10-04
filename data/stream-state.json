@@ -10,7 +10,7 @@
     "isLive": true,
     "rtmpServer": "rtmp://localhost:1935/live",
     "streamKey": "bolivia",
-    "customVideoUrl": "https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8",
+    "customVideoUrl": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
     "chatMode": "all",
     "officialAnnouncement": "Transmisión Oficial en HD para toda Bolivia por GolBolivia TV.",
     "broadcastMode": "obs_custom",
@@ -28,5 +28,5 @@
     "period": "2T",
     "updatedAt": 1791074988393
   },
-  "updatedAt": 1791074992913
+  "updatedAt": 1791086145731
 }
