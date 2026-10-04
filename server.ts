@@ -2,7 +2,8 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import express, { Request, Response, NextFunction } from 'express';
+import express from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { app, UserRole, SYSTEM_USERS } from './serverApp';
 
 const __filename = fileURLToPath(import.meta.url);

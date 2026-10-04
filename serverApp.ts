@@ -1,9 +1,9 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
@@ -360,6 +360,54 @@ const DATA_DIR = process.env.VERCEL
   : path.resolve(appDirname, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'stream-state.json');
 
+// Global Cloud Object Sync for stateless serverless functions (e.g. Vercel)
+const GLOBAL_STORE_ID = 'ff808181a09d98f701a1054cf26b7060';
+const GLOBAL_STORE_URL = `https://api.restful-api.dev/objects/${GLOBAL_STORE_ID}`;
+
+async function syncWithGlobalCloud(): Promise<void> {
+  try {
+    const res = await fetch(GLOBAL_STORE_URL, {
+      signal: AbortSignal.timeout(2500),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.data) {
+        if (json.data.streamSettings) {
+          state.streamSettings = { ...state.streamSettings, ...json.data.streamSettings };
+        }
+        if (json.data.scoreboard) {
+          state.scoreboard = { ...state.scoreboard, ...json.data.scoreboard };
+        }
+        console.log('[GolBolivia Backend] Sincronización global con la nube exitosa:', state.streamSettings.customVideoUrl);
+      }
+    }
+  } catch (err) {
+    // Non-blocking fallback to local state
+  }
+}
+
+async function pushToGlobalCloud(): Promise<void> {
+  try {
+    const payload = {
+      name: 'golbolivia_stream_state',
+      data: {
+        streamSettings: state.streamSettings,
+        scoreboard: state.scoreboard,
+        updatedAt: Date.now(),
+      },
+    };
+    await fetch(GLOBAL_STORE_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(3500),
+    });
+    console.log('[GolBolivia Backend] Transmisión guardada globalmente en la nube para todos los dispositivos.');
+  } catch (err) {
+    // Local persistence will keep state
+  }
+}
+
 function loadPersistedState(): void {
   try {
     if (!fs.existsSync(DATA_DIR)) {
@@ -382,6 +430,9 @@ function loadPersistedState(): void {
   } catch (err) {
     console.error('[GolBolivia Backend] Error al cargar estado persistido:', err);
   }
+
+  // Also sync with global cloud store
+  syncWithGlobalCloud().catch(() => {});
 }
 
 function persistState(): void {
@@ -399,6 +450,9 @@ function persistState(): void {
   } catch (err) {
     console.error('[GolBolivia Backend] Error al guardar estado en disco:', err);
   }
+
+  // Push to global cloud so all serverless instances across all devices see it
+  pushToGlobalCloud().catch(() => {});
 }
 
 // Cargar estado persistido al arrancar

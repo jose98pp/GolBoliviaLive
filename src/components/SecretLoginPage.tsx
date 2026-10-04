@@ -1302,7 +1302,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         src="/?preview=1"
                         title="GolBolivia Live Output Monitor"
                         className="w-full h-full border-0 select-none bg-black"
-                        allow="autoplay"
+                        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
                       />
 
                       {/* Small Live Tag on Monitor */}
