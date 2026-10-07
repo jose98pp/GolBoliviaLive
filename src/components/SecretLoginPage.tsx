@@ -34,10 +34,9 @@ import {
   Trophy,
   Save,
   Database,
-  Check,
+  Check
 } from 'lucide-react';
 import { AdminVipManagement } from './AdminVipManagement';
-import { MediaMtxTelemetryPanel } from './MediaMtxTelemetryPanel';
 import { MediaMtxGuideModal } from './MediaMtxGuideModal';
 import { EventsAndChatModeration } from './EventsAndChatModeration';
 import { authService, AuthUser, UserRole } from '../services/auth';
@@ -45,9 +44,9 @@ import { apiClient } from '../services/apiClient';
 import { StreamSettings, MatchEvent, LivePoll, NotificationItem, PrivateIngestCredentials } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { RealPresenceStats } from '../hooks/useRealPresence';
-import { FailoverChannelPanel } from './FailoverChannelPanel';
 import { MatchDetailsEditor } from './MatchDetailsEditor';
 import { TeamsManager } from './TeamsManager';
+import { LiveEventsManager } from './LiveEventsManager';
 import { useClubs } from '../hooks/useClubs';
 import { verifyStreamLatency, LatencyTestResult } from '../services/latencyChecker';
 
@@ -668,6 +667,24 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           {activeTab === 'stream' ? (
             /* PESTAÑA 1: TRANSMISIÓN & SEÑALES M3U8 */
             <div className="space-y-6">
+              {/* GESTIÓN MULTI-PARTIDO Y FUENTES UNIVERSALES (CLOUDFLARE · YOUTUBE · KICK) */}
+              <LiveEventsManager
+                onEventSelected={(ev) => {
+                  if (ev.cloudflare?.playbackUrl) {
+                    setVideoUrlInput(ev.cloudflare.playbackUrl);
+                  }
+                  onUpdateStreamSettings({
+                    title: ev.title,
+                    homeClubId: ev.homeTeam,
+                    awayClubId: ev.awayTeam,
+                    isLive: ev.isLive,
+                    tournamentName: ev.tournamentName || streamSettings.tournamentName,
+                    stadiumName: ev.stadiumName || streamSettings.stadiumName,
+                    customVideoUrl: ev.cloudflare?.playbackUrl || streamSettings.customVideoUrl,
+                  });
+                }}
+              />
+
               {/* TARJETA DESTACADA: CONEXIÓN Y GUARDADO DE SEÑAL DE VIDEO REAL */}
               <div className="bg-gradient-to-r from-[#0d162b] via-[#0e1830] to-[#0a1226] border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-emerald-950/20">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
@@ -871,14 +888,435 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   </div>
                 </form>
 
-                </div>
+                {/* SECCIÓN DEDICADA: URL M3U8 DE RESPALDO (LOCALSTORAGE) Y ALTERNADOR DE FUENTES */}
+                <div className="pt-4 border-t-2 border-slate-800/90 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                        <Radio className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <span>Fuente de Respaldo .M3U8 (Para cuando el OBS no esté conectado)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                            <Database className="w-2.5 h-2.5" />
+                            <span>LOCALSTORAGE</span>
+                          </span>
+                        </h3>
+                        <p className="text-xs text-slate-300 mt-0.5">
+                          Ingresa y guarda en tu navegador la URL <code className="text-amber-300 font-mono">.m3u8</code> alternativa para mantener la transmisión viva cuando OBS esté apagado.
+                        </p>
+                      </div>
+                    </div>
 
-              {/* PANEL DE CONMUTACIÓN & CANAL DE RESPALDO M3U8 */}
-              <FailoverChannelPanel
-                streamSettings={streamSettings}
-                onUpdateStreamSettings={onUpdateStreamSettings}
-                onPreviewReload={handleReloadPreview}
-              />
+                    {/* Active Streaming Source Badge */}
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+                      <span className="text-slate-400 text-[11px]">Fuente al aire:</span>
+                      <span className={`font-mono font-bold text-xs flex items-center gap-1.5 ${
+                        streamSettings.activeStreamSource === 'backup'
+                          ? 'text-amber-400'
+                          : streamSettings.activeStreamSource === 'simulation'
+                          ? 'text-blue-400'
+                          : 'text-emerald-400'
+                      }`}>
+                        <span className={`w-2 h-2 rounded-full ${
+                          streamSettings.activeStreamSource === 'backup'
+                            ? 'bg-amber-400 animate-ping'
+                            : streamSettings.activeStreamSource === 'simulation'
+                            ? 'bg-blue-400'
+                            : 'bg-emerald-400 animate-pulse'
+                        }`} />
+                        {streamSettings.activeStreamSource === 'backup'
+                          ? 'RESPALDO M3U8'
+                          : streamSettings.activeStreamSource === 'simulation'
+                          ? 'CANCHA 2D'
+                          : 'LOCAL OBS'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Backup M3U8 Dedicated Input Field */}
+                  <form onSubmit={handleSaveBackupM3u8} className="space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="url"
+                          value={backupM3u8Input}
+                          onChange={(e) => setBackupM3u8Input(e.target.value)}
+                          placeholder="https://servidor-cdn.com/live/respaldo/index.m3u8"
+                          className="w-full bg-[#060a14] border-2 border-amber-500/60 focus:border-amber-400 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                          required
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-amber-950/60 transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                      >
+                        <Save className="w-4 h-4 text-black" />
+                        <span>GUARDAR EN LOCALSTORAGE</span>
+                      </button>
+
+                      {/* Botón de Verificación de Latencia HEAD para CDN de Respaldo */}
+                      <button
+                        type="button"
+                        onClick={() => handleTestLatency('backup')}
+                        disabled={isTestingLatency.backup}
+                        className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-amber-500/40 text-amber-400 hover:text-amber-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shadow-md active:scale-95"
+                        title="Probar latencia y disponibilidad de la CDN de respaldo mediante HTTP HEAD"
+                      >
+                        {isTestingLatency.backup ? (
+                          <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                        ) : (
+                          <Activity className="w-3.5 h-3.5 text-amber-400" />
+                        )}
+                        <span>{isTestingLatency.backup ? 'PROBANDO CDN...' : 'VERIFICAR LATENCIA CDN'}</span>
+                      </button>
+                    </div>
+
+                    {/* Quick Presets for Backup M3U8 */}
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      <span className="text-slate-400 text-[10px] font-medium">Preajustes sugeridos de respaldo:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+                          setBackupM3u8Input(url);
+                          try { localStorage.setItem('golbolivia_backup_m3u8_url', url); } catch {}
+                          onUpdateStreamSettings({ backupVideoUrl: url });
+                          apiClient.updateStreamSettings({ backupVideoUrl: url }).catch(() => {});
+                          setBackupSaveSuccess(true);
+                          setTimeout(() => setBackupSaveSuccess(false), 3000);
+                        }}
+                        className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-850 text-amber-300 border border-amber-500/30 font-medium cursor-pointer transition-colors"
+                      >
+                        Canal 24/7 (Fútbol HD)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = 'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8';
+                          setBackupM3u8Input(url);
+                          try { localStorage.setItem('golbolivia_backup_m3u8_url', url); } catch {}
+                          onUpdateStreamSettings({ backupVideoUrl: url });
+                          apiClient.updateStreamSettings({ backupVideoUrl: url }).catch(() => {});
+                          setBackupSaveSuccess(true);
+                          setTimeout(() => setBackupSaveSuccess(false), 3000);
+                        }}
+                        className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-750 font-medium cursor-pointer transition-colors"
+                      >
+                        Akamai Test HLS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = 'https://live-par-2-abr.livepush.io/live/bigbuckbunny/index.m3u8';
+                          setBackupM3u8Input(url);
+                          try { localStorage.setItem('golbolivia_backup_m3u8_url', url); } catch {}
+                          onUpdateStreamSettings({ backupVideoUrl: url });
+                          apiClient.updateStreamSettings({ backupVideoUrl: url }).catch(() => {});
+                          setBackupSaveSuccess(true);
+                          setTimeout(() => setBackupSaveSuccess(false), 3000);
+                        }}
+                        className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-750 font-medium cursor-pointer transition-colors"
+                      >
+                        LivePush CDN
+                      </button>
+                    </div>
+
+                    {backupSaveSuccess && (
+                      <div className="p-3 bg-amber-950/80 border border-amber-500 rounded-xl text-xs text-amber-200 flex items-center gap-2 shadow-lg animate-pulse">
+                        <Check className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>
+                          <strong>¡URL de respaldo guardada en localStorage y servidor!</strong> Lista para ser emitida cuando el OBS no esté conectado.
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Backup CDN Latency Diagnostic Result */}
+                    {latencyResults.backup && (
+                      <div
+                        className={`p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-lg transition-all ${
+                          latencyResults.backup.ok
+                            ? 'bg-amber-950/70 border-amber-500/60 text-amber-200'
+                            : 'bg-red-950/70 border-red-500/60 text-red-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {latencyResults.backup.ok ? (
+                            <div className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                              <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                            </div>
+                          ) : (
+                            <div className="w-6 h-6 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center shrink-0">
+                              <AlertTriangle className="w-4 h-4 text-red-400" />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-bold flex items-center gap-2">
+                              <span>
+                                {latencyResults.backup.ok
+                                  ? 'CDN de Respaldo HLS en Línea y Lista'
+                                  : 'CDN de Respaldo Sin Respuesta'}
+                              </span>
+                              <span
+                                className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-black ${
+                                  latencyResults.backup.ok
+                                    ? latencyResults.backup.quality === 'ultra-low'
+                                      ? 'bg-emerald-400 text-black'
+                                      : 'bg-amber-400 text-black'
+                                    : 'bg-red-500 text-white'
+                                }`}
+                              >
+                                {latencyResults.backup.ok
+                                  ? `${latencyResults.backup.latencyMs} ms (${latencyResults.backup.quality === 'ultra-low' ? 'Ultra-baja' : 'Buena'})`
+                                  : 'Offline / Error'}
+                              </span>
+                            </p>
+                            <p className="text-[11px] opacity-90 mt-0.5">
+                              {latencyResults.backup.ok
+                                ? `Verificación HTTP ${latencyResults.backup.methodUsed} exitosa (HTTP ${latencyResults.backup.httpStatus}). La lista M3U8 responde adecuadamente para failover inmediato.`
+                                : latencyResults.backup.error ||
+                                  'No se pudo conectar a la URL de respaldo. Comprueba el enlace o elige otro preajuste.'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {new Date(latencyResults.backup.checkedAt).toLocaleTimeString()}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleTestLatency('backup')}
+                            disabled={isTestingLatency.backup}
+                            className="px-2.5 py-1 rounded-lg bg-black/40 hover:bg-black/60 border border-white/10 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                          >
+                            <RefreshCw
+                              className={`w-3 h-3 ${isTestingLatency.backup ? 'animate-spin' : ''}`}
+                            />
+                            <span>Repetir</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </form>
+
+                  {/* BOTONES DEDICADOS PARA ALTERNAR ENTRE FUENTE LOCAL Y FUENTE DE RESPALDO */}
+                  <div className="p-3.5 bg-[#060a14] rounded-xl border border-slate-800 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Alternar Fuente de Streaming en Vivo (1 Clic):</span>
+                      </span>
+
+                      {/* Checkbox: Verificación de Latencia HEAD antes de Conmutar */}
+                      <label className="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer select-none bg-slate-900/90 hover:bg-slate-850 px-2.5 py-1 rounded-lg border border-slate-750 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={verifyBeforeSwitch}
+                          onChange={(e) => setVerifyBeforeSwitch(e.target.checked)}
+                          className="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <span className="flex items-center gap-1">
+                          <Activity className="w-3 h-3 text-emerald-400" />
+                          <span>Verificar latencia HEAD antes de conmutar</span>
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Alerta de Éxito de Conmutación Verificada */}
+                    {switchSuccessToast && (
+                      <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-500/70 text-emerald-200 text-xs flex items-center justify-between gap-2 shadow-lg animate-in fade-in">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>
+                            <strong>¡Transmisión verificada!</strong> El servidor{' '}
+                            {switchSuccessToast.source === 'obs'
+                              ? 'MediaMTX (OBS)'
+                              : 'CDN de Respaldo'}{' '}
+                            respondió al HEAD en{' '}
+                            <strong className="font-mono text-emerald-300">
+                              {switchSuccessToast.latencyMs} ms
+                            </strong>
+                            . Señal en vivo conmutada exitosamente.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSwitchSuccessToast(null)}
+                          className="text-emerald-400 hover:text-white px-2 py-0.5 rounded text-xs font-bold cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    {/* ALERTA DE ADVERTENCIA CUANDO EL FETCH HEAD FALLA ANTES DE FORZAR EL CAMBIO */}
+                    {switchWarning && (
+                      <div className="p-4 rounded-xl bg-red-950/95 border-2 border-red-500 shadow-2xl space-y-3 animate-in fade-in">
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center shrink-0">
+                            <AlertTriangle className="w-5 h-5 text-red-400 animate-bounce" />
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                              <span>⚠️ Servidor Sin Respuesta (Fallo de Verificación HEAD)</span>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-red-500 text-white font-black">
+                                {switchWarning.targetSource === 'obs' ? 'OBS / MediaMTX' : 'CDN Respaldo'}
+                              </span>
+                            </h4>
+                            <p className="text-xs text-red-200 leading-relaxed">
+                              La prueba de latencia (HTTP HEAD) a la URL{' '}
+                              <code className="bg-black/60 px-1.5 py-0.5 rounded font-mono text-red-300 break-all select-all">
+                                {switchWarning.targetUrl || '(URL vacía o no configurada)'}
+                              </code>{' '}
+                              no recibió respuesta positiva del servidor.
+                            </p>
+                            <p className="text-[11px] text-red-300/90">
+                              <strong>Diagnóstico del test:</strong> {switchWarning.result.error}. Si fuerzas la conmutación sin que el servidor esté emitiendo la lista .m3u8, la pantalla de los hinchas quedará en negro.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-red-900/60">
+                          <button
+                            type="button"
+                            onClick={() => setSwitchWarning(null)}
+                            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-750 cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchStreamSource(switchWarning.targetSource)}
+                            disabled={isVerifyingSwitch}
+                            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold flex items-center gap-1.5 border border-slate-700 cursor-pointer"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isVerifyingSwitch ? 'animate-spin' : ''}`} />
+                            <span>Reintentar Ping HEAD</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => executeSwitchStreamSource(switchWarning.targetSource)}
+                            className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white text-xs font-black shadow-lg shadow-red-950 flex items-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            <span>Forzar Cambio de Fuente de Todos Modos</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Alternador Opción 1: Fuente Local OBS Studio */}
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchStreamSource('obs')}
+                        disabled={isVerifyingSwitch}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                          streamSettings.activeStreamSource !== 'backup' && streamSettings.activeStreamSource !== 'simulation'
+                            ? 'bg-gradient-to-r from-emerald-950/80 to-slate-900 border-emerald-500 shadow-lg shadow-emerald-950/40 ring-1 ring-emerald-500/40'
+                            : 'bg-slate-900/80 hover:bg-slate-850 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <Video className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>1. Fuente Local (OBS Studio)</span>
+                          </span>
+
+                          <div className="flex items-center gap-1.5">
+                            {latencyResults.obs && (
+                              <span
+                                className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold flex items-center gap-1 ${
+                                  latencyResults.obs.ok
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                    : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                                }`}
+                              >
+                                <Activity className="w-2.5 h-2.5" />
+                                {latencyResults.obs.ok ? `${latencyResults.obs.latencyMs}ms` : 'Sin Señal'}
+                              </span>
+                            )}
+
+                            {streamSettings.activeStreamSource !== 'backup' && streamSettings.activeStreamSource !== 'simulation' && (
+                              <span className="text-[10px] px-2 py-0.5 rounded font-mono font-black bg-emerald-500 text-black">
+                                AL AIRE
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          {isVerifyingSwitch
+                            ? 'Verificando respuesta HEAD de MediaMTX...'
+                            : 'Transmite la señal en directo desde tu OBS o MediaMTX local.'}
+                        </p>
+                      </button>
+
+                      {/* Alternador Opción 2: Fuente de Respaldo M3U8 */}
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchStreamSource('backup')}
+                        disabled={isVerifyingSwitch}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                          streamSettings.activeStreamSource === 'backup'
+                            ? 'bg-gradient-to-r from-amber-950/80 to-slate-900 border-amber-500 shadow-lg shadow-amber-950/40 ring-1 ring-amber-500/40'
+                            : 'bg-slate-900/80 hover:bg-slate-850 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <Radio className="w-3.5 h-3.5 text-amber-400" />
+                            <span>2. Fuente de Respaldo (.m3u8)</span>
+                          </span>
+
+                          <div className="flex items-center gap-1.5">
+                            {latencyResults.backup && (
+                              <span
+                                className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold flex items-center gap-1 ${
+                                  latencyResults.backup.ok
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                    : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                                }`}
+                              >
+                                <Activity className="w-2.5 h-2.5" />
+                                {latencyResults.backup.ok ? `${latencyResults.backup.latencyMs}ms` : 'Inaccesible'}
+                              </span>
+                            )}
+
+                            {streamSettings.activeStreamSource === 'backup' && (
+                              <span className="text-[10px] px-2 py-0.5 rounded font-mono font-black bg-amber-400 text-black animate-pulse">
+                                AL AIRE
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          {isVerifyingSwitch
+                            ? 'Verificando respuesta HEAD de la CDN...'
+                            : 'Transmite la URL M3U8 de respaldo guardada en localStorage cuando el OBS esté apagado.'}
+                        </p>
+                      </button>
+                    </div>
+
+                    {/* Status Info Footer */}
+                    <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
+                      <span className="text-slate-400 truncate">
+                        Transmitiendo actualmente:{' '}
+                        <strong className="text-white font-mono select-all">
+                          {streamSettings.activeStreamSource === 'backup'
+                            ? `Respaldo M3U8 (${backupM3u8Input || 'Sin URL'})`
+                            : `Local OBS (${streamSettings.customVideoUrl || 'Sin URL'})`}
+                        </strong>
+                      </span>
+                      <span className="text-slate-500">
+                        Cambio en caliente protegido con verificación de latencia HTTP HEAD
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* 1. MONITOR DE SALIDA EN TIEMPO REAL (IFRAME) */}
@@ -1365,322 +1803,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             /* PESTAÑA 5: SUSCRIPCIONES VIP & AUDIENCIA */
             <div className="space-y-6">
               <AdminVipManagement />
-
-              {/* TELEMETRÍA REAL MEDIAMTX PROMETHEUS METRICS */}
-              <MediaMtxTelemetryPanel />
-
-              {/* Encabezado del Tablero de Telemetría */}
-              <div className="bg-gradient-to-r from-[#0c1626] via-[#091220] to-[#070d18] border-2 border-emerald-500/50 rounded-2xl p-5 shadow-2xl shadow-emerald-950/20">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-                      <Activity className="w-5 h-5 animate-pulse" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-base sm:text-lg font-bold text-white font-display">
-                          Consola de Telemetría & Concurrencia de Audiencia
-                        </h2>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                          Solo Administrador
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-300 mt-0.5">
-                        Métricas avanzadas de presencia en la web, eventos de actividad y telemetría de red con <code className="text-emerald-300 font-mono">navigator.connection</code>.
-                      </p>
-                    </div>
-                  </div>
-
-                  {presenceStats && (
-                    <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800">
-                      <button
-                        onClick={() => presenceStats.setAudienceMode('broadcast_calibrated')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                          presenceStats.audienceMode === 'broadcast_calibrated'
-                            ? 'bg-emerald-500 text-black font-bold shadow-md shadow-emerald-950/40'
-                            : 'text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        Modo Partido (14.8k)
-                      </button>
-                      <button
-                        onClick={() => presenceStats.setAudienceMode('strict_local')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                          presenceStats.audienceMode === 'strict_local'
-                            ? 'bg-emerald-500 text-black font-bold shadow-md shadow-emerald-950/40'
-                            : 'text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        Conteo Estricto Real ({presenceStats.localRealTabsCount})
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {presenceStats ? (
-                  <div className="space-y-4">
-                    {/* Tarjetas de Audiencia Activa vs Total */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40">
-                        <div className="flex items-center justify-between text-xs text-emerald-400 mb-1">
-                          <span className="font-bold flex items-center gap-1.5">
-                            <Zap className="w-4 h-4 text-emerald-400" />
-                            Audiencia Activa
-                          </span>
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        </div>
-                        <div className="font-mono text-3xl font-black text-white tracking-tight">
-                          {presenceStats.activeInteracting.toLocaleString()}
-                        </div>
-                        <p className="text-[11px] text-emerald-300 mt-1">
-                          Interactuando (chat, reacciones, votos)
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
-                        <div className="flex items-center justify-between text-xs text-blue-400 mb-1">
-                          <span className="font-bold flex items-center gap-1.5">
-                            <Users className="w-4 h-4 text-blue-400" />
-                            Audiencia Total
-                          </span>
-                          <span className="text-[10px] text-slate-500 font-mono">100% Web</span>
-                        </div>
-                        <div className="font-mono text-3xl font-black text-white tracking-tight">
-                          {presenceStats.totalOnSite.toLocaleString()}
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          Pestañas abiertas en la web y PWA
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
-                        <div className="flex items-center justify-between text-xs text-amber-400 mb-1">
-                          <span className="font-bold flex items-center gap-1.5">
-                            <Clock className="w-4 h-4 text-amber-400" />
-                            Audiencia Pasiva
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
-                            En fondo
-                          </span>
-                        </div>
-                        <div className="font-mono text-3xl font-black text-white tracking-tight">
-                          {presenceStats.passiveListening.toLocaleString()}
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          Pestañas minimizadas o sin interacción
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
-                        <div className="flex items-center justify-between text-xs text-purple-400 mb-1">
-                          <span className="font-bold flex items-center gap-1.5">
-                            <TrendingUp className="w-4 h-4 text-purple-400" />
-                            Pico Concurrente
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono font-bold">
-                            Récord
-                          </span>
-                        </div>
-                        <div className="font-mono text-3xl font-black text-white tracking-tight">
-                          {presenceStats.peakOnSite.toLocaleString()}
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          Mayor concurrencia hoy en la página
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Barra de Proporción Visual */}
-                    <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-emerald-400 font-semibold">
-                          ● {presenceStats.activeInteracting.toLocaleString()} Activos ({presenceStats.activeRatioPercentage}%)
-                        </span>
-                        <span className="text-slate-400 font-medium">
-                          ● {presenceStats.passiveListening.toLocaleString()} Pasivos ({100 - presenceStats.activeRatioPercentage}%)
-                        </span>
-                      </div>
-                      <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden flex">
-                        <div
-                          className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
-                          style={{ width: `${presenceStats.activeRatioPercentage}%` }}
-                        />
-                        <div
-                          className="h-full bg-slate-700 transition-all duration-500"
-                          style={{ width: `${100 - presenceStats.activeRatioPercentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400">Cargando métricas de presencia...</p>
-                )}
-              </div>
-
-              {presenceStats && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Telemetría de Red navigator.connection */}
-                  <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-5 shadow-xl">
-                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
-                      <div className="flex items-center gap-2">
-                        <Signal className="w-4 h-4 text-blue-400" />
-                        <h3 className="text-sm font-bold text-white">
-                          Telemetría de Red del Transmisor (navigator.connection)
-                        </h3>
-                      </div>
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        {presenceStats.networkInfo.supported ? 'API Nativa' : 'Estimación RTT'}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block mb-0.5">Tipo de Red Efectiva</span>
-                        <span className="text-sm font-bold text-white font-mono">{presenceStats.networkInfo.effectiveType}</span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block mb-0.5">Velocidad de Descarga</span>
-                        <span className="text-sm font-bold text-emerald-400 font-mono">{presenceStats.networkInfo.downlinkMbps} Mbps</span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block mb-0.5">Latencia RTT</span>
-                        <span className="text-sm font-bold text-emerald-400 font-mono">{presenceStats.networkInfo.rttMs} ms</span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block mb-0.5">Ahorro de Datos</span>
-                        <span className="text-sm font-bold text-slate-300 font-mono">
-                          {presenceStats.networkInfo.saveData ? 'Activado' : 'Estándar'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <p className="text-[11px] text-slate-400 leading-relaxed">
-                      El navegador monitorea activamente la conexión de red para regular el bitrate HLS del reproductor y evitar desconexiones.
-                    </p>
-                  </div>
-
-                  {/* Desglose de Dispositivos Conectados */}
-                  <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-5 shadow-xl">
-                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="w-4 h-4 text-emerald-400" />
-                        <h3 className="text-sm font-bold text-white">
-                          Dispositivos Conectados en Esta Web
-                        </h3>
-                      </div>
-                      <span className="text-[10px] text-emerald-400 font-mono font-bold">100% golbolivia</span>
-                    </div>
-
-                    <div className="space-y-3 text-xs">
-                      <div>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-white font-medium flex items-center gap-1.5">
-                            <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-                            App Móvil PWA Instalada (Celular)
-                          </span>
-                          <span className="font-mono text-emerald-400 font-bold">
-                            {presenceStats.deviceBreakdown.pwaApp.toLocaleString()} (44%)
-                          </span>
-                        </div>
-                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: '44%' }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-white font-medium flex items-center gap-1.5">
-                            <Smartphone className="w-3.5 h-3.5 text-blue-400" />
-                            Navegador Móvil (Chrome / Safari)
-                          </span>
-                          <span className="font-mono text-blue-400 font-bold">
-                            {presenceStats.deviceBreakdown.mobileBrowser.toLocaleString()} (38%)
-                          </span>
-                        </div>
-                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500 rounded-full" style={{ width: '38%' }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-white font-medium flex items-center gap-1.5">
-                            <Monitor className="w-3.5 h-3.5 text-amber-400" />
-                            Navegador de Escritorio (PC / Mac)
-                          </span>
-                          <span className="font-mono text-amber-400 font-bold">
-                            {presenceStats.deviceBreakdown.desktopBrowser.toLocaleString()} (14%)
-                          </span>
-                        </div>
-                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-amber-500 rounded-full" style={{ width: '14%' }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-white font-medium flex items-center gap-1.5">
-                            <Tv className="w-3.5 h-3.5 text-purple-400" />
-                            Smart TV / Google Cast desde la Web
-                          </span>
-                          <span className="font-mono text-purple-400 font-bold">
-                            {presenceStats.deviceBreakdown.smartTvCast.toLocaleString()} (4%)
-                          </span>
-                        </div>
-                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-purple-500 rounded-full" style={{ width: '4%' }} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Actividad y Sesión del Administrador */}
-              {presenceStats && (
-                <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-5 shadow-xl">
-                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
-                    <div className="flex items-center gap-2">
-                      <Cpu className="w-4 h-4 text-emerald-400" />
-                      <h3 className="text-sm font-bold text-white">
-                        Tu Sesión de Administrador en Este Dispositivo
-                      </h3>
-                    </div>
-                    <span className="text-[10px] text-emerald-400 font-mono">
-                      {presenceStats.currentSession.userActivityStatus}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mb-4">
-                    <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-                      <span className="text-[10px] text-slate-500 block mb-0.5">ID Sesión</span>
-                      <span className="font-mono text-white font-semibold">{presenceStats.currentSession.sessionId}</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-                      <span className="text-[10px] text-slate-500 block mb-0.5">Dispositivo</span>
-                      <span className="font-medium text-white">{presenceStats.currentSession.deviceType}</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-                      <span className="text-[10px] text-slate-500 block mb-0.5">Tiempo en Línea</span>
-                      <span className="font-mono text-emerald-400 font-bold">
-                        {Math.floor(presenceStats.currentSession.watchTimeSeconds / 60)}m {presenceStats.currentSession.watchTimeSeconds % 60}s
-                      </span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-                      <span className="text-[10px] text-slate-500 block mb-0.5">Última Acción</span>
-                      <span className="font-medium text-slate-200">{presenceStats.currentSession.lastInteractionText}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => presenceStats.registerUserInteraction('Clic Administrador')}
-                    className="w-full py-2 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <MousePointerClick className="w-4 h-4" />
-                    <span>Enviar Pulso de Interacción (Verificar Cambio a Estado Activo)</span>
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </main>

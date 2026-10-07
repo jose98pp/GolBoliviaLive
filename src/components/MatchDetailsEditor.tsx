@@ -16,8 +16,6 @@ import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
 
-import { saveStreamSettingsToFirebase } from '../services/firebase';
-
 interface MatchDetailsEditorProps {
   streamSettings: StreamSettings;
   onUpdateStreamSettings: (newSettings: Partial<StreamSettings>) => void;
@@ -104,7 +102,6 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
       // 2. Direct server call ensuring server and cloud persistence
       await apiClient.syncStreamConfig(payload);
-      await saveStreamSettingsToFirebase(payload).catch(() => {});
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 5000);
@@ -316,8 +313,6 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             className="w-full bg-[#060a14] border border-slate-750 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none"
           />
         </div>
-
-
 
         {/* Submit Button & Feedback */}
         <div className="pt-2">

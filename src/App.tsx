@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
+import { UniversalStreamPlayer } from './features/player/UniversalStreamPlayer';
 import { StreamPlayer } from './components/StreamPlayer';
 import { LiveChat } from './components/LiveChat';
 import { MatchStats } from './components/MatchStats';
@@ -13,7 +14,7 @@ import { PushNotificationModal } from './components/PushNotificationModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { ToastNotification } from './components/ToastNotification';
 import { FloatingReactions, FloatingItem } from './components/FloatingReactions';
-import { NotificationItem, StreamSettings, MatchEvent, LivePoll, ChatMessage } from './types/football';
+import { NotificationItem, StreamSettings, MatchEvent, LivePoll, ChatMessage, LiveEvent, StreamProvider } from './types/football';
 import { BOLIVIAN_CLUBS, INITIAL_EVENTS, INITIAL_POLL } from './data/bolivianFootballData';
 import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin } from 'lucide-react';
 import { SecretLoginPage } from './components/SecretLoginPage';
@@ -22,11 +23,14 @@ import { SocialFollowBanner } from './components/SocialFollowBanner';
 import { LiveAudienceModal } from './components/LiveAudienceModal';
 import { useRealPresence } from './hooks/useRealPresence';
 import { apiClient } from './services/apiClient';
+import { LiveEventsShowcase } from './components/LiveEventsShowcase';
+import { getMatchSlug, findEventBySlug } from './utils/slug';
 import {
   subscribeScoreboardFirebase,
   subscribeMatchEventsFirebase,
   subscribeStreamSettingsFirebase,
-  getStreamSettingsFromFirebase
+  getStreamSettingsFromFirebase,
+  DEFAULT_LIVE_EVENTS,
 } from './services/firebase';
 
 export default function App() {
@@ -116,6 +120,12 @@ export default function App() {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
+  // Multi-Provider Live Events (Paso 9 & 10: Cloudflare, YouTube, Kick)
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>(DEFAULT_LIVE_EVENTS);
+  const [activeEventId, setActiveEventId] = useState<string>('partido-001');
+
+  const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || DEFAULT_LIVE_EVENTS[0];
+
   // Authoritative Backend Synchronization: Dedicated Stream Sync, GET /api/live & SSE /api/events
   useEffect(() => {
     // 1. Fetch authoritative initial state from backend
@@ -183,20 +193,19 @@ export default function App() {
       }
     });
 
-    // 4. Real-time Firebase StreamSettings, Scoreboard & Events Push Listener
+    // 4. Real-time Firebase Firestore Push Listeners (Authoritative Cloud State)
     const unsubscribeStreamSettingsFirebase = subscribeStreamSettingsFirebase((firebaseSettings) => {
       if (firebaseSettings && Object.keys(firebaseSettings).length > 0) {
-        setStreamSettings((prev) => {
-          const merged = { ...prev, ...firebaseSettings };
-          try {
-            localStorage.setItem('golbolivia_stream_settings', JSON.stringify(merged));
-            if (merged.customVideoUrl) localStorage.setItem('golbolivia_custom_video_url', merged.customVideoUrl);
-            if (merged.backupVideoUrl) localStorage.setItem('golbolivia_backup_m3u8_url', merged.backupVideoUrl);
-          } catch {}
-          return merged;
-        });
+        setStreamSettings((prev) => ({ ...prev, ...firebaseSettings }));
       }
     });
+
+    // Initial Firestore check to ensure saved settings take precedence
+    getStreamSettingsFromFirebase().then((savedFb) => {
+      if (savedFb && Object.keys(savedFb).length > 0) {
+        setStreamSettings((prev) => ({ ...prev, ...savedFb }));
+      }
+    }).catch(() => {});
 
     const unsubscribeScoreboardFirebase = subscribeScoreboardFirebase((scoreData) => {
       if (scoreData) {
@@ -219,15 +228,89 @@ export default function App() {
       }
     }, 15000);
 
+    // 6. Multi-Provider Live Events subscription (Paso 9 & 10)
+    const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((events) => {
+      if (events && events.length > 0) {
+        setLiveEvents(events);
+      }
+    });
+
+    apiClient.getLiveEvents().then((events) => {
+      if (events && events.length > 0) {
+        setLiveEvents(events);
+      }
+    }).catch(() => {});
+
     return () => {
       unsubscribeStream();
       unsubscribeEvents();
       unsubscribeStreamSettingsFirebase();
       unsubscribeScoreboardFirebase();
       unsubscribeEventsFirebase();
+      unsubscribeMultiLiveEvents();
       clearInterval(heartbeatTimer);
     };
   }, []);
+
+  // Paso 12: Route detection for /live/bolivar-the-strongest, /live/blooming-oriente, etc.
+  useEffect(() => {
+    const handleUrlRoute = () => {
+      if (typeof window === 'undefined') return;
+      const path = window.location.pathname;
+      const search = new URLSearchParams(window.location.search);
+      const matchParam = search.get('match') || search.get('partido');
+
+      let matched: LiveEvent | undefined;
+      if (matchParam) {
+        matched = liveEvents.find((e) => e.id === matchParam || getMatchSlug(e) === matchParam);
+      } else if (path.includes('/live/')) {
+        const slug = path.split('/live/')[1];
+        matched = findEventBySlug(liveEvents, slug);
+      }
+
+      if (matched) {
+        setActiveEventId(matched.id);
+        if (matched.homeScore !== undefined && matched.awayScore !== undefined) {
+          setHomeScore(matched.homeScore);
+          setAwayScore(matched.awayScore);
+        }
+        if (matched.matchMinute !== undefined) {
+          setMatchMinute(matched.matchMinute);
+        }
+      }
+    };
+
+    handleUrlRoute();
+    window.addEventListener('popstate', handleUrlRoute);
+    return () => window.removeEventListener('popstate', handleUrlRoute);
+  }, [liveEvents]);
+
+  const handleSelectMatchEvent = (evt: LiveEvent) => {
+    setActiveEventId(evt.id);
+    const slug = getMatchSlug(evt);
+    if (typeof window !== 'undefined' && window.history) {
+      try {
+        window.history.pushState(null, '', `/live/${slug}`);
+      } catch {}
+    }
+    if (evt.homeScore !== undefined && evt.awayScore !== undefined) {
+      setHomeScore(evt.homeScore);
+      setAwayScore(evt.awayScore);
+    }
+    if (evt.matchMinute !== undefined) {
+      setMatchMinute(evt.matchMinute);
+    }
+    setStreamSettings((prev) => ({
+      ...prev,
+      title: evt.title,
+      homeClubId: evt.homeTeam,
+      awayClubId: evt.awayTeam,
+      isLive: evt.isLive,
+      tournamentName: evt.tournamentName || prev.tournamentName,
+      stadiumName: evt.stadiumName || prev.stadiumName,
+      customVideoUrl: evt.cloudflare?.playbackUrl || prev.customVideoUrl,
+    }));
+  };
 
   // Stream state
   const [isStreamingLive, setIsStreamingLive] = useState(true);
@@ -391,15 +474,13 @@ export default function App() {
   if (isPreviewOnly) {
     return (
       <div className="w-full h-full min-h-screen bg-[#060911] flex items-center justify-center p-0 m-0 overflow-hidden select-none">
-        <StreamPlayer
+        <UniversalStreamPlayer
+          event={currentLiveEvent}
           isTheaterMode={false}
           setIsTheaterMode={() => {}}
-          openObsModal={() => {}}
-          triggerReaction={() => {}}
           homeScore={homeScore}
           awayScore={awayScore}
           matchMinute={matchMinute}
-          streamSettings={streamSettings}
         />
       </div>
     );
@@ -474,6 +555,13 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-5 md:p-6 pb-24 md:pb-8">
         {activeTab === 'stream' && (
           <div className="space-y-4 sm:space-y-5">
+            {/* Paso 12: Portada detecta los partidos en vivo (Bolívar vs The Strongest / Blooming vs Oriente) */}
+            <LiveEventsShowcase
+              events={liveEvents}
+              activeEventId={activeEventId}
+              onSelectEvent={handleSelectMatchEvent}
+            />
+
             {/* Split Grid for Stream & Chat */}
             <div
               className={`grid gap-5 ${
@@ -490,16 +578,47 @@ export default function App() {
                     : 'lg:col-span-8'
                 } w-full`}
               >
-                <StreamPlayer
+                {/* Multi-Match Live Event Selector (Paso 10: partido-001, partido-002) */}
+                <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap hidden sm:inline">
+                    Partidos en vivo:
+                  </span>
+                  {liveEvents.map((evt) => {
+                    const isSelected = evt.id === activeEventId;
+                    const providerEmoji = evt.primaryProvider === 'cloudflare' ? '⚡' : (evt.primaryProvider === 'youtube' ? '🔴' : '🟢');
+                    return (
+                      <button
+                        key={evt.id}
+                        onClick={() => handleSelectMatchEvent(evt)}
+                        className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-slate-800 text-white border-emerald-500/80 shadow-md ring-1 ring-emerald-500/40 font-bold'
+                            : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-850'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                        <span>{evt.title}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-300">
+                          {providerEmoji} {evt.primaryProvider.toUpperCase()}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <UniversalStreamPlayer
+                  event={currentLiveEvent}
                   isTheaterMode={isTheaterMode}
                   setIsTheaterMode={setIsTheaterMode}
-                  openObsModal={() => {}}
-                  triggerReaction={triggerReaction}
                   homeScore={homeScore}
                   awayScore={awayScore}
                   matchMinute={matchMinute}
-                  streamSettings={streamSettings}
                   viewerCount={liveViewerCount}
+                  onProviderChange={(newProv) => {
+                    setLiveEvents((prev) =>
+                      prev.map((e) => (e.id === currentLiveEvent.id ? { ...e, primaryProvider: newProv } : e))
+                    );
+                  }}
                 />
 
                 {/* Mobile View Toggle Buttons: Chat or Stats below the video player */}

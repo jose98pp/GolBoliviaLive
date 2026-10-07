@@ -1,4 +1,4 @@
-import { StreamSettings, MatchEvent, ChatMessage, MatchStats, PublicStreamState, PrivateIngestCredentials, Club } from '../types/football';
+import { StreamSettings, MatchEvent, ChatMessage, MatchStats, PublicStreamState, PrivateIngestCredentials, Club, LiveEvent, StreamProvider } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { authService, AuthUser, UserRole } from './auth';
 import {
@@ -19,6 +19,11 @@ import {
   subscribeStreamSettingsFirebase,
   subscribeScoreboardFirebase,
   logConfirmationToFirebase,
+  saveLiveEventToFirebase,
+  getLiveEventsFromFirebase,
+  subscribeLiveEventsFirebase,
+  deleteLiveEventFromFirebase,
+  DEFAULT_LIVE_EVENTS,
   FIREBASE_PROJECT_ID,
 } from './firebase';
 
@@ -319,7 +324,15 @@ class GolBoliviaApiClient {
         lastKnownSource = newConfig.activeStreamSource;
         lastKnownBackup = newConfig.backupVideoUrl;
         lastKnownPlayback = effectivePlayback;
-        onSync(newConfig);
+        const failoverUpdate: Partial<StreamSettings> = {
+          activeStreamSource: newConfig.activeStreamSource,
+          backupVideoUrl: newConfig.backupVideoUrl,
+          backupChannelName: newConfig.backupChannelName,
+          autoFailoverEnabled: newConfig.autoFailoverEnabled,
+        };
+        if (newConfig.customVideoUrl) failoverUpdate.customVideoUrl = newConfig.customVideoUrl;
+        if (newConfig.broadcastMode) failoverUpdate.broadcastMode = newConfig.broadcastMode;
+        onSync(failoverUpdate);
       }
     };
 
@@ -729,6 +742,76 @@ class GolBoliviaApiClient {
       }
     };
   }
+
+  /**
+   * Multi-provider Live Events API (Paso 9 & 10)
+   */
+  public async getLiveEvents(): Promise<LiveEvent[]> {
+    // 1. Try server endpoint
+    try {
+      const res = await fetch('/api/live-events');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.events) && data.events.length > 0) {
+          return data.events;
+        }
+      }
+    } catch {}
+
+    // 2. Try Firestore
+    try {
+      const fbEvents = await getLiveEventsFromFirebase();
+      if (fbEvents && fbEvents.length > 0) {
+        return fbEvents;
+      }
+    } catch {}
+
+    // 3. Fallback to default sample matches
+    return DEFAULT_LIVE_EVENTS;
+  }
+
+  public async saveLiveEvent(event: LiveEvent): Promise<LiveEvent> {
+    // 1. Save to Firebase Firestore
+    try {
+      await saveLiveEventToFirebase(event);
+    } catch (err) {
+      console.warn('[ApiClient] Error guardando liveEvent en Firebase:', err);
+    }
+
+    // 2. Save to Server API if accessible
+    try {
+      await fetch('/api/live-events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.getAuthHeaders(),
+        },
+        body: JSON.stringify(event),
+      });
+    } catch {}
+
+    return event;
+  }
+
+  public async deleteLiveEvent(eventId: string): Promise<boolean> {
+    try {
+      await deleteLiveEventFromFirebase(eventId);
+    } catch {}
+
+    try {
+      await fetch(`/api/live-events/${encodeURIComponent(eventId)}`, {
+        method: 'DELETE',
+        headers: this.getAuthHeaders(),
+      });
+    } catch {}
+
+    return true;
+  }
+
+  public subscribeMultiLiveEvents(callback: (events: LiveEvent[]) => void): () => void {
+    return subscribeLiveEventsFirebase(callback);
+  }
 }
 
 export const apiClient = new GolBoliviaApiClient();
+

@@ -171,3 +171,32 @@ export interface VipTransaction {
   userNote?: string;
 }
 
+export type StreamProvider = 'cloudflare' | 'youtube' | 'kick';
+
+export interface LiveEvent {
+  id: string;
+  title: string;
+  homeTeam: string;
+  awayTeam: string;
+  isLive: boolean;
+  primaryProvider: StreamProvider;
+  cloudflare?: {
+    liveInputId: string;
+    playbackUrl: string;
+  };
+  youtube?: {
+    videoId: string;
+  };
+  kick?: {
+    channel: string;
+  };
+  fallbackOrder: StreamProvider[];
+  tournamentName?: string;
+  stadiumName?: string;
+  period?: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
+  homeScore?: number;
+  awayScore?: number;
+  matchMinute?: number;
+}
+
+

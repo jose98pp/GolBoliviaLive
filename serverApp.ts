@@ -5,12 +5,16 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { BOLIVIAN_CLUBS } from './src/data/bolivianFootballData';
-import type { Club } from './src/types/football';
+import type { Club, LiveEvent } from './src/types/football';
 import {
   saveStreamSettingsToFirebase,
   getStreamSettingsFromFirebase,
   saveScoreboardToFirebase,
   getClubsFromFirebase,
+  getLiveEventsFromFirebase,
+  saveLiveEventToFirebase,
+  deleteLiveEventFromFirebase,
+  DEFAULT_LIVE_EVENTS,
 } from './src/services/firebase';
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
@@ -25,21 +29,15 @@ app.use(express.json());
 
 // Normalize rewritten URLs from Vercel Serverless Function
 app.use((req: Request, _res: Response, next: NextFunction) => {
-  const forwardedUri = (req.headers['x-forwarded-uri'] || req.headers['x-vercel-original-url']) as string | undefined;
-  if (forwardedUri && typeof forwardedUri === 'string' && forwardedUri.startsWith('/api/')) {
-    req.url = forwardedUri;
+  const xMatched = (req.headers['x-matched-path'] || req.headers['x-vercel-matched-path']) as string | undefined;
+  if (xMatched && typeof xMatched === 'string') {
+    req.url = xMatched;
   } else {
     try {
       const parsed = new URL(req.url, 'http://localhost');
       const pathParam = parsed.searchParams.get('path');
       if (pathParam) {
-        const cleanPath = pathParam.startsWith('/') ? pathParam : `/${pathParam}`;
-        req.url = cleanPath.startsWith('/api/') ? cleanPath : `/api${cleanPath}`;
-      } else {
-        const matched = (req.headers['x-matched-path'] || req.headers['x-vercel-matched-path']) as string | undefined;
-        if (matched && typeof matched === 'string' && matched.startsWith('/api/') && !matched.startsWith('/api/index')) {
-          req.url = matched;
-        }
+        req.url = pathParam.startsWith('/') ? `/api${pathParam}` : `/api/${pathParam}`;
       }
     } catch {}
   }
@@ -314,10 +312,12 @@ interface AppState {
     superChatAmount?: number;
   }>;
   clubs: Record<string, Club>;
+  liveEvents: LiveEvent[];
 }
 
 const state: AppState = {
   clubs: { ...BOLIVIAN_CLUBS },
+  liveEvents: [...DEFAULT_LIVE_EVENTS],
   streamSettings: {
     title: 'Bolívar vs The Strongest - Clásico Paceño N° 234',
     tournamentName: 'Liga Tigo División Profesional - Torneo Clausura',
@@ -441,32 +441,37 @@ function loadPersistedState(): void {
         if (saved.clubs && typeof saved.clubs === 'object') {
           state.clubs = { ...BOLIVIAN_CLUBS, ...saved.clubs };
         }
+        if (Array.isArray(saved.liveEvents) && saved.liveEvents.length > 0) {
+          state.liveEvents = saved.liveEvents;
+        }
         console.log(`[GolBolivia Backend] Estado persistido cargado con éxito desde ${STATE_FILE}`);
+        console.log(`[GolBolivia Backend] Señal activa: ${state.streamSettings.customVideoUrl || '(simulación)'}`);
       }
     }
   } catch (err) {
-    console.error('[GolBolivia Backend] Error al cargar estado persistido desde disco:', err);
+    console.error('[GolBolivia Backend] Error al cargar estado persistido:', err);
   }
 
-  // Sincronizar de forma inmediata con Google Firebase Firestore (Fuente de Verdad en la Nube)
-  getStreamSettingsFromFirebase()
-    .then((fbSettings) => {
-      if (fbSettings && Object.keys(fbSettings).length > 0) {
-        state.streamSettings = { ...state.streamSettings, ...fbSettings };
-        console.log(`[GolBolivia Backend] StreamSettings sincronizado desde Firebase Firestore: ${state.streamSettings.title}`);
-      }
-    })
-    .catch((err) => {
-      console.warn('[GolBolivia Backend] Advertencia al sincronizar Firestore inicial:', err?.message || err);
-    });
+  // Sincronizar en caliente desde Firebase Firestore (fuente en la nube)
+  getStreamSettingsFromFirebase().then((fbSettings) => {
+    if (fbSettings && Object.keys(fbSettings).length > 0) {
+      state.streamSettings = { ...state.streamSettings, ...fbSettings };
+      console.log(`[GolBolivia Backend] Sincronizado desde Firebase Firestore: ${fbSettings.title || ''}`);
+    }
+  }).catch(() => {});
 
-  getClubsFromFirebase()
-    .then((fbClubs) => {
-      if (fbClubs && Object.keys(fbClubs).length > 0) {
-        state.clubs = { ...BOLIVIAN_CLUBS, ...fbClubs };
-      }
-    })
-    .catch(() => {});
+  getClubsFromFirebase().then((fbClubs) => {
+    if (fbClubs && Object.keys(fbClubs).length > 0) {
+      state.clubs = { ...state.clubs, ...fbClubs };
+    }
+  }).catch(() => {});
+
+  getLiveEventsFromFirebase().then((fbEvents) => {
+    if (Array.isArray(fbEvents) && fbEvents.length > 0) {
+      state.liveEvents = fbEvents;
+      console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase: ${fbEvents.length} partidos`);
+    }
+  }).catch(() => {});
 }
 
 function persistState(): void {
@@ -478,17 +483,23 @@ function persistState(): void {
       streamSettings: state.streamSettings,
       scoreboard: state.scoreboard,
       clubs: state.clubs,
+      liveEvents: state.liveEvents,
       updatedAt: Date.now(),
     };
     fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
-    console.log('[GolBolivia Backend] Configuración persistida en disco.');
+    console.log('[GolBolivia Backend] Configuración de transmisión persistida en disco.');
   } catch (err) {
     console.error('[GolBolivia Backend] Error al guardar estado en disco:', err);
   }
 
-  // Guardar siempre copia autoritativa en Google Firebase Firestore
+  // Guardar en la nube (Firebase Firestore)
   saveStreamSettingsToFirebase(state.streamSettings).catch(() => {});
   saveScoreboardToFirebase(state.scoreboard).catch(() => {});
+  if (Array.isArray(state.liveEvents)) {
+    state.liveEvents.forEach((ev) => {
+      saveLiveEventToFirebase(ev).catch(() => {});
+    });
+  }
 }
 
 // Cargar estado persistido al arrancar
@@ -667,11 +678,9 @@ app.get(['/api/events', '/events'], (req: Request, res: Response) => {
 app.get(['/api/live', '/live'], (_req: Request, res: Response) => {
   const publicPayload = getPublicStreamPayload();
   res.json({
-    ...publicPayload,
     live: state.streamSettings.isLive,
     playbackUrl: publicPayload.playbackUrl,
     match: state.streamSettings.title,
-    title: state.streamSettings.title,
     quality: [
       '1080p60 (Full HD 6 Mbps)',
       '720p60 (HD 3 Mbps)',
@@ -797,6 +806,10 @@ app.post(
   requireRoles(['ADMIN', 'TRANSMISOR']),
   (req: Request, res: Response) => {
     const body = req.body || {};
+    state.streamSettings = {
+      ...state.streamSettings,
+      ...body,
+    };
     if (typeof body.title === 'string') state.streamSettings.title = body.title.trim();
     if (typeof body.tournamentName === 'string') state.streamSettings.tournamentName = body.tournamentName.trim();
     if (typeof body.homeClubId === 'string') state.streamSettings.homeClubId = body.homeClubId.trim();
@@ -830,6 +843,100 @@ app.post(
       config: payload,
       streamSettings: payload,
     });
+  }
+);
+
+// 6.5 Multi-Provider Live Events API (Paso 9 & 10: Cloudflare, YouTube, Kick)
+app.get(['/api/live-events', '/live-events'], (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.json({
+    success: true,
+    events: state.liveEvents || DEFAULT_LIVE_EVENTS,
+    updatedAt: Date.now(),
+  });
+});
+
+app.get(['/api/live-events/:id', '/live-events/:id'], (req: Request, res: Response) => {
+  const event = state.liveEvents.find((e) => e.id === req.params.id);
+  if (!event) {
+    res.status(404).json({ error: 'Partido no encontrado' });
+    return;
+  }
+  res.json({ success: true, event });
+});
+
+app.post(
+  ['/api/live-events', '/live-events'],
+  authenticate,
+  requireRoles(['ADMIN', 'TRANSMISOR']),
+  (req: Request, res: Response) => {
+    const raw = req.body;
+    if (!raw || !raw.id || !raw.title) {
+      res.status(400).json({ error: 'id y title son requeridos' });
+      return;
+    }
+
+    // Sanitize to NEVER store or accept stream keys in public event
+    const safeEvent: LiveEvent = {
+      id: String(raw.id).trim(),
+      title: String(raw.title).trim(),
+      homeTeam: String(raw.homeTeam || 'bolivar').trim(),
+      awayTeam: String(raw.awayTeam || 'strongest').trim(),
+      isLive: Boolean(raw.isLive ?? true),
+      primaryProvider: ['cloudflare', 'youtube', 'kick'].includes(raw.primaryProvider)
+        ? raw.primaryProvider
+        : 'cloudflare',
+      cloudflare: raw.cloudflare ? {
+        liveInputId: String(raw.cloudflare.liveInputId || '').trim(),
+        playbackUrl: String(raw.cloudflare.playbackUrl || '').trim(),
+      } : undefined,
+      youtube: raw.youtube ? {
+        videoId: String(raw.youtube.videoId || '').trim(),
+      } : undefined,
+      kick: raw.kick ? {
+        channel: String(raw.kick.channel || '').trim(),
+      } : undefined,
+      fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0
+        ? raw.fallbackOrder
+        : ['cloudflare', 'youtube', 'kick'],
+      tournamentName: raw.tournamentName ? String(raw.tournamentName).trim() : undefined,
+      stadiumName: raw.stadiumName ? String(raw.stadiumName).trim() : undefined,
+      period: raw.period,
+      homeScore: raw.homeScore !== undefined ? Number(raw.homeScore) : undefined,
+      awayScore: raw.awayScore !== undefined ? Number(raw.awayScore) : undefined,
+      matchMinute: raw.matchMinute !== undefined ? Number(raw.matchMinute) : undefined,
+    };
+
+    const existingIndex = state.liveEvents.findIndex((e) => e.id === safeEvent.id);
+    if (existingIndex >= 0) {
+      state.liveEvents[existingIndex] = safeEvent;
+    } else {
+      state.liveEvents.push(safeEvent);
+    }
+
+    persistState();
+    broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
+
+    res.json({
+      success: true,
+      message: `Partido ${safeEvent.title} guardado con éxito.`,
+      event: safeEvent,
+      events: state.liveEvents,
+    });
+  }
+);
+
+app.delete(
+  ['/api/live-events/:id', '/live-events/:id'],
+  authenticate,
+  requireRoles(['ADMIN', 'TRANSMISOR']),
+  (req: Request, res: Response) => {
+    const id = req.params.id;
+    state.liveEvents = state.liveEvents.filter((e) => e.id !== id);
+    persistState();
+    deleteLiveEventFromFirebase(id).catch(() => {});
+    broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
+    res.json({ success: true, message: 'Partido eliminado.', events: state.liveEvents });
   }
 );
 
@@ -1006,7 +1113,7 @@ app.post(
       return;
     }
     const cleanId = String(club.id).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_');
-    const existing: Partial<Club> = state.clubs[cleanId] || {};
+    const existing = state.clubs[cleanId] || {};
     const updatedClub: Club = {
       id: cleanId,
       name: String(club.name).trim(),
@@ -1085,20 +1192,9 @@ app.all('*', (req: Request, res: Response) => {
       'POST /api/auth/login',
       'GET /api/scoreboard',
       'GET /api/health',
-      'GET /api/version',
-    ],
+      'GET /api/version'
+    ]
   });
-});
-
-// Universal Error Handler
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[GolBolivia Server Error]', err);
-  if (!res.headersSent) {
-    res.status(500).json({
-      error: 'Error interno del servidor',
-      message: err?.message || 'Ocurrió un error inesperado',
-    });
-  }
 });
 
 export { app, SYSTEM_USERS };

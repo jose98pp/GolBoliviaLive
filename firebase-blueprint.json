@@ -110,9 +110,37 @@
         "timestamp": { "type": "number" }
       },
       "required": ["action", "operator", "timestamp"]
+    },
+    "LiveEvent": {
+      "title": "LiveEvent",
+      "description": "Evento de partido en vivo con proveedor universal (Cloudflare, YouTube, Kick)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 200 },
+        "homeTeam": { "type": "string", "maxLength": 64 },
+        "awayTeam": { "type": "string", "maxLength": 64 },
+        "isLive": { "type": "boolean" },
+        "primaryProvider": { "type": "string", "enum": ["cloudflare", "youtube", "kick"] },
+        "cloudflare": { "type": "object" },
+        "youtube": { "type": "object" },
+        "kick": { "type": "object" },
+        "fallbackOrder": { "type": "array" },
+        "tournamentName": { "type": "string", "maxLength": 100 },
+        "stadiumName": { "type": "string", "maxLength": 100 },
+        "period": { "type": "string", "maxLength": 20 },
+        "homeScore": { "type": "number" },
+        "awayScore": { "type": "number" },
+        "matchMinute": { "type": "number" }
+      },
+      "required": ["id", "title", "homeTeam", "awayTeam", "isLive", "primaryProvider", "fallbackOrder"]
     }
   },
   "firestore": {
+    "/liveEvents/{eventId}": {
+      "schema": "LiveEvent",
+      "description": "Eventos y partidos de transmisión multi-proveedor (Cloudflare, YouTube, Kick)"
+    },
     "/config/stream_settings": {
       "schema": "StreamSettings",
       "description": "Configuración y URLs de la señal de streaming"

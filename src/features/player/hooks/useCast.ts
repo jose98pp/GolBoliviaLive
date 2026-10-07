@@ -70,7 +70,7 @@ export function useCast(
     // Check Apple AirPlay availability
     const video = videoRef?.current as any;
     if (video) {
-      if (window.WebKitPlaybackTargetAvailabilityEvent) {
+      if ((window as any).WebKitPlaybackTargetAvailabilityEvent) {
         const handleAirPlayAvailability = (event: any) => {
           if (event.availability === 'available') {
             setIsAirPlayAvailable(true);

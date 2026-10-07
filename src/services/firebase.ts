@@ -15,9 +15,10 @@ import {
   limit,
   serverTimestamp,
   Firestore,
+  getDocs,
 } from 'firebase/firestore';
-import { firebaseConfig } from './firebaseConfig';
-import { StreamSettings, MatchEvent, ChatMessage, LivePoll, Club } from '../types/football';
+import firebaseConfig from '../../firebase-applet-config.json';
+import { StreamSettings, MatchEvent, ChatMessage, LivePoll, Club, LiveEvent, StreamProvider } from '../types/football';
 
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -427,3 +428,137 @@ export async function purgeTestConfirmations(): Promise<void> {
     console.warn('[Firebase] Error al purgar confirmaciones de prueba:', err);
   }
 }
+
+/**
+ * 10. MULTI-PROVIDER LIVE EVENTS (Paso 9 & 10: Cloudflare, YouTube, Kick)
+ */
+export const DEFAULT_LIVE_EVENTS: LiveEvent[] = [
+  {
+    id: 'partido-001',
+    title: 'Bolívar vs The Strongest',
+    homeTeam: 'bolivar',
+    awayTeam: 'strongest',
+    isLive: true,
+    primaryProvider: 'cloudflare',
+    cloudflare: {
+      liveInputId: 'fc815c43232145e69e7e59cba627d3fa',
+      playbackUrl: 'https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8',
+    },
+    youtube: {
+      videoId: 'jfKfPfyJRdk',
+    },
+    kick: {
+      channel: 'golbolivia',
+    },
+    fallbackOrder: ['cloudflare', 'youtube', 'kick'],
+    tournamentName: 'Liga Tigo División Profesional - Torneo Clausura',
+    stadiumName: 'Estadio Olímpico Hernando Siles - La Paz',
+    period: '2T',
+    homeScore: 2,
+    awayScore: 1,
+    matchMinute: 75,
+  },
+  {
+    id: 'partido-002',
+    title: 'Blooming vs Oriente',
+    homeTeam: 'blooming',
+    awayTeam: 'oriente',
+    isLive: true,
+    primaryProvider: 'youtube',
+    youtube: {
+      videoId: '5qap5aO4i9A',
+    },
+    kick: {
+      channel: 'golbolivia',
+    },
+    fallbackOrder: ['youtube', 'kick'],
+    tournamentName: 'Clásico Cruceño - Fecha 22',
+    stadiumName: 'Estadio Ramón Tahuichi Aguilera - Santa Cruz',
+    period: '1T',
+    homeScore: 1,
+    awayScore: 1,
+    matchMinute: 38,
+  },
+];
+
+export async function saveLiveEventToFirebase(event: LiveEvent): Promise<void> {
+  const ref = doc(db, 'liveEvents', event.id);
+  // Guarantee no secret keys ever get stored or transmitted here
+  const safePayload: LiveEvent = {
+    id: event.id,
+    title: event.title,
+    homeTeam: event.homeTeam,
+    awayTeam: event.awayTeam,
+    isLive: event.isLive,
+    primaryProvider: event.primaryProvider,
+    cloudflare: event.cloudflare ? {
+      liveInputId: event.cloudflare.liveInputId,
+      playbackUrl: event.cloudflare.playbackUrl,
+    } : undefined,
+    youtube: event.youtube ? {
+      videoId: event.youtube.videoId,
+    } : undefined,
+    kick: event.kick ? {
+      channel: event.kick.channel,
+    } : undefined,
+    fallbackOrder: event.fallbackOrder,
+    tournamentName: event.tournamentName,
+    stadiumName: event.stadiumName,
+    period: event.period,
+    homeScore: event.homeScore,
+    awayScore: event.awayScore,
+    matchMinute: event.matchMinute,
+  };
+  await setDoc(ref, { ...safePayload, updatedAt: Date.now() }, { merge: true });
+}
+
+export async function getLiveEventsFromFirebase(): Promise<LiveEvent[]> {
+  try {
+    const colRef = collection(db, 'liveEvents');
+    const snap = await getDocs(colRef);
+    if (!snap.empty) {
+      const list: LiveEvent[] = [];
+      snap.forEach((d) => list.push(d.data() as LiveEvent));
+      return list;
+    }
+  } catch (err) {
+    console.warn('[Firebase] Error al leer liveEvents:', err);
+  }
+  return DEFAULT_LIVE_EVENTS;
+}
+
+export function subscribeLiveEventsFirebase(
+  callback: (events: LiveEvent[]) => void
+): () => void {
+  try {
+    const colRef = collection(db, 'liveEvents');
+    return onSnapshot(
+      colRef,
+      (snap) => {
+        if (!snap.empty) {
+          const list: LiveEvent[] = [];
+          snap.forEach((d) => list.push(d.data() as LiveEvent));
+          callback(list);
+        } else {
+          callback(DEFAULT_LIVE_EVENTS);
+        }
+      },
+      (err) => {
+        console.warn('[Firebase] Error en snapshot de liveEvents:', err);
+        callback(DEFAULT_LIVE_EVENTS);
+      }
+    );
+  } catch {
+    return () => {};
+  }
+}
+
+export async function deleteLiveEventFromFirebase(eventId: string): Promise<void> {
+  try {
+    const ref = doc(db, 'liveEvents', eventId);
+    await deleteDoc(ref);
+  } catch (err) {
+    console.warn('[Firebase] Error al borrar liveEvent:', err);
+  }
+}
+
