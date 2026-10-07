@@ -14,34 +14,34 @@ import { CastController } from './CastController';
 import { StreamStats } from './StreamStats';
 
 export interface StreamPlayerProps {
-  isTheaterMode: boolean;
-  setIsTheaterMode: (val: boolean | ((prev: boolean) => boolean)) => void;
-  openObsModal: () => void;
-  triggerReaction: (emoji: string) => void;
-  homeScore: number;
-  awayScore: number;
-  matchMinute: number;
+  isTheaterMode?: boolean;
+  setIsTheaterMode?: (val: boolean | ((prev: boolean) => boolean)) => void;
+  openObsModal?: () => void;
+  triggerReaction?: (emoji: string) => void;
+  homeScore?: number;
+  awayScore?: number;
+  matchMinute?: number;
   streamSettings?: StreamSettings;
   viewerCount?: number;
 }
 
 export const StreamPlayer: React.FC<StreamPlayerProps> = ({
-  isTheaterMode,
-  setIsTheaterMode,
-  openObsModal,
-  triggerReaction,
-  homeScore,
-  awayScore,
-  matchMinute,
+  isTheaterMode = false,
+  setIsTheaterMode = () => {},
+  openObsModal = () => {},
+  triggerReaction = () => {},
+  homeScore = 0,
+  awayScore = 0,
+  matchMinute = 0,
   streamSettings,
   viewerCount = 14820,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Playback state
+  // Playback state (audio activo por defecto para transmisiones)
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [isMuted, setIsMuted] = useState<boolean>(true);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
   const [volume, setVolume] = useState<number>(0.85);
 
   // Settings & popovers state
@@ -242,20 +242,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         isCleanScreen={isCleanScreen}
       />
 
-      {/* Failover / Backup Channel Alert Banner — Fades out with controls for clean viewing */}
-      {(failoverBanner || isUsingBackup || streamSettings?.activeStreamSource === 'backup') && (
-        <div
-          className={`absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-3.5 py-1.5 rounded-full bg-amber-950/90 border border-amber-500/70 text-amber-200 text-xs font-mono font-bold flex items-center gap-2 shadow-2xl backdrop-blur-md transition-all duration-300 ${
-            showControls && !isCleanScreen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
-          }`}
-        >
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-          <span>
-            {failoverBanner ||
-              `Canal de Respaldo HLS Activo (${streamSettings?.backupChannelName || 'Señal Alternativa'})`}
-          </span>
-        </div>
-      )}
+
 
       {/* Popovers */}
       <QualitySelector

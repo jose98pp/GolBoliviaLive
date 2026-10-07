@@ -44,25 +44,47 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
 
   // Double tap / click detection state
   const lastTapTimeRef = useRef<number>(0);
+  const lastTouchTimeRef = useRef<number>(0);
   const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [doubleTapFeedback, setDoubleTapFeedback] = useState<'pause' | 'play' | null>(null);
 
-  const hasCustomStream = streamSettings?.activeStreamSource === 'simulation'
-    ? false
-    : Boolean(
-        streamSettings?.activeStreamSource === 'backup'
-          ? (streamSettings?.backupVideoUrl || streamSettings?.customVideoUrl)
-          : (streamSettings?.customVideoUrl || streamSettings?.backupVideoUrl)
-      );
+  const rawStreamUrl = streamSettings?.activeStreamSource === 'backup'
+    ? (streamSettings?.backupVideoUrl || streamSettings?.customVideoUrl)
+    : (streamSettings?.activeStreamSource === 'simulation' ? '' : (streamSettings?.customVideoUrl || streamSettings?.backupVideoUrl));
 
-  // Handle tap / click with double-tap logic for mobile
+  // Determine stream source type cleanly
+  const sourceInfo = React.useMemo(() => {
+    if (!rawStreamUrl || !rawStreamUrl.trim() || streamSettings?.activeStreamSource === 'simulation') {
+      return { type: 'simulation' as const, url: '' };
+    }
+    const clean = rawStreamUrl.trim();
+    const ytMatch = clean.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+    if (ytMatch) {
+      return { type: 'youtube' as const, url: clean, videoId: ytMatch[1] };
+    }
+    const kickMatch = clean.match(/kick\.com\/(?:video\/)?([a-zA-Z0-9_-]+)/);
+    if (kickMatch && !clean.includes('.m3u8')) {
+      return { type: 'kick' as const, url: clean, channel: kickMatch[1] };
+    }
+    return { type: 'hls' as const, url: clean };
+  }, [rawStreamUrl, streamSettings?.activeStreamSource]);
+
+  const hasCustomStream = sourceInfo.type !== 'simulation';
+
+  // Handle tap / click with reliable double-tap logic for mobile devices
   const handleSurfaceTap = (e: React.MouseEvent | React.TouchEvent) => {
-    // Stop propagation so parent containers don't trigger conflicting actions
     const now = Date.now();
+    if (e.type === 'click' && now - lastTouchTimeRef.current < 400) {
+      return;
+    }
+    if (e.type === 'touchend') {
+      lastTouchTimeRef.current = now;
+    }
+
     const timeDelta = now - lastTapTimeRef.current;
     lastTapTimeRef.current = now;
 
-    if (timeDelta < 320) {
+    if (timeDelta < 350 && timeDelta > 30) {
       // DOUBLE TAP / DOUBLE CLICK: Toggle play/pause
       if (singleTapTimerRef.current) {
         clearTimeout(singleTapTimerRef.current);
@@ -84,7 +106,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       singleTapTimerRef.current = setTimeout(() => {
         singleTapTimerRef.current = null;
         onSingleTap();
-      }, 300);
+      }, 280);
     }
   };
 
@@ -221,6 +243,8 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   return (
     <div
       onClick={handleSurfaceTap}
+      onTouchEnd={handleSurfaceTap}
+      style={{ touchAction: 'manipulation' }}
       className={`relative w-full h-full bg-black flex items-center justify-center overflow-hidden select-none group ${
         !showControls ? 'cursor-none' : 'cursor-pointer'
       }`}
@@ -235,16 +259,40 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         style={{ backgroundColor: awayClub.primaryColor }}
       />
 
-      {/* Real Video Element */}
-      <video
-        ref={videoRef}
-        playsInline
-        muted={isMuted}
-        className={`w-full h-full object-contain ${hasCustomStream ? 'block' : 'hidden'}`}
-      />
+      {/* Real Video Element for HLS / Custom Stream */}
+      {sourceInfo.type === 'hls' && (
+        <video
+          ref={videoRef}
+          playsInline
+          muted={isMuted}
+          className="w-full h-full object-contain"
+        />
+      )}
 
-      {/* Fallback Canvas Simulation */}
-      {!hasCustomStream && (
+      {/* YouTube Embedded Stream if configured (unmuted by default) */}
+      {sourceInfo.type === 'youtube' && sourceInfo.videoId && (
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(sourceInfo.videoId)}?autoplay=1&mute=0&playsinline=1&rel=0&modestbranding=1`}
+          className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          allowFullScreen
+          title="Transmisión Oficial"
+        />
+      )}
+
+      {/* Kick Embedded Stream if configured (unmuted by default) */}
+      {sourceInfo.type === 'kick' && sourceInfo.channel && (
+        <iframe
+          src={`https://player.kick.com/${encodeURIComponent(sourceInfo.channel)}?autoplay=true&muted=false`}
+          className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
+          allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+          allowFullScreen
+          title="Transmisión Oficial"
+        />
+      )}
+
+      {/* Fallback Interactive Pitch Simulation */}
+      {sourceInfo.type === 'simulation' && (
         <canvas
           ref={canvasRef}
           width={800}
@@ -253,46 +301,20 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         />
       )}
 
-      {/* TV Corner Badge / Watermark & Scoreboard — Broadcast Style */}
-      <div
-        className={`absolute top-3 left-3 z-15 flex items-center gap-2 pointer-events-none transition-all duration-500 ${
-          showControls && !isCleanScreen ? 'opacity-100 translate-y-0' : 'opacity-85 translate-y-0'
-        }`}
-      >
-        {streamSettings?.overlayScoreboardVisible !== false ? (
-          <div className="flex items-center rounded-lg bg-black/85 backdrop-blur-md border border-white/20 shadow-2xl overflow-hidden font-display text-xs">
-            {/* TV Channel brand */}
-            <div className="bg-red-600 px-2 py-1 flex items-center gap-1 font-bold text-white text-[10px] tracking-wide">
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              <span>GOLBOLIVIA</span>
-            </div>
-            {/* Home Club */}
-            <div className="px-2 py-1 font-bold text-white flex items-center gap-1 bg-slate-900/90 border-r border-slate-700">
-              <span className="text-xs">{homeClub.badgeEmoji}</span>
-              <span className="uppercase text-[11px]">{homeClub.shortName}</span>
-            </div>
-            {/* Score */}
-            <div className="px-2.5 py-1 font-mono font-black text-emerald-400 bg-black/95 text-xs tabular-nums">
-              {homeScore ?? 0} - {awayScore ?? 0}
-            </div>
-            {/* Away Club */}
-            <div className="px-2 py-1 font-bold text-white flex items-center gap-1 bg-slate-900/90 border-l border-slate-700">
-              <span className="uppercase text-[11px]">{awayClub.shortName}</span>
-              <span className="text-xs">{awayClub.badgeEmoji}</span>
-            </div>
-            {/* Minute & Period */}
-            <div className="px-2 py-1 bg-amber-500/20 text-amber-300 font-mono font-bold text-[10px] border-l border-amber-500/30">
-              {matchMinute ?? 0}&apos;
-            </div>
-          </div>
-        ) : (
+      {/* TV Corner Badge / Watermark — Sin marcador en pantalla */}
+      {!isCleanScreen && (
+        <div
+          className={`absolute top-3 left-3 z-15 flex items-center gap-2 pointer-events-none transition-all duration-500 ${
+            showControls ? 'opacity-90 translate-y-0' : 'opacity-70 translate-y-0'
+          }`}
+        >
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-white font-display text-xs font-bold shadow-lg">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <span>GOLBOLIVIA</span>
             <span className="text-[10px] text-amber-400 font-mono">HD</span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Double Tap / Double Click Feedback HUD */}
       {doubleTapFeedback && (
@@ -319,7 +341,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       )}
 
       {/* Big Play Overlay when Paused */}
-      {!isPlaying && (
+      {!isPlaying && !isCleanScreen && (
         <div className="absolute inset-0 z-20 bg-black/45 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-200">
           <button
             onClick={(e) => {

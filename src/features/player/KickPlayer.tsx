@@ -25,9 +25,9 @@ export const KickPlayer: React.FC<KickPlayerProps> = ({
     setIframeKey((prev) => prev + 1);
   };
 
-  // Official Kick player embed URL as documented: https://player.kick.com/TU_USUARIO?autoplay=true&muted=true
+  // Official Kick player embed URL (unmuted by default)
   const embedUrl = channel
-    ? `https://player.kick.com/${encodeURIComponent(channel)}?autoplay=true&muted=true`
+    ? `https://player.kick.com/${encodeURIComponent(channel)}?autoplay=true&muted=false`
     : '';
 
   return (

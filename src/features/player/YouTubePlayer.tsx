@@ -25,9 +25,9 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     setIframeKey((prev) => prev + 1);
   };
 
-  // Embed URL with optimized live parameters
+  // Embed URL with optimized live parameters (unmuted by default)
   const embedUrl = videoId
-    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&enablejsapi=1`
+    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&mute=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1`
     : '';
 
   return (

@@ -111,7 +111,7 @@ export default function App() {
       autoFailoverEnabled: saved.autoFailoverEnabled ?? true,
       chatMode: saved.chatMode || 'all',
       officialAnnouncement: saved.officialAnnouncement || 'Transmisión oficial de GolBolivia Live desde el Hernando Siles.',
-      overlayScoreboardVisible: saved.overlayScoreboardVisible ?? true,
+      overlayScoreboardVisible: saved.overlayScoreboardVisible ?? false,
       lowLatencyMode: saved.lowLatencyMode ?? true,
     };
   });
@@ -365,8 +365,11 @@ export default function App() {
       awayClubId: evt.awayTeam,
       isLive: evt.isLive,
       tournamentName: evt.tournamentName || prev.tournamentName,
-      stadiumName: evt.stadiumName || prev.stadiumName,
-      customVideoUrl: evt.cloudflare?.playbackUrl || prev.customVideoUrl,
+      customVideoUrl:
+        evt.cloudflare?.playbackUrl ||
+        (evt.youtube?.videoId ? `https://www.youtube.com/watch?v=${evt.youtube.videoId}` : '') ||
+        (evt.kick?.channel ? `https://kick.com/${evt.kick.channel}` : '') ||
+        prev.customVideoUrl,
     }));
   };
 
@@ -581,13 +584,14 @@ export default function App() {
   if (isPreviewOnly) {
     return (
       <div className="w-full h-full min-h-screen bg-[#060911] flex items-center justify-center p-0 m-0 overflow-hidden select-none">
-        <UniversalStreamPlayer
-          event={currentLiveEvent}
+        <StreamPlayer
           isTheaterMode={false}
           setIsTheaterMode={() => {}}
           homeScore={homeScore}
           awayScore={awayScore}
           matchMinute={matchMinute}
+          streamSettings={streamSettings}
+          viewerCount={liveViewerCount}
         />
       </div>
     );
@@ -706,13 +710,6 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-5 md:p-6 pb-24 md:pb-8">
         {activeTab === 'stream' && (
           <div className="space-y-4 sm:space-y-5">
-            {/* Paso 12: Portada detecta los partidos en vivo (Bolívar vs The Strongest / Blooming vs Oriente) */}
-            <LiveEventsShowcase
-              events={liveEvents}
-              activeEventId={activeEventId}
-              onSelectEvent={handleSelectMatchEvent}
-            />
-
             {/* Split Grid for Stream & Chat */}
             <div
               className={`grid gap-5 ${
@@ -729,47 +726,42 @@ export default function App() {
                     : 'lg:col-span-8'
                 } w-full`}
               >
-                {/* Multi-Match Live Event Selector (Paso 10: partido-001, partido-002) */}
-                <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap hidden sm:inline">
-                    Partidos en vivo:
-                  </span>
-                  {liveEvents.map((evt) => {
-                    const isSelected = evt.id === activeEventId;
-                    const providerEmoji = evt.primaryProvider === 'cloudflare' ? '⚡' : (evt.primaryProvider === 'youtube' ? '🔴' : '🟢');
-                    return (
-                      <button
-                        key={evt.id}
-                        onClick={() => handleSelectMatchEvent(evt)}
-                        className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-slate-800 text-white border-emerald-500/80 shadow-md ring-1 ring-emerald-500/40 font-bold'
-                            : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-850'
-                        }`}
-                      >
-                        <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                        <span>{evt.title}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-300">
-                          {providerEmoji} {evt.primaryProvider.toUpperCase()}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Clean Multi-Match Selector (Only if multiple live matches exist) */}
+                {liveEvents.length > 1 && (
+                  <div className="mb-2.5 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap hidden sm:inline">
+                      Partidos:
+                    </span>
+                    {liveEvents.map((evt) => {
+                      const isSelected = evt.id === activeEventId;
+                      return (
+                        <button
+                          key={evt.id}
+                          onClick={() => handleSelectMatchEvent(evt)}
+                          className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-slate-800 text-white border-emerald-500/80 shadow-md ring-1 ring-emerald-500/40 font-bold'
+                              : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-850'
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                          <span>{evt.title}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
-                <UniversalStreamPlayer
-                  event={currentLiveEvent}
+                <StreamPlayer
                   isTheaterMode={isTheaterMode}
                   setIsTheaterMode={setIsTheaterMode}
+                  openObsModal={() => {}}
+                  triggerReaction={triggerReaction}
                   homeScore={homeScore}
                   awayScore={awayScore}
                   matchMinute={matchMinute}
+                  streamSettings={streamSettings}
                   viewerCount={liveViewerCount}
-                  onProviderChange={(newProv) => {
-                    setLiveEvents((prev) =>
-                      prev.map((e) => (e.id === currentLiveEvent.id ? { ...e, primaryProvider: newProv } : e))
-                    );
-                  }}
                 />
 
                 {/* Mobile View Toggle Buttons: Chat or Stats below the video player */}
@@ -805,7 +797,7 @@ export default function App() {
                       </span>
                       <span className="font-semibold text-white">{streamSettings.tournamentName}</span>
                       <span className="text-slate-500 hidden sm:inline">·</span>
-                      <span className="text-slate-400 font-mono text-[11px] hidden sm:inline">1080p60 HLS HD</span>
+                      <span className="text-slate-400 font-mono text-[11px] hidden sm:inline">HD</span>
                     </div>
 
                     <div className="flex items-center gap-2">

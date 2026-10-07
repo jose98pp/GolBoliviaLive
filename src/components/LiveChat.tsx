@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Heart, Flame, Trophy, Shield, DollarSign, BarChart2, Smile, Sparkles, Filter, X } from 'lucide-react';
+import { Send, Heart, Flame, Trophy, Shield, DollarSign, BarChart2, Smile, Sparkles, Filter, X, User } from 'lucide-react';
 import { ChatMessage, LivePoll, Club } from '../types/football';
-import { BOLIVIAN_CLUBS, INITIAL_CHAT, INITIAL_POLL } from '../data/bolivianFootballData';
+import { BOLIVIAN_CLUBS, INITIAL_POLL } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
+import { sendChatMessageToFirebase, subscribeChatMessagesFirebase } from '../services/firebase';
 
 interface LiveChatProps {
   onTriggerFloatingReaction: (emoji: string) => void;
@@ -23,7 +24,35 @@ export const LiveChat: React.FC<LiveChatProps> = ({
   onVotePoll,
   viewerCount = 14820,
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_CHAT);
+  // Solo mensajes reales de usuarios que entran a la página (sin generador simulado)
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_real_chat_messages');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      {
+        id: 'welcome-live',
+        sender: 'GolBolivia Live',
+        clubId: 'fbf',
+        text: '¡Bienvenidos al chat oficial! Los mensajes de los hinchas que entran a la página se muestran aquí en vivo.',
+        timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
+        isOfficialRelator: true,
+      },
+    ];
+  });
+
+  const [userNickname, setUserNickname] = useState<string>(() => {
+    try {
+      return localStorage.getItem('golbolivia_user_nickname') || '';
+    } catch {
+      return '';
+    }
+  });
+
   const [inputText, setInputText] = useState('');
   const { clubs } = useClubs();
   const [selectedClubId, setSelectedClubId] = useState<string>('bolivar');
@@ -35,6 +64,19 @@ export const LiveChat: React.FC<LiveChatProps> = ({
   const [poll, setPoll] = useState<LivePoll>(activePoll || INITIAL_POLL);
   const [showPollDrawer, setShowPollDrawer] = useState(false);
 
+  const handleUpdateNickname = (name: string) => {
+    setUserNickname(name);
+    try {
+      localStorage.setItem('golbolivia_user_nickname', name);
+    } catch {}
+  };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('golbolivia_real_chat_messages', JSON.stringify(messages.slice(-60)));
+    } catch {}
+  }, [messages]);
+
   useEffect(() => {
     if (activePoll) {
       setPoll(activePoll);
@@ -45,7 +87,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
-  // BroadcastChannel for cross-tab multi-user sync
+  // BroadcastChannel for cross-tab multi-user sync between visitors
   useEffect(() => {
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -54,7 +96,10 @@ export const LiveChat: React.FC<LiveChatProps> = ({
 
         channel.onmessage = (event) => {
           if (event.data?.type === 'NEW_MESSAGE') {
-            setMessages((prev) => [...prev, event.data.message]);
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === event.data.message.id)) return prev;
+              return [...prev, event.data.message].slice(-60);
+            });
           } else if (event.data?.type === 'POLL_VOTE') {
             setPoll(event.data.poll);
           } else if (event.data?.type === 'REACTION') {
@@ -71,34 +116,19 @@ export const LiveChat: React.FC<LiveChatProps> = ({
     };
   }, [onTriggerFloatingReaction]);
 
-  // Periodic lively stadium chat simulation from various Bolivian departments
+  // Synchronize with real Firebase chat collection for real website visitors
   useEffect(() => {
-    const crowdComments = [
-      { text: '¡Qué tapada de Lampe en el mano a mano!', club: 'bolivar', user: 'CelestePaceño' },
-      { text: '¡Vamos Tigre a meter la pelota al área!', club: 'strongest', user: 'AtigradoDelSur' },
-      { text: 'Increíble el ritmo de juego a 3.600 metros de altura 🦙⚽', club: 'wilstermann', user: 'ValleAlto_Cochalo' },
-      { text: 'Se siente la fiesta del clásico en todo el país 🇧🇴', club: 'oriente', user: 'CambaFutbolero' },
-      { text: 'Entra el Patito Rodríguez, se viene el tercer golazo', club: 'bolivar', user: 'Academia1925' },
-      { text: 'Rescalvo pide concentración en la zaga', club: 'strongest', user: 'GualdinegroPuro' },
-      { text: '¡Partidazo en el Hernando Siles!', club: 'always', user: 'HinchadaAlteña' },
-    ];
-
-    const timer = setInterval(() => {
-      const pick = crowdComments[Math.floor(Math.random() * crowdComments.length)];
-      const newMsg: ChatMessage = {
-        id: 'sim-' + Date.now(),
-        sender: pick.user,
-        clubId: pick.club,
-        text: pick.text,
-        timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => {
-        const updated = [...prev, newMsg];
-        return updated.slice(-60); // keep recent 60
-      });
-    }, 9000);
-
-    return () => clearInterval(timer);
+    const unsub = subscribeChatMessagesFirebase((realMsgs) => {
+      if (realMsgs && realMsgs.length > 0) {
+        setMessages((prev) => {
+          const map = new Map<string, ChatMessage>();
+          prev.forEach((m) => map.set(m.id, m));
+          realMsgs.forEach((m) => map.set(m.id, m));
+          return Array.from(map.values()).slice(-60);
+        });
+      }
+    });
+    return () => unsub();
   }, []);
 
   // Auto-scroll inside chat box ONLY (does NOT scroll the outer browser window)
@@ -112,16 +142,22 @@ export const LiveChat: React.FC<LiveChatProps> = ({
     e.preventDefault();
     if (!inputText.trim()) return;
 
+    const sender = userNickname.trim()
+      ? userNickname.trim()
+      : isVipMember
+        ? 'Miembro Socio Oficial'
+        : `Hincha de ${clubs[selectedClubId]?.shortName || 'Bolivia'}`;
+
     const newMsg: ChatMessage = {
-      id: 'msg-' + Date.now(),
-      sender: isVipMember ? 'Miembro Socio Oficial' : 'Hincha Boliviano',
+      id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      sender,
       clubId: selectedClubId,
       text: inputText.trim(),
       timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
       isVip: isVipMember,
     };
 
-    setMessages((prev) => [...prev, newMsg]);
+    setMessages((prev) => [...prev, newMsg].slice(-60));
     setInputText('');
 
     // Broadcast across tabs
@@ -129,14 +165,27 @@ export const LiveChat: React.FC<LiveChatProps> = ({
       type: 'NEW_MESSAGE',
       message: newMsg,
     });
+
+    // Persist real message to Firebase backend
+    sendChatMessageToFirebase({
+      sender: newMsg.sender,
+      clubId: newMsg.clubId,
+      text: newMsg.text,
+      timestamp: newMsg.timestamp,
+      isVip: newMsg.isVip,
+    }).catch(() => {});
   };
 
   const handleSendSuperChat = () => {
     if (!superChatMessage.trim()) return;
 
+    const sender = userNickname.trim()
+      ? userNickname.trim()
+      : 'Socio Fanático Boliviano';
+
     const superMsg: ChatMessage = {
-      id: 'super-' + Date.now(),
-      sender: 'Socio Fanático Boliviano',
+      id: 'super-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      sender,
       clubId: selectedClubId,
       text: superChatMessage.trim(),
       timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
@@ -144,7 +193,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
       superChatAmount: superChatAmount,
     };
 
-    setMessages((prev) => [...prev, superMsg]);
+    setMessages((prev) => [...prev, superMsg].slice(-60));
     setSuperChatMessage('');
     setShowSuperChatModal(false);
 
@@ -152,6 +201,15 @@ export const LiveChat: React.FC<LiveChatProps> = ({
       type: 'NEW_MESSAGE',
       message: superMsg,
     });
+
+    sendChatMessageToFirebase({
+      sender: superMsg.sender,
+      clubId: superMsg.clubId,
+      text: superMsg.text,
+      timestamp: superMsg.timestamp,
+      isVip: true,
+      superChatAmount: superChatAmount,
+    }).catch(() => {});
 
     onTriggerFloatingReaction('🏆');
   };
@@ -281,9 +339,17 @@ export const LiveChat: React.FC<LiveChatProps> = ({
           </button>
         </div>
 
-        {/* Club Flair selector button */}
-        <div className="flex items-center gap-1">
-          <label htmlFor="club-flair-select" className="text-[10px] text-slate-500 hidden sm:inline">Tu Club:</label>
+        {/* Nickname & Club Flair selector for real visitors */}
+        <div className="flex items-center gap-1.5">
+          <input
+            type="text"
+            value={userNickname}
+            onChange={(e) => handleUpdateNickname(e.target.value)}
+            placeholder="Tu apodo..."
+            maxLength={18}
+            className="w-20 sm:w-24 bg-slate-900/90 text-slate-200 placeholder:text-slate-500 text-[10px] rounded px-1.5 py-0.5 border border-slate-700 focus:outline-none focus:border-emerald-500 transition-colors"
+            title="Tu nombre o apodo en el chat"
+          />
           <select
             id="club-flair-select"
             value={selectedClubId}

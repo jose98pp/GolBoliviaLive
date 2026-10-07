@@ -136,7 +136,7 @@ class GolBoliviaApiClient {
           broadcastMode: (localSettings.broadcastMode as any) || (localObsUrl ? 'obs_custom' : 'simulation'),
           chatMode: (localSettings.chatMode as any) || 'all',
           officialAnnouncement: localSettings.officialAnnouncement || 'Transmisión oficial de GolBolivia Live.',
-          overlayScoreboardVisible: localSettings.overlayScoreboardVisible ?? true,
+          overlayScoreboardVisible: localSettings.overlayScoreboardVisible ?? false,
           lowLatencyMode: localSettings.lowLatencyMode ?? true,
         },
         scoreboard: {

@@ -37,7 +37,7 @@ function backendRequest(url: string, method = 'GET', headers: Record<string, str
       header: () => {},
     };
     try {
-      handler(req as any, res as any);
+      (handler as any)(req as any, res as any);
     } catch (e: any) {
       resolve({ status: 500, data: { error: e.message } });
     }

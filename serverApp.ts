@@ -1229,10 +1229,10 @@ app.get(['/api/version', '/version'], (_req: Request, res: Response) => {
   });
 });
 
-// Universal 404 Handler for unmatched routes
-app.all('*', (req: Request, res: Response) => {
+// Universal 404 Handler for unmatched API routes
+app.all('/api/*', (req: Request, res: Response) => {
   res.status(404).json({
-    error: `Ruta no encontrada: ${req.method} ${req.originalUrl || req.url}`,
+    error: `Ruta de API no encontrada: ${req.method} ${req.originalUrl || req.url}`,
     availableEndpoints: [
       'GET /api/live',
       'GET /api/streams',
