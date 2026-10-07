@@ -19,6 +19,8 @@ import { apiClient } from '../services/apiClient';
 interface MatchDetailsEditorProps {
   streamSettings: StreamSettings;
   onUpdateStreamSettings: (newSettings: Partial<StreamSettings>) => void;
+  activeEventId?: string;
+  onUpdateLiveEvent?: (eventData: Partial<any>) => void;
 }
 
 const TOURNAMENT_PRESETS = [
@@ -33,6 +35,8 @@ const TOURNAMENT_PRESETS = [
 export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   streamSettings,
   onUpdateStreamSettings,
+  activeEventId,
+  onUpdateLiveEvent,
 }) => {
   const [title, setTitle] = useState(streamSettings.title || '');
   const [tournamentName, setTournamentName] = useState(streamSettings.tournamentName || '');
@@ -45,21 +49,25 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
 
   const { clubs } = useClubs();
 
-  // Sync internal state when external props change (guard against empty overwrites)
+  // Sync internal state when external props change ONLY if the user has NOT started editing
   useEffect(() => {
-    if (streamSettings.title) setTitle(streamSettings.title);
-    if (streamSettings.tournamentName) setTournamentName(streamSettings.tournamentName);
-    if (streamSettings.homeClubId) setHomeClubId(streamSettings.homeClubId);
-    if (streamSettings.awayClubId) setAwayClubId(streamSettings.awayClubId);
-    if (streamSettings.stadiumName) setStadiumName(streamSettings.stadiumName);
-    if (streamSettings.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
-    if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
-  }, [streamSettings]);
+    if (!isDirty) {
+      if (streamSettings.title) setTitle(streamSettings.title);
+      if (streamSettings.tournamentName) setTournamentName(streamSettings.tournamentName);
+      if (streamSettings.homeClubId) setHomeClubId(streamSettings.homeClubId);
+      if (streamSettings.awayClubId) setAwayClubId(streamSettings.awayClubId);
+      if (streamSettings.stadiumName) setStadiumName(streamSettings.stadiumName);
+      if (streamSettings.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
+      if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
+    }
+  }, [streamSettings, isDirty]);
 
   const handleGenerateTitle = () => {
+    setIsDirty(true);
     const home = clubs[homeClubId]?.name || 'Local';
     const away = clubs[awayClubId]?.name || 'Visitante';
     const generated = `${home} vs ${away} — Fútbol Boliviano en Vivo`;
@@ -67,6 +75,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   };
 
   const handleAutofillStadiumFromHomeClub = () => {
+    setIsDirty(true);
     const club = clubs[homeClubId];
     if (club) {
       setStadiumName(`${club.stadium} - ${club.city}`);
@@ -75,6 +84,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   };
 
   const handleSwapClubs = () => {
+    setIsDirty(true);
     const tempHome = homeClubId;
     setHomeClubId(awayClubId);
     setAwayClubId(tempHome);
@@ -97,12 +107,49 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     };
 
     try {
-      // 1. Update state in parent and save locally
+      // 1. Immediately persist to localStorage
+      try {
+        const raw = localStorage.getItem('golbolivia_stream_settings');
+        const existing = raw ? JSON.parse(raw) : {};
+        localStorage.setItem('golbolivia_stream_settings', JSON.stringify({ ...existing, ...payload }));
+      } catch {}
+
+      // 2. Update parent stream settings
       onUpdateStreamSettings(payload);
 
-      // 2. Direct server call ensuring server and cloud persistence
+      // 3. Update active live event if callback is provided
+      if (onUpdateLiveEvent) {
+        onUpdateLiveEvent({
+          title: payload.title,
+          homeTeam: payload.homeClubId,
+          awayTeam: payload.awayClubId,
+          tournamentName: payload.tournamentName,
+          stadiumName: payload.stadiumName,
+        });
+      }
+
+      // 4. Update and persist active live event directly via apiClient
+      try {
+        const evts = await apiClient.getLiveEvents();
+        const activeId = activeEventId || 'partido-001';
+        const targetEvt = evts.find((e) => e.id === activeId) || evts[0];
+        if (targetEvt) {
+          const updatedEvt = {
+            ...targetEvt,
+            title: payload.title || targetEvt.title,
+            homeTeam: payload.homeClubId || targetEvt.homeTeam,
+            awayTeam: payload.awayClubId || targetEvt.awayTeam,
+            tournamentName: payload.tournamentName || targetEvt.tournamentName,
+            stadiumName: payload.stadiumName || targetEvt.stadiumName,
+          };
+          await apiClient.saveLiveEvent(updatedEvt);
+        }
+      } catch {}
+
+      // 5. Direct server call ensuring server and cloud persistence
       await apiClient.syncStreamConfig(payload);
 
+      setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 5000);
     } catch (err: any) {
@@ -160,7 +207,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           <input
             type="text"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setIsDirty(true);
+            }}
             placeholder="Ej: Bolívar vs The Strongest - Clásico Paceño N° 234"
             className="w-full bg-[#060a14] border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white font-semibold placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
             required
@@ -175,7 +225,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           <input
             type="text"
             value={tournamentName}
-            onChange={(e) => setTournamentName(e.target.value)}
+            onChange={(e) => {
+              setTournamentName(e.target.value);
+              setIsDirty(true);
+            }}
             placeholder="Ej: Liga Tigo División Profesional - Torneo Clausura"
             className="w-full bg-[#060a14] border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder:text-slate-600 focus:outline-none"
             required
@@ -187,7 +240,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               <button
                 key={preset}
                 type="button"
-                onClick={() => setTournamentName(preset)}
+                onClick={() => {
+                  setTournamentName(preset);
+                  setIsDirty(true);
+                }}
                 className={`text-[10px] px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${
                   tournamentName === preset
                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
@@ -226,7 +282,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               </label>
               <select
                 value={homeClubId}
-                onChange={(e) => setHomeClubId(e.target.value)}
+                onChange={(e) => {
+                  setHomeClubId(e.target.value);
+                  setIsDirty(true);
+                }}
                 className="w-full bg-[#060a14] border border-sky-500/40 focus:border-sky-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
               >
                 {Object.values(clubs).map((c) => (
@@ -244,7 +303,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               </label>
               <select
                 value={awayClubId}
-                onChange={(e) => setAwayClubId(e.target.value)}
+                onChange={(e) => {
+                  setAwayClubId(e.target.value);
+                  setIsDirty(true);
+                }}
                 className="w-full bg-[#060a14] border border-amber-500/40 focus:border-amber-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
               >
                 {Object.values(clubs).map((c) => (
@@ -276,7 +338,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             <input
               type="text"
               value={stadiumName}
-              onChange={(e) => setStadiumName(e.target.value)}
+              onChange={(e) => {
+                setStadiumName(e.target.value);
+                setIsDirty(true);
+              }}
               placeholder="Ej: Estadio Hernando Siles - La Paz"
               className="w-full bg-[#060a14] border border-slate-750 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none"
               required
@@ -291,7 +356,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             <input
               type="number"
               value={altitudeMeters}
-              onChange={(e) => setAltitudeMeters(Number(e.target.value))}
+              onChange={(e) => {
+                setAltitudeMeters(Number(e.target.value));
+                setIsDirty(true);
+              }}
               placeholder="3637"
               className="w-full bg-[#060a14] border border-slate-750 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
               required
@@ -308,7 +376,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           <input
             type="text"
             value={officialAnnouncement}
-            onChange={(e) => setOfficialAnnouncement(e.target.value)}
+            onChange={(e) => {
+              setOfficialAnnouncement(e.target.value);
+              setIsDirty(true);
+            }}
             placeholder="Ej: Transmisión Oficial en HD para toda Bolivia por GolBolivia TV."
             className="w-full bg-[#060a14] border border-slate-750 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none"
           />

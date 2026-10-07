@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LiveEvent, StreamProvider } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { apiClient } from '../services/apiClient';
@@ -37,12 +37,23 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
   const currentEvent = events.find((e) => e.id === selectedId) || events[0] || DEFAULT_LIVE_EVENTS[0];
 
   const [formData, setFormData] = useState<LiveEvent>({ ...currentEvent });
+  const prevSelectedIdRef = useRef(selectedId);
+  const isDirtyRef = useRef(false);
 
-  // Sync formData when selected event changes or events list updates
+  // Sync formData when selected event changes, protecting user edits
   useEffect(() => {
-    const found = events.find((e) => e.id === selectedId);
-    if (found) {
-      setFormData({ ...found });
+    if (prevSelectedIdRef.current !== selectedId) {
+      prevSelectedIdRef.current = selectedId;
+      isDirtyRef.current = false;
+      const found = events.find((e) => e.id === selectedId);
+      if (found) {
+        setFormData({ ...found });
+      }
+    } else if (!isDirtyRef.current) {
+      const found = events.find((e) => e.id === selectedId);
+      if (found) {
+        setFormData((prev) => ({ ...found, ...prev }));
+      }
     }
   }, [selectedId, events]);
 
@@ -155,9 +166,14 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
 
       await apiClient.saveLiveEvent(sanitized);
 
-      setEvents((prev) =>
-        prev.map((ev) => (ev.id === sanitized.id ? sanitized : ev))
-      );
+      isDirtyRef.current = false;
+      setEvents((prev) => {
+        const updated = prev.map((ev) => (ev.id === sanitized.id ? sanitized : ev));
+        try {
+          localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
 
       setSaveSuccessMessage(`¡Partido "${sanitized.title}" guardado y sincronizado con éxito!`);
       if (onEventSelected) onEventSelected(sanitized);

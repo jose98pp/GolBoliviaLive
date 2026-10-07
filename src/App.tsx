@@ -121,7 +121,16 @@ export default function App() {
   }, [sessionId]);
 
   // Multi-Provider Live Events (Paso 9 & 10: Cloudflare, YouTube, Kick)
-  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>(DEFAULT_LIVE_EVENTS);
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_live_events');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_LIVE_EVENTS;
+  });
   const [activeEventId, setActiveEventId] = useState<string>('partido-001');
 
   const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || DEFAULT_LIVE_EVENTS[0];
@@ -253,6 +262,7 @@ export default function App() {
   }, []);
 
   // Paso 12: Route detection for /live/bolivar-the-strongest, /live/blooming-oriente, etc.
+  const prevActiveEventIdRef = useRef<string>(activeEventId);
   useEffect(() => {
     const handleUrlRoute = () => {
       if (typeof window === 'undefined') return;
@@ -269,13 +279,17 @@ export default function App() {
       }
 
       if (matched) {
+        const isSwitchingMatch = prevActiveEventIdRef.current !== matched.id;
+        prevActiveEventIdRef.current = matched.id;
         setActiveEventId(matched.id);
-        if (matched.homeScore !== undefined && matched.awayScore !== undefined) {
-          setHomeScore(matched.homeScore);
-          setAwayScore(matched.awayScore);
-        }
-        if (matched.matchMinute !== undefined) {
-          setMatchMinute(matched.matchMinute);
+        if (isSwitchingMatch) {
+          if (matched.homeScore !== undefined && matched.awayScore !== undefined) {
+            setHomeScore(matched.homeScore);
+            setAwayScore(matched.awayScore);
+          }
+          if (matched.matchMinute !== undefined) {
+            setMatchMinute(matched.matchMinute);
+          }
         }
       }
     };
@@ -333,9 +347,36 @@ export default function App() {
   };
 
   // Match live score & events
-  const [homeScore, setHomeScore] = useState(2);
-  const [awayScore, setAwayScore] = useState(1);
-  const [matchMinute, setMatchMinute] = useState(78);
+  const [homeScore, setHomeScore] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_scoreboard');
+      if (saved) {
+        const val = JSON.parse(saved).homeScore;
+        if (typeof val === 'number') return val;
+      }
+    } catch {}
+    return 2;
+  });
+  const [awayScore, setAwayScore] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_scoreboard');
+      if (saved) {
+        const val = JSON.parse(saved).awayScore;
+        if (typeof val === 'number') return val;
+      }
+    } catch {}
+    return 1;
+  });
+  const [matchMinute, setMatchMinute] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_scoreboard');
+      if (saved) {
+        const val = JSON.parse(saved).matchMinute;
+        if (typeof val === 'number') return val;
+      }
+    } catch {}
+    return 78;
+  });
   const [events, setEvents] = useState<MatchEvent[]>(INITIAL_EVENTS);
   const [activePoll, setActivePoll] = useState<LivePoll>(INITIAL_POLL);
 
@@ -414,6 +455,28 @@ export default function App() {
       } catch {}
       return updated;
     });
+
+    // Synchronize current liveEvent in liveEvents array
+    setLiveEvents((prev) => {
+      const updated = prev.map((ev) =>
+        ev.id === activeEventId
+          ? {
+              ...ev,
+              title: newSettings.title || ev.title,
+              homeTeam: newSettings.homeClubId || ev.homeTeam,
+              awayTeam: newSettings.awayClubId || ev.awayTeam,
+              tournamentName: newSettings.tournamentName || ev.tournamentName,
+              stadiumName: newSettings.stadiumName || ev.stadiumName,
+              period: newSettings.period || ev.period,
+            }
+          : ev
+      );
+      try {
+        localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
     // Push authoritative global update to dedicated backend endpoint & Firebase
     apiClient.syncStreamConfig(newSettings).catch((err) => {
       console.error('Error al sincronizar señal global:', err);
@@ -495,14 +558,52 @@ export default function App() {
         homeScore={homeScore}
         awayScore={awayScore}
         matchMinute={matchMinute}
+        activeEventId={activeEventId}
         onUpdateScore={(h, a) => {
           setHomeScore(h);
           setAwayScore(a);
-          apiClient.updateScoreboard({ homeScore: h, awayScore: a }).catch(() => {});
+          try {
+            const sb = { homeScore: h, awayScore: a, matchMinute, period: streamSettings.period };
+            localStorage.setItem('golbolivia_scoreboard', JSON.stringify(sb));
+          } catch {}
+          setLiveEvents((prev) => {
+            const updated = prev.map((ev) =>
+              ev.id === activeEventId ? { ...ev, homeScore: h, awayScore: a } : ev
+            );
+            try {
+              localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
+          apiClient.updateScoreboard({ homeScore: h, awayScore: a, activeEventId }).catch(() => {});
         }}
         onUpdateMinute={(m) => {
           setMatchMinute(m);
-          apiClient.updateScoreboard({ matchMinute: m }).catch(() => {});
+          try {
+            const sb = { homeScore, awayScore, matchMinute: m, period: streamSettings.period };
+            localStorage.setItem('golbolivia_scoreboard', JSON.stringify(sb));
+          } catch {}
+          setLiveEvents((prev) => {
+            const updated = prev.map((ev) =>
+              ev.id === activeEventId ? { ...ev, matchMinute: m } : ev
+            );
+            try {
+              localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
+          apiClient.updateScoreboard({ matchMinute: m, activeEventId }).catch(() => {});
+        }}
+        onUpdateLiveEvent={(data) => {
+          setLiveEvents((prev) => {
+            const updated = prev.map((ev) =>
+              ev.id === activeEventId ? { ...ev, ...data } : ev
+            );
+            try {
+              localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
         }}
         onAddMatchEvent={handleAddMatchEvent}
         onDispatchPushNotification={(notif) => {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { LiveEvent } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
+import { useClubs } from '../hooks/useClubs';
 import { getMatchSlug } from '../utils/slug';
 import { Zap, Tv, Radio, Play, ChevronRight, Activity, Flame, Shield } from 'lucide-react';
 
@@ -15,6 +16,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
   activeEventId,
   onSelectEvent,
 }) => {
+  const { clubs } = useClubs();
   // Paso 12: La portada consulta liveEvents where isLive == true
   const liveMatches = events.filter((e) => e.isLive);
   const displayMatches = liveMatches.length > 0 ? liveMatches : events;
@@ -45,8 +47,8 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
         {displayMatches.map((event) => {
           const isSelected = event.id === activeEventId;
           const slug = getMatchSlug(event);
-          const homeClub = BOLIVIAN_CLUBS[event.homeTeam];
-          const awayClub = BOLIVIAN_CLUBS[event.awayTeam];
+          const homeClub = clubs[event.homeTeam] || BOLIVIAN_CLUBS[event.homeTeam];
+          const awayClub = clubs[event.awayTeam] || BOLIVIAN_CLUBS[event.awayTeam];
 
           // Provider info and styling
           const getProviderBadge = () => {

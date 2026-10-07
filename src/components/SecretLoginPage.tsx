@@ -41,7 +41,7 @@ import { MediaMtxGuideModal } from './MediaMtxGuideModal';
 import { EventsAndChatModeration } from './EventsAndChatModeration';
 import { authService, AuthUser, UserRole } from '../services/auth';
 import { apiClient } from '../services/apiClient';
-import { StreamSettings, MatchEvent, LivePoll, NotificationItem, PrivateIngestCredentials } from '../types/football';
+import { StreamSettings, MatchEvent, LiveEvent, LivePoll, NotificationItem, PrivateIngestCredentials } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { RealPresenceStats } from '../hooks/useRealPresence';
 import { MatchDetailsEditor } from './MatchDetailsEditor';
@@ -65,6 +65,8 @@ interface SecretLoginPageProps {
   onClearChat: () => void;
   onReturnToPublic: () => void;
   presenceStats?: RealPresenceStats;
+  activeEventId?: string;
+  onUpdateLiveEvent?: (event: Partial<LiveEvent>) => void;
 }
 
 export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
@@ -82,6 +84,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   onClearChat,
   onReturnToPublic,
   presenceStats,
+  activeEventId,
+  onUpdateLiveEvent,
 }) => {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => authService.getUser());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated());
@@ -444,8 +448,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
     }
   };
 
-  const homeClub = BOLIVIAN_CLUBS[streamSettings.homeClubId] || BOLIVIAN_CLUBS.bolivar;
-  const awayClub = BOLIVIAN_CLUBS[streamSettings.awayClubId] || BOLIVIAN_CLUBS.strongest;
+  const homeClub = clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId] || BOLIVIAN_CLUBS.bolivar;
+  const awayClub = clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId] || BOLIVIAN_CLUBS.strongest;
 
   const [isSavingFirebase, setIsSavingFirebase] = useState(false);
   const [firebaseSavedBanner, setFirebaseSavedBanner] = useState<string | null>(null);
@@ -669,6 +673,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             <div className="space-y-6">
               {/* GESTIÓN MULTI-PARTIDO Y FUENTES UNIVERSALES (CLOUDFLARE · YOUTUBE · KICK) */}
               <LiveEventsManager
+                activeEventId={activeEventId}
                 onEventSelected={(ev) => {
                   if (ev.cloudflare?.playbackUrl) {
                     setVideoUrlInput(ev.cloudflare.playbackUrl);
@@ -682,6 +687,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     stadiumName: ev.stadiumName || streamSettings.stadiumName,
                     customVideoUrl: ev.cloudflare?.playbackUrl || streamSettings.customVideoUrl,
                   });
+                  if (ev.homeScore !== undefined && ev.awayScore !== undefined) {
+                    onUpdateScore(ev.homeScore, ev.awayScore);
+                  }
+                  if (ev.matchMinute !== undefined) {
+                    onUpdateMinute(ev.matchMinute);
+                  }
                 }}
               />
 
@@ -1772,6 +1783,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <MatchDetailsEditor
                 streamSettings={streamSettings}
                 onUpdateStreamSettings={onUpdateStreamSettings}
+                activeEventId={activeEventId}
+                onUpdateLiveEvent={onUpdateLiveEvent}
               />
             </div>
           ) : activeTab === 'teams' ? (
