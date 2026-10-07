@@ -1,10 +1,10 @@
 {
   "streamSettings": {
-    "title": "Oriente Petrolero vs U de vinto",
-    "tournamentName": "Copa Paceña",
-    "homeClubId": "oriente",
-    "awayClubId": "u_vinto",
-    "stadiumName": "Estadio Olímpico Hernando Siles - La Paz",
+    "title": "Wilstermann vs Aurora - Clasico Cochabambino",
+    "tournamentName": "División Profesional de Bolivia",
+    "homeClubId": "bolivar",
+    "awayClubId": "strongest",
+    "stadiumName": "Estadio Olímpico Hernando Siles",
     "altitudeMeters": 3637,
     "period": "1T",
     "isLive": true,
@@ -39,7 +39,7 @@
     "awayScore": 0,
     "matchMinute": 0,
     "period": "2T",
-    "updatedAt": 1791412648752
+    "updatedAt": 1791416736338
   },
   "clubs": {
     "bolivar": {
@@ -238,9 +238,9 @@
   "liveEvents": [
     {
       "id": "partido-001",
-      "title": "Oriente Petrolero vs U de vinto",
-      "homeTeam": "oriente",
-      "awayTeam": "u_vinto",
+      "title": "Wilstermann vs Aurora - Clasico Cochabambino",
+      "homeTeam": "bolivar",
+      "awayTeam": "strongest",
       "isLive": true,
       "primaryProvider": "kick",
       "cloudflare": {
@@ -258,13 +258,42 @@
         "cloudflare",
         "youtube"
       ],
-      "tournamentName": "Copa Paceña",
-      "stadiumName": "Estadio Olímpico Hernando Siles - La Paz",
+      "tournamentName": "División Profesional de Bolivia",
+      "stadiumName": "Estadio Olímpico Hernando Siles",
+      "period": "1T",
+      "homeScore": 0,
+      "awayScore": 0,
+      "matchMinute": 0
+    },
+    {
+      "id": "partido-002",
+      "title": "Wilstermann vs Aurora - Clasico Cochabambino",
+      "homeTeam": "bolivar",
+      "awayTeam": "strongest",
+      "isLive": true,
+      "primaryProvider": "kick",
+      "cloudflare": {
+        "liveInputId": "",
+        "playbackUrl": ""
+      },
+      "youtube": {
+        "videoId": ""
+      },
+      "kick": {
+        "channel": "josecpp98"
+      },
+      "fallbackOrder": [
+        "kick",
+        "cloudflare",
+        "youtube"
+      ],
+      "tournamentName": "División Profesional de Bolivia",
+      "stadiumName": "Estadio Olímpico Hernando Siles",
       "period": "1T",
       "homeScore": 0,
       "awayScore": 0,
       "matchMinute": 0
     }
   ],
-  "updatedAt": 1791413326350
+  "updatedAt": 1791416736338
 }

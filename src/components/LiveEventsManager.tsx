@@ -52,6 +52,21 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
   const [formData, setFormData] = useState<LiveEvent>({ ...currentEvent });
   const prevSelectedIdRef = useRef(selectedId);
   const isDirtyRef = useRef(false);
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+
+  // Sync selectedId when parent activeEventId prop changes
+  useEffect(() => {
+    if (activeEventId && activeEventId !== selectedId) {
+      const match = events.find((e) => e.id === activeEventId);
+      if (match) {
+        setSelectedId(activeEventId);
+        setFormData({ ...match });
+        isDirtyRef.current = false;
+        prevSelectedIdRef.current = activeEventId;
+      }
+    }
+  }, [activeEventId]);
 
   // Sync formData when selected event changes, protecting user edits
   useEffect(() => {
@@ -70,19 +85,33 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
     }
   }, [selectedId, events]);
 
-  // Load and subscribe from Firebase & API
+  // Load and subscribe from Firebase & API with safe merge (never erase newly created matches)
   useEffect(() => {
-    apiClient.getLiveEvents().then((evts) => {
-      if (evts && evts.length > 0) {
-        setEvents(evts);
-      }
-    }).catch(() => {});
+    const mergeEvents = (incoming: LiveEvent[]) => {
+      if (!incoming || !Array.isArray(incoming) || incoming.length === 0) return;
+      setEvents((prev) => {
+        const map = new Map<string, LiveEvent>();
+        // 1. Preserve all existing local matches (including newly created ones)
+        prev.forEach((e) => map.set(e.id, e));
+        // 2. Merge incoming authoritative matches
+        incoming.forEach((e) => {
+          // If the match is currently being edited by user, protect local edits
+          if (isDirtyRef.current && formDataRef.current && formDataRef.current.id === e.id) {
+            map.set(e.id, formDataRef.current);
+          } else {
+            map.set(e.id, e);
+          }
+        });
+        const merged = Array.from(map.values());
+        try {
+          localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
+        } catch {}
+        return merged;
+      });
+    };
 
-    const unsubscribe = apiClient.subscribeMultiLiveEvents((evts) => {
-      if (evts && evts.length > 0) {
-        setEvents(evts);
-      }
-    });
+    apiClient.getLiveEvents().then(mergeEvents).catch(() => {});
+    const unsubscribe = apiClient.subscribeMultiLiveEvents(mergeEvents);
 
     return () => {
       unsubscribe();
@@ -90,19 +119,38 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
   }, []);
 
   const handleSelectEvent = (id: string) => {
+    // If previous match had unsaved edits, keep them in events state so they aren't lost
+    if (isDirtyRef.current && formDataRef.current) {
+      setEvents((prev) => {
+        const updated = prev.map((e) => (e.id === formDataRef.current.id ? { ...formDataRef.current } : e));
+        try { localStorage.setItem('golbolivia_live_events', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+    }
+
     setSelectedId(id);
     const ev = events.find((e) => e.id === id);
     if (ev) {
       setFormData({ ...ev });
+      isDirtyRef.current = false;
       if (onEventSelected) onEventSelected(ev);
     }
   };
 
-  const handleCreateNewEvent = () => {
-    const newId = `partido-${String(events.length + 1).padStart(3, '0')}`;
+  const handleCreateNewEvent = async () => {
+    // Generate guaranteed unique, sequential match ID
+    const existingNums = events
+      .map((e) => {
+        const m = e.id.match(/partido-(\d+)/);
+        return m ? parseInt(m[1], 10) : 0;
+      })
+      .filter((n) => !isNaN(n));
+    const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : events.length + 1;
+    const newId = `partido-${String(nextNum).padStart(3, '0')}`;
+
     const newEv: LiveEvent = {
       id: newId,
-      title: 'Nuevo Partido en Vivo',
+      title: `Nuevo Partido ${nextNum}`,
       homeTeam: 'bolivar',
       awayTeam: 'strongest',
       isLive: true,
@@ -126,10 +174,33 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
       matchMinute: 0,
     };
 
-    setEvents((prev) => [...prev, newEv]);
+    // 1. Immediately add to local events & select it
+    const updated = [...events, newEv];
+    setEvents(updated);
     setSelectedId(newId);
     setFormData(newEv);
-    isDirtyRef.current = true;
+    isDirtyRef.current = false;
+    prevSelectedIdRef.current = newId;
+
+    // 2. Persist to localStorage immediately
+    try {
+      localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
+    } catch {}
+
+    // 3. Immediately notify parent (SecretLoginPage and App) of the newly created match
+    if (onEventSelected) {
+      onEventSelected(newEv);
+    }
+
+    setSaveSuccessMessage(`¡Partido "${newEv.title}" creado con éxito! Puedes configurar la señal y detalles.`);
+    setTimeout(() => setSaveSuccessMessage(null), 4000);
+
+    // 4. Save to backend and Firebase in background so it permanently exists
+    try {
+      await apiClient.saveLiveEvent(newEv);
+    } catch (err) {
+      console.warn('Error al persistir nuevo evento en backend:', err);
+    }
   };
 
   const handleDeleteEvent = async (id: string) => {
@@ -215,7 +286,10 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
 
       isDirtyRef.current = false;
       setEvents((prev) => {
-        const updated = prev.map((ev) => (ev.id === sanitized.id ? sanitized : ev));
+        const idx = prev.findIndex((ev) => ev.id === sanitized.id);
+        const updated = idx >= 0
+          ? prev.map((ev) => (ev.id === sanitized.id ? sanitized : ev))
+          : [...prev, sanitized];
         try {
           localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
         } catch {}

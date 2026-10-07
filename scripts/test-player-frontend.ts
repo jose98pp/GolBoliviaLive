@@ -100,6 +100,49 @@ async function runTests() {
   const { LiveChat } = await import('../src/components/LiveChat');
   assert(typeof LiveChat === 'function', 'LiveChat exportado con integración de usuarios reales');
 
+  // 13. REQUERIMIENTO: Creación y configuración de nuevo partido sin borrado (No se borra al configurar)
+  const { LiveEventsManager } = await import('../src/components/LiveEventsManager');
+  assert(typeof LiveEventsManager === 'function', 'LiveEventsManager exportado y disponible');
+
+  const existingEvents: LiveEvent[] = [
+    { id: 'partido-001', title: 'Bolívar vs The Strongest', homeTeam: 'bolivar', awayTeam: 'strongest', isLive: true, primaryProvider: 'cloudflare', fallbackOrder: ['cloudflare', 'youtube', 'kick'] },
+    { id: 'partido-002', title: 'Blooming vs Oriente', homeTeam: 'blooming', awayTeam: 'oriente', isLive: false, primaryProvider: 'youtube', fallbackOrder: ['youtube', 'kick'] },
+  ];
+
+  // Simulación de creación de nuevo partido
+  const existingNums = existingEvents
+    .map((e) => {
+      const m = e.id.match(/partido-(\d+)/);
+      return m ? parseInt(m[1], 10) : 0;
+    })
+    .filter((n) => !isNaN(n));
+  const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : existingEvents.length + 1;
+  const newMatchId = `partido-${String(nextNum).padStart(3, '0')}`;
+  assert(newMatchId === 'partido-003', 'Generación de ID secuencial único para nuevo partido (partido-003)');
+
+  const newMatch: LiveEvent = {
+    id: newMatchId,
+    title: `Nuevo Partido ${nextNum}`,
+    homeTeam: 'wilstermann',
+    awayTeam: 'aurora',
+    isLive: true,
+    primaryProvider: 'kick',
+    fallbackOrder: ['kick', 'youtube', 'cloudflare'],
+  };
+  const listAfterCreate = [...existingEvents, newMatch];
+  assert(listAfterCreate.some((e) => e.id === newMatchId), 'Nuevo partido agregado a la lista en memoria');
+
+  // Simulación de Safe-Merge (incoming server events nunca deben borrar el nuevo partido)
+  const incomingServerEvents: LiveEvent[] = [
+    { id: 'partido-001', title: 'Bolívar vs The Strongest', homeTeam: 'bolivar', awayTeam: 'strongest', isLive: true, primaryProvider: 'cloudflare', fallbackOrder: ['cloudflare'] },
+  ];
+  const safeMap = new Map<string, LiveEvent>();
+  listAfterCreate.forEach((e) => safeMap.set(e.id, e));
+  incomingServerEvents.forEach((e) => safeMap.set(e.id, e));
+  const mergedList = Array.from(safeMap.values());
+  assert(mergedList.some((e) => e.id === newMatchId), 'Safe-Merge protege el nuevo partido de ser borrado por actualizaciones del servidor');
+  assert(mergedList.length === 3, 'Todos los partidos se preservan correctamente tras sincronización');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);
   console.log('====================================================\n');

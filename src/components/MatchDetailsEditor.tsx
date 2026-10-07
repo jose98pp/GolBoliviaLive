@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Trophy,
   MapPin,
@@ -53,9 +53,21 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
   const { clubs } = useClubs();
 
-  // Sync internal state when external props change ONLY if the user has NOT started editing
+  const prevActiveEventIdRef = useRef(activeEventId);
+
+  // Sync internal state when activeEventId changes or when streamSettings change and form is clean
   useEffect(() => {
-    if (!isDirty) {
+    if (prevActiveEventIdRef.current !== activeEventId) {
+      prevActiveEventIdRef.current = activeEventId;
+      setIsDirty(false);
+      if (streamSettings.title) setTitle(streamSettings.title);
+      if (streamSettings.tournamentName) setTournamentName(streamSettings.tournamentName);
+      if (streamSettings.homeClubId) setHomeClubId(streamSettings.homeClubId);
+      if (streamSettings.awayClubId) setAwayClubId(streamSettings.awayClubId);
+      if (streamSettings.stadiumName) setStadiumName(streamSettings.stadiumName);
+      if (streamSettings.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
+      if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
+    } else if (!isDirty) {
       if (streamSettings.title) setTitle(streamSettings.title);
       if (streamSettings.tournamentName) setTournamentName(streamSettings.tournamentName);
       if (streamSettings.homeClubId) setHomeClubId(streamSettings.homeClubId);
@@ -64,7 +76,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       if (streamSettings.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
       if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
     }
-  }, [streamSettings, isDirty]);
+  }, [activeEventId, streamSettings, isDirty]);
 
   const handleGenerateTitle = () => {
     setIsDirty(true);

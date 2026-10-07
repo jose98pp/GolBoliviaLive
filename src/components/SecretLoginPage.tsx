@@ -67,6 +67,7 @@ interface SecretLoginPageProps {
   presenceStats?: RealPresenceStats;
   activeEventId?: string;
   onUpdateLiveEvent?: (event: Partial<LiveEvent>) => void;
+  onSelectActiveEventId?: (id: string) => void;
 }
 
 export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
@@ -86,9 +87,18 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   presenceStats,
   activeEventId,
   onUpdateLiveEvent,
+  onSelectActiveEventId,
 }) => {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => authService.getUser());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated());
+  const [currentActiveEventId, setCurrentActiveEventId] = useState<string>(activeEventId || 'partido-001');
+
+  React.useEffect(() => {
+    if (activeEventId) {
+      setCurrentActiveEventId(activeEventId);
+    }
+  }, [activeEventId]);
+
   const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() => {
     // If we already have stored credentials, don't show loading blocker, render dashboard immediately!
     return !authService.isAuthenticated() && !!authService.getToken();
@@ -729,8 +739,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             <div className="space-y-6">
               {/* GESTIÓN MULTI-PARTIDO Y FUENTES UNIVERSALES (CLOUDFLARE · YOUTUBE · KICK) */}
               <LiveEventsManager
-                activeEventId={activeEventId}
+                activeEventId={currentActiveEventId}
                 onEventSelected={(ev) => {
+                  setCurrentActiveEventId(ev.id);
+                  if (onSelectActiveEventId) {
+                    onSelectActiveEventId(ev.id);
+                  }
                   if (ev.cloudflare?.playbackUrl) {
                     setVideoUrlInput(ev.cloudflare.playbackUrl);
                   }
@@ -1884,7 +1898,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <MatchDetailsEditor
                 streamSettings={streamSettings}
                 onUpdateStreamSettings={onUpdateStreamSettings}
-                activeEventId={activeEventId}
+                activeEventId={currentActiveEventId}
                 onUpdateLiveEvent={onUpdateLiveEvent}
               />
             </div>

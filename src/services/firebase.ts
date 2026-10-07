@@ -587,13 +587,10 @@ export function subscribeLiveEventsFirebase(
           const list: LiveEvent[] = [];
           snap.forEach((d) => list.push(d.data() as LiveEvent));
           callback(list);
-        } else {
-          callback(DEFAULT_LIVE_EVENTS);
         }
       },
       (err) => {
         console.warn('[Firebase] Error en snapshot de liveEvents:', err);
-        callback(DEFAULT_LIVE_EVENTS);
       }
     );
   } catch {

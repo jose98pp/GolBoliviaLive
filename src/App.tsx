@@ -281,16 +281,30 @@ export default function App() {
       }
     }, 15000);
 
-    // 6. Multi-Provider Live Events subscription (Paso 9 & 10)
+    // 6. Multi-Provider Live Events subscription (Paso 9 & 10) with safe merge
     const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((events) => {
       if (events && events.length > 0) {
-        setLiveEvents(events);
+        setLiveEvents((prev) => {
+          const map = new Map<string, LiveEvent>();
+          prev.forEach((e) => map.set(e.id, e));
+          events.forEach((e) => map.set(e.id, e));
+          const merged = Array.from(map.values());
+          try { localStorage.setItem('golbolivia_live_events', JSON.stringify(merged)); } catch {}
+          return merged;
+        });
       }
     });
 
     apiClient.getLiveEvents().then((events) => {
       if (events && events.length > 0) {
-        setLiveEvents(events);
+        setLiveEvents((prev) => {
+          const map = new Map<string, LiveEvent>();
+          prev.forEach((e) => map.set(e.id, e));
+          events.forEach((e) => map.set(e.id, e));
+          const merged = Array.from(map.values());
+          try { localStorage.setItem('golbolivia_live_events', JSON.stringify(merged)); } catch {}
+          return merged;
+        });
       }
     }).catch(() => {});
 
@@ -607,6 +621,7 @@ export default function App() {
         awayScore={awayScore}
         matchMinute={matchMinute}
         activeEventId={activeEventId}
+        onSelectActiveEventId={(id) => setActiveEventId(id)}
         onUpdateScore={(h, a) => {
           const safeH = Math.max(0, Math.min(50, Math.round(h)));
           const safeA = Math.max(0, Math.min(50, Math.round(a)));
