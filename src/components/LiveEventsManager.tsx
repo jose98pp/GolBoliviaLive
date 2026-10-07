@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LiveEvent, StreamProvider } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
+import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
-import { DEFAULT_LIVE_EVENTS } from '../services/firebase';
+import { DEFAULT_LIVE_EVENTS, sanitizeClubId, validateScore, validateMinute, CLUB_ID_REGEX } from '../services/firebase';
 import {
   Zap,
   Tv,
@@ -17,6 +18,7 @@ import {
   Layers,
   ArrowRight,
   Flame,
+  AlertCircle,
 } from 'lucide-react';
 
 export interface LiveEventsManagerProps {
@@ -28,10 +30,21 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
   onEventSelected,
   activeEventId,
 }) => {
-  const [events, setEvents] = useState<LiveEvent[]>(DEFAULT_LIVE_EVENTS);
+  const { clubs } = useClubs();
+  const [events, setEvents] = useState<LiveEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_live_events');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_LIVE_EVENTS;
+  });
   const [selectedId, setSelectedId] = useState<string>(activeEventId || 'partido-001');
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Form edit state for currently selected event
   const currentEvent = events.find((e) => e.id === selectedId) || events[0] || DEFAULT_LIVE_EVENTS[0];
@@ -116,6 +129,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
     setEvents((prev) => [...prev, newEv]);
     setSelectedId(newId);
     setFormData(newEv);
+    isDirtyRef.current = true;
   };
 
   const handleDeleteEvent = async (id: string) => {
@@ -133,16 +147,49 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
+    setErrorMessage(null);
     setSaveSuccessMessage(null);
+
+    const cleanTitle = (formData.title || '').trim();
+    const cleanHome = sanitizeClubId(formData.homeTeam);
+    const cleanAway = sanitizeClubId(formData.awayTeam);
+    const cleanTournament = (formData.tournamentName || '').trim();
+    const cleanStadium = (formData.stadiumName || '').trim();
+
+    // Type and range validations
+    if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
+      setErrorMessage('El título del partido debe tener entre 3 y 120 caracteres.');
+      return;
+    }
+
+    if (!CLUB_ID_REGEX.test(cleanHome)) {
+      setErrorMessage('ID del equipo local inválido. Debe contener entre 2 y 32 caracteres (solo minúsculas, números y guiones).');
+      return;
+    }
+
+    if (!CLUB_ID_REGEX.test(cleanAway)) {
+      setErrorMessage('ID del equipo visitante inválido. Debe contener entre 2 y 32 caracteres (solo minúsculas, números y guiones).');
+      return;
+    }
+
+    if (cleanHome === cleanAway) {
+      setErrorMessage('El equipo local y el equipo visitante no pueden ser el mismo club. Selecciona dos clubes distintos.');
+      return;
+    }
+
+    const homeScoreVal = validateScore(formData.homeScore, 0);
+    const awayScoreVal = validateScore(formData.awayScore, 0);
+    const minuteVal = validateMinute(formData.matchMinute, 0);
+
+    setIsSaving(true);
 
     try {
       // Ensure no stream keys ever exist
       const sanitized: LiveEvent = {
         id: formData.id,
-        title: formData.title.trim(),
-        homeTeam: formData.homeTeam,
-        awayTeam: formData.awayTeam,
+        title: cleanTitle,
+        homeTeam: cleanHome,
+        awayTeam: cleanAway,
         isLive: formData.isLive,
         primaryProvider: formData.primaryProvider,
         cloudflare: {
@@ -156,12 +203,12 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
           channel: formData.kick?.channel?.trim() || '',
         },
         fallbackOrder: formData.fallbackOrder || ['cloudflare', 'youtube', 'kick'],
-        tournamentName: formData.tournamentName?.trim(),
-        stadiumName: formData.stadiumName?.trim(),
-        period: formData.period,
-        homeScore: formData.homeScore,
-        awayScore: formData.awayScore,
-        matchMinute: formData.matchMinute,
+        tournamentName: cleanTournament ? cleanTournament.slice(0, 80) : undefined,
+        stadiumName: cleanStadium ? cleanStadium.slice(0, 80) : undefined,
+        period: formData.period || '1T',
+        homeScore: homeScoreVal,
+        awayScore: awayScoreVal,
+        matchMinute: minuteVal,
       };
 
       await apiClient.saveLiveEvent(sanitized);
@@ -180,7 +227,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
 
       setTimeout(() => setSaveSuccessMessage(null), 4000);
     } catch (err: any) {
-      alert('Error al guardar partido: ' + (err.message || 'Error desconocido'));
+      setErrorMessage('Error al guardar partido: ' + (err.message || 'Error desconocido'));
     } finally {
       setIsSaving(false);
     }
@@ -285,6 +332,14 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
           )}
         </div>
 
+        {/* Error message banner */}
+        {errorMessage && (
+          <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         {/* Row 1: Title and Live Toggle */}
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
           <div className="sm:col-span-8">
@@ -292,7 +347,11 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             <input
               type="text"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) => {
+                isDirtyRef.current = true;
+                setFormData({ ...formData, title: e.target.value });
+              }}
+              placeholder="Ej: Bolívar vs The Strongest - Clásico Paceño"
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
               required
             />
@@ -303,7 +362,10 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
               <input
                 type="checkbox"
                 checked={formData.isLive}
-                onChange={(e) => setFormData({ ...formData, isLive: e.target.checked })}
+                onChange={(e) => {
+                  isDirtyRef.current = true;
+                  setFormData({ ...formData, isLive: e.target.checked });
+                }}
                 className="w-4 h-4 text-emerald-500 rounded bg-slate-800 border-slate-700 focus:ring-0 cursor-pointer"
               />
               <span className="text-xs font-semibold text-white">
@@ -319,12 +381,15 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             <label className="block text-xs font-semibold text-slate-300 mb-1">Equipo Local</label>
             <select
               value={formData.homeTeam}
-              onChange={(e) => setFormData({ ...formData, homeTeam: e.target.value })}
+              onChange={(e) => {
+                isDirtyRef.current = true;
+                setFormData({ ...formData, homeTeam: e.target.value });
+              }}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
             >
-              {Object.values(BOLIVIAN_CLUBS).map((c) => (
+              {Object.values(clubs).map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.badgeEmoji} {c.name}
+                  {c.badgeEmoji} {c.name} ({c.city})
                 </option>
               ))}
             </select>
@@ -334,12 +399,15 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             <label className="block text-xs font-semibold text-slate-300 mb-1">Equipo Visitante</label>
             <select
               value={formData.awayTeam}
-              onChange={(e) => setFormData({ ...formData, awayTeam: e.target.value })}
+              onChange={(e) => {
+                isDirtyRef.current = true;
+                setFormData({ ...formData, awayTeam: e.target.value });
+              }}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
             >
-              {Object.values(BOLIVIAN_CLUBS).map((c) => (
+              {Object.values(clubs).map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.badgeEmoji} {c.name}
+                  {c.badgeEmoji} {c.name} ({c.city})
                 </option>
               ))}
             </select>
@@ -350,10 +418,85 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             <input
               type="text"
               value={formData.tournamentName || ''}
-              onChange={(e) => setFormData({ ...formData, tournamentName: e.target.value })}
+              onChange={(e) => {
+                isDirtyRef.current = true;
+                setFormData({ ...formData, tournamentName: e.target.value });
+              }}
               placeholder="División Profesional de Bolivia"
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
             />
+          </div>
+        </div>
+
+        {/* Row 2.5: Marcador y Minuto en Vivo con Validación de Límites */}
+        <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2">
+          <span className="text-xs font-bold text-amber-400 block">Marcador y Minuto del Partido</span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">Goles Local (0 - 50)</label>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={formData.homeScore ?? 0}
+                onChange={(e) => {
+                  isDirtyRef.current = true;
+                  const v = parseInt(e.target.value, 10);
+                  setFormData({ ...formData, homeScore: isNaN(v) ? 0 : Math.max(0, Math.min(50, v)) });
+                }}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">Goles Visitante (0 - 50)</label>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={formData.awayScore ?? 0}
+                onChange={(e) => {
+                  isDirtyRef.current = true;
+                  const v = parseInt(e.target.value, 10);
+                  setFormData({ ...formData, awayScore: isNaN(v) ? 0 : Math.max(0, Math.min(50, v)) });
+                }}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">Minuto Oficial (0 - 130)</label>
+              <input
+                type="number"
+                min={0}
+                max={130}
+                value={formData.matchMinute ?? 0}
+                onChange={(e) => {
+                  isDirtyRef.current = true;
+                  const v = parseInt(e.target.value, 10);
+                  setFormData({ ...formData, matchMinute: isNaN(v) ? 0 : Math.max(0, Math.min(130, v)) });
+                }}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">Tiempo / Período</label>
+              <select
+                value={formData.period || '1T'}
+                onChange={(e) => {
+                  isDirtyRef.current = true;
+                  setFormData({ ...formData, period: e.target.value as any });
+                }}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500"
+              >
+                <option value="1T">1T (Primer Tiempo)</option>
+                <option value="Descanso">Descanso / Halftime</option>
+                <option value="2T">2T (Segundo Tiempo)</option>
+                <option value="Tiempo Extra">Tiempo Extra</option>
+                <option value="Finalizado">Finalizado</option>
+              </select>
+            </div>
           </div>
         </div>
 

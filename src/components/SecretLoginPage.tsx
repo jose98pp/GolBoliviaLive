@@ -455,15 +455,71 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [firebaseSavedBanner, setFirebaseSavedBanner] = useState<string | null>(null);
 
   const handleSaveAndConfirmAllToFirebase = async () => {
+    // 1. Strict validation of club IDs format and distinct clubs
+    const clubIdRegex = /^[a-z0-9_-]{2,32}$/;
+    const cleanHomeId = (streamSettings.homeClubId || '').trim().toLowerCase();
+    const cleanAwayId = (streamSettings.awayClubId || '').trim().toLowerCase();
+
+    if (!cleanHomeId || !clubIdRegex.test(cleanHomeId)) {
+      setFirebaseSavedBanner('❌ Error de validación: El ID del club local es inválido (debe tener entre 2 y 32 caracteres alfanuméricos).');
+      setTimeout(() => setFirebaseSavedBanner(null), 5000);
+      return;
+    }
+
+    if (!cleanAwayId || !clubIdRegex.test(cleanAwayId)) {
+      setFirebaseSavedBanner('❌ Error de validación: El ID del club visitante es inválido (debe tener entre 2 y 32 caracteres alfanuméricos).');
+      setTimeout(() => setFirebaseSavedBanner(null), 5000);
+      return;
+    }
+
+    if (cleanHomeId === cleanAwayId) {
+      setFirebaseSavedBanner('❌ Error: El club local y el club visitante no pueden ser el mismo equipo. Selecciona dos clubes distintos.');
+      setTimeout(() => setFirebaseSavedBanner(null), 5000);
+      return;
+    }
+
+    // 2. Strict validation of scores (0 to 50)
+    if (typeof homeScore !== 'number' || isNaN(homeScore) || homeScore < 0 || homeScore > 50) {
+      setFirebaseSavedBanner('❌ Error de puntuación: Los goles del club local deben ser un número entre 0 y 50.');
+      setTimeout(() => setFirebaseSavedBanner(null), 5000);
+      return;
+    }
+
+    if (typeof awayScore !== 'number' || isNaN(awayScore) || awayScore < 0 || awayScore > 50) {
+      setFirebaseSavedBanner('❌ Error de puntuación: Los goles del club visitante deben ser un número entre 0 y 50.');
+      setTimeout(() => setFirebaseSavedBanner(null), 5000);
+      return;
+    }
+
+    // 3. Strict validation of match minute (0 to 130)
+    if (typeof matchMinute !== 'number' || isNaN(matchMinute) || matchMinute < 0 || matchMinute > 130) {
+      setFirebaseSavedBanner('❌ Error de tiempo: El minuto oficial debe estar entre 0 y 130 minutos.');
+      setTimeout(() => setFirebaseSavedBanner(null), 5000);
+      return;
+    }
+
+    // 4. Validation of title length
+    const cleanTitle = (streamSettings.title || '').trim();
+    if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
+      setFirebaseSavedBanner('❌ Error: El título del partido debe tener entre 3 y 120 caracteres.');
+      setTimeout(() => setFirebaseSavedBanner(null), 5000);
+      return;
+    }
+
     setIsSavingFirebase(true);
     try {
       const res = await apiClient.confirmAndSaveAllData({
-        streamSettings,
+        streamSettings: {
+          ...streamSettings,
+          homeClubId: cleanHomeId,
+          awayClubId: cleanAwayId,
+          title: cleanTitle,
+        },
         scoreboard: {
-          homeScore,
-          awayScore,
-          matchMinute,
-          period: streamSettings.period,
+          homeScore: Math.round(homeScore),
+          awayScore: Math.round(awayScore),
+          matchMinute: Math.round(matchMinute),
+          period: streamSettings.period || '2T',
         },
         operatorName: currentUser?.name,
         operatorRole: currentUser?.role,
@@ -1706,21 +1762,35 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   <div className="bg-[#070b14] p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
                     <div>
                       <span className="text-xs font-bold text-white block">{homeClub.name}</span>
-                      <span className="text-[10px] text-slate-400">Equipo Local</span>
+                      <span className="text-[10px] text-slate-400">Equipo Local (0 - 50)</span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => onUpdateScore(Math.max(0, homeScore - 1), awayScore)}
-                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer"
+                        disabled={homeScore <= 0}
+                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-bold flex items-center justify-center cursor-pointer transition"
+                        title="Disminuir gol local"
                       >
                         -
                       </button>
-                      <span className="font-mono text-xl font-black text-white w-8 text-center tabular-nums">
-                        {homeScore}
-                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={homeScore}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val)) {
+                            onUpdateScore(Math.max(0, Math.min(50, val)), awayScore);
+                          }
+                        }}
+                        className="w-12 h-8 text-center bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg font-mono text-lg font-black text-white tabular-nums focus:outline-none"
+                      />
                       <button
-                        onClick={() => onUpdateScore(homeScore + 1, awayScore)}
-                        className="w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-black font-bold flex items-center justify-center cursor-pointer"
+                        onClick={() => onUpdateScore(Math.min(50, homeScore + 1), awayScore)}
+                        disabled={homeScore >= 50}
+                        className="w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-black font-bold flex items-center justify-center cursor-pointer transition"
+                        title="Aumentar gol local"
                       >
                         +
                       </button>
@@ -1731,21 +1801,38 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   <div className="bg-[#070b14] p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
                     <div>
                       <span className="text-xs font-bold text-white block">Minuto de Juego</span>
-                      <span className="text-[10px] text-emerald-400 font-mono">Tiempo Oficial</span>
+                      <span className="text-[10px] text-emerald-400 font-mono">Oficial (0&apos; - 130&apos;)</span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => onUpdateMinute(Math.max(0, matchMinute - 1))}
-                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer"
+                        disabled={matchMinute <= 0}
+                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-bold flex items-center justify-center cursor-pointer transition"
+                        title="Restar 1 minuto"
                       >
                         -
                       </button>
-                      <span className="font-mono text-xl font-black text-emerald-400 w-10 text-center tabular-nums">
-                        {matchMinute}&apos;
-                      </span>
+                      <div className="relative flex items-center">
+                        <input
+                          type="number"
+                          min={0}
+                          max={130}
+                          value={matchMinute}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (!isNaN(val)) {
+                              onUpdateMinute(Math.max(0, Math.min(130, val)));
+                            }
+                          }}
+                          className="w-14 h-8 text-center bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg font-mono text-base font-black text-emerald-400 tabular-nums focus:outline-none pr-3"
+                        />
+                        <span className="absolute right-1 text-xs font-mono text-emerald-500 pointer-events-none">&apos;</span>
+                      </div>
                       <button
-                        onClick={() => onUpdateMinute(matchMinute + 1)}
-                        className="w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-black font-bold flex items-center justify-center cursor-pointer"
+                        onClick={() => onUpdateMinute(Math.min(130, matchMinute + 1))}
+                        disabled={matchMinute >= 130}
+                        className="w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-black font-bold flex items-center justify-center cursor-pointer transition"
+                        title="Sumar 1 minuto"
                       >
                         +
                       </button>
@@ -1756,21 +1843,35 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   <div className="bg-[#070b14] p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
                     <div>
                       <span className="text-xs font-bold text-white block">{awayClub.name}</span>
-                      <span className="text-[10px] text-slate-400">Equipo Visitante</span>
+                      <span className="text-[10px] text-slate-400">Equipo Visitante (0 - 50)</span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => onUpdateScore(homeScore, Math.max(0, awayScore - 1))}
-                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer"
+                        disabled={awayScore <= 0}
+                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-bold flex items-center justify-center cursor-pointer transition"
+                        title="Disminuir gol visitante"
                       >
                         -
                       </button>
-                      <span className="font-mono text-xl font-black text-white w-8 text-center tabular-nums">
-                        {awayScore}
-                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={awayScore}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val)) {
+                            onUpdateScore(homeScore, Math.max(0, Math.min(50, val)));
+                          }
+                        }}
+                        className="w-12 h-8 text-center bg-slate-900 border border-slate-700 focus:border-amber-500 rounded-lg font-mono text-lg font-black text-white tabular-nums focus:outline-none"
+                      />
                       <button
-                        onClick={() => onUpdateScore(homeScore, awayScore + 1)}
-                        className="w-8 h-8 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black font-bold flex items-center justify-center cursor-pointer"
+                        onClick={() => onUpdateScore(homeScore, Math.min(50, awayScore + 1))}
+                        disabled={awayScore >= 50}
+                        className="w-8 h-8 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-black font-bold flex items-center justify-center cursor-pointer transition"
+                        title="Aumentar gol visitante"
                       >
                         +
                       </button>

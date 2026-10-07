@@ -43,6 +43,34 @@ export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
 export const FIRESTORE_DATABASE_ID = firebaseConfig.firestoreDatabaseId;
 
 /**
+ * VALIDATION & BOUNDS LIMITS FOR FIRESTORE SYNCHRONIZATION
+ */
+export const CLUB_ID_REGEX = /^[a-z0-9_-]{2,32}$/;
+
+export function sanitizeClubId(raw?: string): string {
+  if (!raw) return '';
+  return raw.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '').slice(0, 32);
+}
+
+export function validateScore(score: any, defaultValue = 0): number {
+  if (typeof score !== 'number' || isNaN(score)) {
+    const parsed = parseInt(String(score), 10);
+    if (isNaN(parsed)) return defaultValue;
+    return Math.max(0, Math.min(50, parsed));
+  }
+  return Math.max(0, Math.min(50, Math.round(score)));
+}
+
+export function validateMinute(minute: any, defaultValue = 0): number {
+  if (typeof minute !== 'number' || isNaN(minute)) {
+    const parsed = parseInt(String(minute), 10);
+    if (isNaN(parsed)) return defaultValue;
+    return Math.max(0, Math.min(130, parsed));
+  }
+  return Math.max(0, Math.min(130, Math.round(minute)));
+}
+
+/**
  * 1. STREAM SETTINGS & M3U8 SIGNALS
  */
 export async function saveStreamSettingsToFirebase(settings: Partial<StreamSettings>): Promise<void> {
@@ -51,6 +79,14 @@ export async function saveStreamSettingsToFirebase(settings: Partial<StreamSetti
     ...settings,
     updatedAt: Date.now(),
   };
+  if (settings.homeClubId) payload.homeClubId = sanitizeClubId(settings.homeClubId);
+  if (settings.awayClubId) payload.awayClubId = sanitizeClubId(settings.awayClubId);
+  if (settings.title) payload.title = settings.title.trim().slice(0, 120);
+  if (settings.tournamentName) payload.tournamentName = settings.tournamentName.trim().slice(0, 80);
+  if (settings.stadiumName) payload.stadiumName = settings.stadiumName.trim().slice(0, 80);
+  if (settings.altitudeMeters !== undefined) {
+    payload.altitudeMeters = Math.max(0, Math.min(6000, Number(settings.altitudeMeters) || 0));
+  }
   await setDoc(ref, payload, { merge: true });
 }
 
@@ -98,14 +134,22 @@ export async function saveScoreboardToFirebase(data: {
   period?: string;
 }): Promise<void> {
   const ref = doc(db, 'match', 'scoreboard');
-  await setDoc(
-    ref,
-    {
-      ...data,
-      updatedAt: Date.now(),
-    },
-    { merge: true }
-  );
+  const sanitized: any = {
+    updatedAt: Date.now(),
+  };
+  if (data.homeScore !== undefined) {
+    sanitized.homeScore = validateScore(data.homeScore);
+  }
+  if (data.awayScore !== undefined) {
+    sanitized.awayScore = validateScore(data.awayScore);
+  }
+  if (data.matchMinute !== undefined) {
+    sanitized.matchMinute = validateMinute(data.matchMinute);
+  }
+  if (data.period && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado'].includes(data.period)) {
+    sanitized.period = data.period;
+  }
+  await setDoc(ref, sanitized, { merge: true });
 }
 
 export function subscribeScoreboardFirebase(
@@ -482,14 +526,18 @@ export const DEFAULT_LIVE_EVENTS: LiveEvent[] = [
 ];
 
 export async function saveLiveEventToFirebase(event: LiveEvent): Promise<void> {
-  const ref = doc(db, 'liveEvents', event.id);
+  const safeId = sanitizeClubId(event.id) || 'partido-001';
+  const ref = doc(db, 'liveEvents', safeId);
+  const home = sanitizeClubId(event.homeTeam) || 'bolivar';
+  const away = sanitizeClubId(event.awayTeam) || 'strongest';
+
   // Guarantee no secret keys ever get stored or transmitted here
   const safePayload: LiveEvent = {
-    id: event.id,
-    title: event.title,
-    homeTeam: event.homeTeam,
-    awayTeam: event.awayTeam,
-    isLive: event.isLive,
+    id: safeId,
+    title: (event.title || 'Partido en Vivo').trim().slice(0, 120),
+    homeTeam: home,
+    awayTeam: away === home ? `${away}_alt` : away,
+    isLive: Boolean(event.isLive),
     primaryProvider: event.primaryProvider,
     cloudflare: event.cloudflare ? {
       liveInputId: event.cloudflare.liveInputId,
@@ -502,12 +550,12 @@ export async function saveLiveEventToFirebase(event: LiveEvent): Promise<void> {
       channel: event.kick.channel,
     } : undefined,
     fallbackOrder: event.fallbackOrder,
-    tournamentName: event.tournamentName,
-    stadiumName: event.stadiumName,
+    tournamentName: event.tournamentName ? event.tournamentName.trim().slice(0, 80) : undefined,
+    stadiumName: event.stadiumName ? event.stadiumName.trim().slice(0, 80) : undefined,
     period: event.period,
-    homeScore: event.homeScore,
-    awayScore: event.awayScore,
-    matchMinute: event.matchMinute,
+    homeScore: event.homeScore !== undefined ? validateScore(event.homeScore) : undefined,
+    awayScore: event.awayScore !== undefined ? validateScore(event.awayScore) : undefined,
+    matchMinute: event.matchMinute !== undefined ? validateMinute(event.matchMinute) : undefined,
   };
   await setDoc(ref, { ...safePayload, updatedAt: Date.now() }, { merge: true });
 }

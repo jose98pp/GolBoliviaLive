@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, RefObject } from 'react';
 import { Play, Pause, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { StreamSettings } from '../../types/football';
 import { BOLIVIAN_CLUBS } from '../../data/bolivianFootballData';
+import { useClubs } from '../../hooks/useClubs';
 
 interface VideoSurfaceProps {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -37,8 +38,9 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   isCleanScreen = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const homeClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.homeClubId]) || BOLIVIAN_CLUBS.bolivar;
-  const awayClub = (streamSettings && BOLIVIAN_CLUBS[streamSettings.awayClubId]) || BOLIVIAN_CLUBS.strongest;
+  const { clubs } = useClubs();
+  const homeClub = (streamSettings && (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId])) || BOLIVIAN_CLUBS.bolivar;
+  const awayClub = (streamSettings && (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId])) || BOLIVIAN_CLUBS.strongest;
 
   // Double tap / click detection state
   const lastTapTimeRef = useRef<number>(0);
@@ -251,17 +253,45 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         />
       )}
 
-      {/* TV Corner Badge / Watermark — Fades out when controls hide for 100% clean screen */}
+      {/* TV Corner Badge / Watermark & Scoreboard — Broadcast Style */}
       <div
-        className={`absolute top-3 left-3 z-10 flex items-center gap-2 pointer-events-none transition-all duration-500 ${
-          showControls && !isCleanScreen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
+        className={`absolute top-3 left-3 z-15 flex items-center gap-2 pointer-events-none transition-all duration-500 ${
+          showControls && !isCleanScreen ? 'opacity-100 translate-y-0' : 'opacity-85 translate-y-0'
         }`}
       >
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-white font-display text-xs font-bold shadow-lg">
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          <span>GOLBOLIVIA</span>
-          <span className="text-[10px] text-amber-400 font-mono">HD</span>
-        </div>
+        {streamSettings?.overlayScoreboardVisible !== false ? (
+          <div className="flex items-center rounded-lg bg-black/85 backdrop-blur-md border border-white/20 shadow-2xl overflow-hidden font-display text-xs">
+            {/* TV Channel brand */}
+            <div className="bg-red-600 px-2 py-1 flex items-center gap-1 font-bold text-white text-[10px] tracking-wide">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              <span>GOLBOLIVIA</span>
+            </div>
+            {/* Home Club */}
+            <div className="px-2 py-1 font-bold text-white flex items-center gap-1 bg-slate-900/90 border-r border-slate-700">
+              <span className="text-xs">{homeClub.badgeEmoji}</span>
+              <span className="uppercase text-[11px]">{homeClub.shortName}</span>
+            </div>
+            {/* Score */}
+            <div className="px-2.5 py-1 font-mono font-black text-emerald-400 bg-black/95 text-xs tabular-nums">
+              {homeScore ?? 0} - {awayScore ?? 0}
+            </div>
+            {/* Away Club */}
+            <div className="px-2 py-1 font-bold text-white flex items-center gap-1 bg-slate-900/90 border-l border-slate-700">
+              <span className="uppercase text-[11px]">{awayClub.shortName}</span>
+              <span className="text-xs">{awayClub.badgeEmoji}</span>
+            </div>
+            {/* Minute & Period */}
+            <div className="px-2 py-1 bg-amber-500/20 text-amber-300 font-mono font-bold text-[10px] border-l border-amber-500/30">
+              {matchMinute ?? 0}&apos;
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-white font-display text-xs font-bold shadow-lg">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span>GOLBOLIVIA</span>
+            <span className="text-[10px] text-amber-400 font-mono">HD</span>
+          </div>
+        )}
       </div>
 
       {/* Double Tap / Double Click Feedback HUD */}

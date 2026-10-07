@@ -92,18 +92,59 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setErrorMsg(null);
     setSaveSuccess(false);
 
+    const cleanTitle = title.trim();
+    const cleanTournament = tournamentName.trim();
+    const cleanStadium = stadiumName.trim();
+    const cleanHomeId = homeClubId.trim().toLowerCase();
+    const cleanAwayId = awayClubId.trim().toLowerCase();
+    const alt = Number(altitudeMeters);
+
+    // 1. Validation of Club IDs & formats
+    const clubIdRegex = /^[a-z0-9_-]{2,32}$/;
+    if (!clubIdRegex.test(cleanHomeId)) {
+      setErrorMsg('ID de club local inválido. Debe tener entre 2 y 32 caracteres (solo minúsculas, números y guiones).');
+      return;
+    }
+    if (!clubIdRegex.test(cleanAwayId)) {
+      setErrorMsg('ID de club visitante inválido. Debe tener entre 2 y 32 caracteres (solo minúsculas, números y guiones).');
+      return;
+    }
+    if (cleanHomeId === cleanAwayId) {
+      setErrorMsg('El club local y el club visitante no pueden ser el mismo equipo. Selecciona dos clubes distintos.');
+      return;
+    }
+
+    // 2. Validation of Title, Tournament, and Stadium lengths
+    if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
+      setErrorMsg('El título del partido debe tener entre 3 y 120 caracteres.');
+      return;
+    }
+    if (!cleanTournament || cleanTournament.length < 3 || cleanTournament.length > 80) {
+      setErrorMsg('El nombre del torneo debe tener entre 3 y 80 caracteres.');
+      return;
+    }
+    if (!cleanStadium || cleanStadium.length < 3 || cleanStadium.length > 80) {
+      setErrorMsg('El estadio y sede deben tener entre 3 y 80 caracteres.');
+      return;
+    }
+    if (isNaN(alt) || alt < 0 || alt > 6000) {
+      setErrorMsg('La altitud debe ser un valor válido entre 0 y 6.000 metros sobre el nivel del mar.');
+      return;
+    }
+
+    setIsSaving(true);
+
     const payload: Partial<StreamSettings> = {
-      title: title.trim(),
-      tournamentName: tournamentName.trim(),
-      homeClubId,
-      awayClubId,
-      stadiumName: stadiumName.trim(),
-      altitudeMeters: Number(altitudeMeters) || 0,
-      officialAnnouncement: officialAnnouncement.trim(),
+      title: cleanTitle,
+      tournamentName: cleanTournament,
+      homeClubId: cleanHomeId,
+      awayClubId: cleanAwayId,
+      stadiumName: cleanStadium,
+      altitudeMeters: Math.round(alt),
+      officialAnnouncement: officialAnnouncement.trim().slice(0, 200),
     };
 
     try {

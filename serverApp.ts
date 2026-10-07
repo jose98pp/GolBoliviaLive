@@ -986,12 +986,12 @@ app.post(
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
   (req: Request, res: Response) => {
     const { homeScore, awayScore, matchMinute, period } = req.body;
-    if (homeScore !== undefined) state.scoreboard.homeScore = Number(homeScore);
-    if (awayScore !== undefined) state.scoreboard.awayScore = Number(awayScore);
-    if (matchMinute !== undefined) state.scoreboard.matchMinute = Number(matchMinute);
-    if (period !== undefined) {
+    if (homeScore !== undefined) state.scoreboard.homeScore = Math.max(0, Math.min(50, Math.round(Number(homeScore) || 0)));
+    if (awayScore !== undefined) state.scoreboard.awayScore = Math.max(0, Math.min(50, Math.round(Number(awayScore) || 0)));
+    if (matchMinute !== undefined) state.scoreboard.matchMinute = Math.max(0, Math.min(130, Math.round(Number(matchMinute) || 0)));
+    if (period !== undefined && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado'].includes(period)) {
       state.scoreboard.period = period;
-      state.streamSettings.period = period;
+      state.streamSettings.period = period as any;
     }
     state.scoreboard.updatedAt = Date.now();
 
@@ -999,10 +999,10 @@ app.post(
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
       const activeEvt = state.liveEvents.find((e) => e.id === req.body.activeEventId) || state.liveEvents[0];
       if (activeEvt) {
-        if (homeScore !== undefined) activeEvt.homeScore = Number(homeScore);
-        if (awayScore !== undefined) activeEvt.awayScore = Number(awayScore);
-        if (matchMinute !== undefined) activeEvt.matchMinute = Number(matchMinute);
-        if (period !== undefined) activeEvt.period = period;
+        if (homeScore !== undefined) activeEvt.homeScore = state.scoreboard.homeScore;
+        if (awayScore !== undefined) activeEvt.awayScore = state.scoreboard.awayScore;
+        if (matchMinute !== undefined) activeEvt.matchMinute = state.scoreboard.matchMinute;
+        if (period !== undefined) activeEvt.period = state.scoreboard.period as any;
       }
     }
 

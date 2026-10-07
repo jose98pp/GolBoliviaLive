@@ -22,6 +22,7 @@ import { PWAInstallButton } from './components/PWAInstallButton';
 import { SocialFollowBanner } from './components/SocialFollowBanner';
 import { LiveAudienceModal } from './components/LiveAudienceModal';
 import { useRealPresence } from './hooks/useRealPresence';
+import { useClubs } from './hooks/useClubs';
 import { apiClient } from './services/apiClient';
 import { LiveEventsShowcase } from './components/LiveEventsShowcase';
 import { getMatchSlug, findEventBySlug } from './utils/slug';
@@ -34,6 +35,7 @@ import {
 } from './services/firebase';
 
 export default function App() {
+  const { clubs } = useClubs();
   const [activeTab, setActiveTab] = useState<'stream' | 'stats' | 'exclusive'>('stream');
   const [mobileViewMode, setMobileViewMode] = useState<'stream' | 'chat'>('stream');
   const [isTheaterMode, setIsTheaterMode] = useState(false);
@@ -134,6 +136,8 @@ export default function App() {
   const [activeEventId, setActiveEventId] = useState<string>('partido-001');
 
   const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || DEFAULT_LIVE_EVENTS[0];
+  const currentHomeClub = (streamSettings && (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId])) || BOLIVIAN_CLUBS.bolivar;
+  const currentAwayClub = (streamSettings && (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId])) || BOLIVIAN_CLUBS.strongest;
 
   // Authoritative Backend Synchronization: Dedicated Stream Sync, GET /api/live & SSE /api/events
   useEffect(() => {
@@ -141,9 +145,28 @@ export default function App() {
     apiClient.getLiveState()
       .then((data) => {
         if (data.streamSettings) {
-          setStreamSettings((prev) => ({ ...prev, ...data.streamSettings }));
+          setStreamSettings((prev) => {
+            try {
+              const local = localStorage.getItem('golbolivia_stream_settings');
+              if (local) {
+                const parsed = JSON.parse(local);
+                return { ...prev, ...data.streamSettings, ...parsed };
+              }
+            } catch {}
+            return { ...prev, ...data.streamSettings };
+          });
         }
         if (data.scoreboard) {
+          try {
+            const local = localStorage.getItem('golbolivia_scoreboard');
+            if (local) {
+              const parsed = JSON.parse(local);
+              if (typeof parsed.homeScore === 'number') setHomeScore(parsed.homeScore);
+              if (typeof parsed.awayScore === 'number') setAwayScore(parsed.awayScore);
+              if (typeof parsed.matchMinute === 'number') setMatchMinute(parsed.matchMinute);
+              return;
+            }
+          } catch {}
           setHomeScore(data.scoreboard.homeScore);
           setAwayScore(data.scoreboard.awayScore);
           setMatchMinute(data.scoreboard.matchMinute);
@@ -180,8 +203,29 @@ export default function App() {
     // 3. Subscribe to Real-Time Server-Sent Events (SSE) for match & chat events
     const unsubscribeEvents = apiClient.subscribeLiveEvents((type, data) => {
       if (type === 'INITIAL_STATE') {
-        if (data.streamSettings) setStreamSettings((prev) => ({ ...prev, ...data.streamSettings }));
+        if (data.streamSettings) {
+          setStreamSettings((prev) => {
+            try {
+              const local = localStorage.getItem('golbolivia_stream_settings');
+              if (local) {
+                const parsed = JSON.parse(local);
+                return { ...prev, ...data.streamSettings, ...parsed };
+              }
+            } catch {}
+            return { ...prev, ...data.streamSettings };
+          });
+        }
         if (data.scoreboard) {
+          try {
+            const local = localStorage.getItem('golbolivia_scoreboard');
+            if (local) {
+              const parsed = JSON.parse(local);
+              if (typeof parsed.homeScore === 'number') setHomeScore(parsed.homeScore);
+              if (typeof parsed.awayScore === 'number') setAwayScore(parsed.awayScore);
+              if (typeof parsed.matchMinute === 'number') setMatchMinute(parsed.matchMinute);
+              return;
+            }
+          } catch {}
           setHomeScore(data.scoreboard.homeScore);
           setAwayScore(data.scoreboard.awayScore);
           setMatchMinute(data.scoreboard.matchMinute);
@@ -560,39 +604,42 @@ export default function App() {
         matchMinute={matchMinute}
         activeEventId={activeEventId}
         onUpdateScore={(h, a) => {
-          setHomeScore(h);
-          setAwayScore(a);
+          const safeH = Math.max(0, Math.min(50, Math.round(h)));
+          const safeA = Math.max(0, Math.min(50, Math.round(a)));
+          setHomeScore(safeH);
+          setAwayScore(safeA);
           try {
-            const sb = { homeScore: h, awayScore: a, matchMinute, period: streamSettings.period };
+            const sb = { homeScore: safeH, awayScore: safeA, matchMinute, period: streamSettings.period, updatedAt: Date.now() };
             localStorage.setItem('golbolivia_scoreboard', JSON.stringify(sb));
           } catch {}
           setLiveEvents((prev) => {
             const updated = prev.map((ev) =>
-              ev.id === activeEventId ? { ...ev, homeScore: h, awayScore: a } : ev
+              ev.id === activeEventId ? { ...ev, homeScore: safeH, awayScore: safeA } : ev
             );
             try {
               localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
             } catch {}
             return updated;
           });
-          apiClient.updateScoreboard({ homeScore: h, awayScore: a, activeEventId }).catch(() => {});
+          apiClient.updateScoreboard({ homeScore: safeH, awayScore: safeA, activeEventId }).catch(() => {});
         }}
         onUpdateMinute={(m) => {
-          setMatchMinute(m);
+          const safeM = Math.max(0, Math.min(130, Math.round(m)));
+          setMatchMinute(safeM);
           try {
-            const sb = { homeScore, awayScore, matchMinute: m, period: streamSettings.period };
+            const sb = { homeScore, awayScore, matchMinute: safeM, period: streamSettings.period, updatedAt: Date.now() };
             localStorage.setItem('golbolivia_scoreboard', JSON.stringify(sb));
           } catch {}
           setLiveEvents((prev) => {
             const updated = prev.map((ev) =>
-              ev.id === activeEventId ? { ...ev, matchMinute: m } : ev
+              ev.id === activeEventId ? { ...ev, matchMinute: safeM } : ev
             );
             try {
               localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
             } catch {}
             return updated;
           });
-          apiClient.updateScoreboard({ matchMinute: m, activeEventId }).catch(() => {});
+          apiClient.updateScoreboard({ matchMinute: safeM, activeEventId }).catch(() => {});
         }}
         onUpdateLiveEvent={(data) => {
           setLiveEvents((prev) => {
@@ -650,6 +697,9 @@ export default function App() {
         homeScore={homeScore}
         awayScore={awayScore}
         matchMinute={matchMinute}
+        homeClub={currentHomeClub}
+        awayClub={currentAwayClub}
+        period={streamSettings.period}
       />
 
       {/* MAIN VIEWPORT BODY */}
@@ -744,29 +794,102 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Match Information Bar underneath player */}
-                <div className="mt-3 sm:mt-4 p-3.5 sm:p-4 rounded-xl bg-[#0a0f1d] border border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                      <span className="font-semibold text-white">Transmisión Oficial</span>
-                      <span>·</span>
-                      <span>{streamSettings.tournamentName}</span>
-                      <span>·</span>
-                      <span className="text-emerald-400 font-mono font-bold">1080p60 HLS</span>
+                {/* MARCADOR OFICIAL EN PORTADA & INFORMACIÓN DEL PARTIDO */}
+                <div className="mt-3 sm:mt-4 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-[#0b1222] via-[#090f1d] to-[#060a14] border-2 border-slate-800 shadow-2xl space-y-4">
+                  {/* Tournament & Badges Header */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                        <span>EN VIVO</span>
+                      </span>
+                      <span className="font-semibold text-white">{streamSettings.tournamentName}</span>
+                      <span className="text-slate-500 hidden sm:inline">·</span>
+                      <span className="text-slate-400 font-mono text-[11px] hidden sm:inline">1080p60 HLS HD</span>
                     </div>
-                    <h1 className="font-display font-bold text-base sm:text-lg text-white">
-                      {streamSettings.title}
-                    </h1>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {streamSettings.period || '2T'} · {matchMinute}&apos;
+                      </span>
+                      <button
+                        onClick={() => setActiveTab('stats')}
+                        className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 cursor-pointer transition-colors"
+                      >
+                        <Activity className="w-3.5 h-3.5 text-yellow-400" />
+                        <span className="hidden sm:inline">Estadísticas</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <button
-                      onClick={() => setActiveTab('stats')}
-                      className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-700 cursor-pointer"
-                    >
-                      <Activity className="w-3.5 h-3.5 text-yellow-400" />
-                      <span>Ver Estadísticas</span>
-                    </button>
+                  {/* Main Match Title */}
+                  <h1 className="font-display font-black text-lg sm:text-xl md:text-2xl text-white tracking-tight">
+                    {streamSettings.title}
+                  </h1>
+
+                  {/* Live Scoreboard Hero Display */}
+                  <div className="bg-[#050811] rounded-xl p-3 sm:p-4 border border-slate-800 flex items-center justify-between gap-2">
+                    {/* Home Team */}
+                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                      <div
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl sm:text-2xl shadow-lg shrink-0 border border-white/20"
+                        style={{ backgroundColor: currentHomeClub.primaryColor }}
+                      >
+                        {currentHomeClub.badgeEmoji}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs sm:text-sm font-black text-white block truncate">
+                          {currentHomeClub.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block truncate">
+                          {currentHomeClub.city} · Anfitrión
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Central Score */}
+                    <div className="flex flex-col items-center justify-center px-3 sm:px-6">
+                      <div className="font-mono text-2xl sm:text-4xl font-black text-emerald-400 tracking-wider tabular-nums bg-black/60 px-3 sm:px-4 py-1 rounded-xl border border-slate-700 shadow-inner">
+                        {homeScore} <span className="text-slate-500 font-light">-</span> {awayScore}
+                      </div>
+                      <span className="text-[10px] text-amber-400 font-mono font-bold mt-1 uppercase tracking-wider">
+                        {streamSettings.period || '2T'} ({matchMinute}&apos;)
+                      </span>
+                    </div>
+
+                    {/* Away Team */}
+                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 justify-end text-right">
+                      <div className="min-w-0">
+                        <span className="text-xs sm:text-sm font-black text-white block truncate">
+                          {currentAwayClub.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block truncate">
+                          {currentAwayClub.city} · Visitante
+                        </span>
+                      </div>
+                      <div
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl sm:text-2xl shadow-lg shrink-0 border border-white/20"
+                        style={{ backgroundColor: currentAwayClub.primaryColor }}
+                      >
+                        {currentAwayClub.badgeEmoji}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Venue / Stadium & Broadcast Announcement */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-400 pt-1">
+                    <div className="flex items-center gap-1.5 font-medium text-slate-300">
+                      <MapPin className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                      <span>{streamSettings.stadiumName}</span>
+                      <span>·</span>
+                      <span className="font-mono text-amber-400">{streamSettings.altitudeMeters} m s.n.m.</span>
+                    </div>
+
+                    {streamSettings.officialAnnouncement && (
+                      <div className="text-[11px] text-slate-400 italic truncate max-w-md">
+                        📢 {streamSettings.officialAnnouncement}
+                      </div>
+                    )}
                   </div>
                 </div>
 

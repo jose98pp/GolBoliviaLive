@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Radio, Bell, Tv, ShieldCheck, Menu, X, Users, Eye, Sparkles, ChevronRight, Activity, Zap, RefreshCw } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { SocialFollowBanner } from './SocialFollowBanner';
+import { Club } from '../types/football';
 
 interface NavbarProps {
   activeTab: 'stream' | 'stats' | 'exclusive' | 'obs' | 'admin' | string;
@@ -19,6 +20,9 @@ interface NavbarProps {
   homeScore?: number;
   awayScore?: number;
   matchMinute?: number;
+  homeClub?: Club;
+  awayClub?: Club;
+  period?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -37,6 +41,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   homeScore = 2,
   awayScore = 1,
   matchMinute = 78,
+  homeClub,
+  awayClub,
+  period = '2T',
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPurgingCache, setIsPurgingCache] = useState(false);
@@ -104,6 +111,27 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="font-bold text-white font-mono">{displayTotal.toLocaleString()}</span>
             <span className="text-red-400 text-[11px]">viendo en vivo</span>
           </button>
+
+          {/* Marcador en Vivo Compacto en Header (Desktop) */}
+          {homeClub && awayClub && (
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-slate-900/90 border border-slate-700/80 rounded-full text-xs shadow-md">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <div className="flex items-center gap-1 font-bold text-slate-200">
+                <span>{homeClub.badgeEmoji}</span>
+                <span className="truncate max-w-[80px]">{homeClub.shortName}</span>
+              </div>
+              <span className="font-mono text-emerald-400 font-black px-1.5 py-0.2 bg-black/60 rounded border border-slate-800 tabular-nums">
+                {homeScore} - {awayScore}
+              </span>
+              <div className="flex items-center gap-1 font-bold text-slate-200">
+                <span className="truncate max-w-[80px]">{awayClub.shortName}</span>
+                <span>{awayClub.badgeEmoji}</span>
+              </div>
+              <span className="text-[10px] text-amber-400 font-mono font-bold pl-1 border-l border-slate-700">
+                {matchMinute}&apos;
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Zone 2: Desktop Navigation Links */}
@@ -225,9 +253,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             <div className="flex items-center justify-between text-xs font-bold text-white px-1">
-              <span>Bolívar</span>
-              <span className="font-mono text-base text-emerald-400 font-black">{homeScore} - {awayScore}</span>
-              <span>The Strongest</span>
+              <span className="flex items-center gap-1 truncate max-w-[45%]">
+                <span>{homeClub?.badgeEmoji || '⚽'}</span>
+                <span className="truncate">{homeClub?.shortName || homeClub?.name || 'Local'}</span>
+              </span>
+              <span className="font-mono text-base text-emerald-400 font-black px-2 py-0.5 bg-black/60 rounded border border-slate-700 tabular-nums">
+                {homeScore} - {awayScore}
+              </span>
+              <span className="flex items-center gap-1 truncate max-w-[45%] justify-end">
+                <span className="truncate">{awayClub?.shortName || awayClub?.name || 'Visitante'}</span>
+                <span>{awayClub?.badgeEmoji || '⚽'}</span>
+              </span>
             </div>
           </div>
 

@@ -63,37 +63,56 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
     e.preventDefault();
     if (!editingClub) return;
 
-    if (!editingClub.name?.trim() || !editingClub.shortName?.trim()) {
-      setFeedback({ message: 'El nombre y nombre corto son obligatorios.', type: 'error' });
+    const cleanName = editingClub.name?.trim() || '';
+    const cleanShort = editingClub.shortName?.trim() || '';
+    const cleanStadium = editingClub.stadium?.trim() || 'Estadio Departamental';
+    const alt = Number(editingClub.altitudeMeters);
+
+    if (cleanName.length < 2 || cleanName.length > 60) {
+      setFeedback({ message: 'El nombre del club debe tener entre 2 y 60 caracteres.', type: 'error' });
+      return;
+    }
+    if (cleanShort.length < 2 || cleanShort.length > 30) {
+      setFeedback({ message: 'El nombre corto debe tener entre 2 y 30 caracteres.', type: 'error' });
+      return;
+    }
+    if (isNaN(alt) || alt < 0 || alt > 6000) {
+      setFeedback({ message: 'La altitud debe ser un valor válido entre 0 y 6.000 m s.n.m.', type: 'error' });
       return;
     }
 
     // Generate clean ID if new
-    let id = editingClub.id?.trim();
+    let id = editingClub.id?.trim().toLowerCase() || '';
     if (isNewClub || !id) {
-      id = editingClub.shortName
+      id = cleanShort
         .toLowerCase()
-        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
         .replace(/\s+/g, '_')
-        .replace(/[^a-z0-9_-]/g, '');
+        .replace(/[^a-z0-9_-]/g, '')
+        .slice(0, 32);
     }
 
-    if (!id) {
-      setFeedback({ message: 'ID de equipo inválido.', type: 'error' });
+    const clubIdRegex = /^[a-z0-9_-]{2,32}$/;
+    if (!clubIdRegex.test(id)) {
+      setFeedback({
+        message: 'ID de club inválido. Debe contener entre 2 y 32 caracteres (solo minúsculas, números y guiones).',
+        type: 'error',
+      });
       return;
     }
 
     const payload: Club = {
       id,
-      name: editingClub.name.trim(),
-      shortName: editingClub.shortName.trim(),
-      city: editingClub.city?.trim() || 'Bolivia',
+      name: cleanName,
+      shortName: cleanShort,
+      city: editingClub.city?.trim().slice(0, 50) || 'Bolivia',
       primaryColor: editingClub.primaryColor?.trim() || '#0284c7',
       secondaryColor: editingClub.secondaryColor?.trim() || '#ffffff',
       textColor: editingClub.textColor?.trim() || '#ffffff',
       badgeEmoji: editingClub.badgeEmoji?.trim() || '⚽',
-      stadium: editingClub.stadium?.trim() || 'Estadio Departamental',
-      altitudeMeters: Number(editingClub.altitudeMeters) || 2500,
+      stadium: cleanStadium.slice(0, 80),
+      altitudeMeters: Math.round(alt) || 2500,
     };
 
     setIsSaving(true);

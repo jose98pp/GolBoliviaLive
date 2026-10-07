@@ -136,6 +136,14 @@ export const UniversalStreamPlayer: React.FC<UniversalStreamPlayerProps> = ({
             <span>EN VIVO</span>
           </div>
           <span className="text-white font-semibold hidden sm:inline">{event.title}</span>
+          {homeScore !== undefined && awayScore !== undefined && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/70 border border-slate-700 font-mono text-xs tabular-nums">
+              <span className="text-emerald-400 font-black">{homeScore} - {awayScore}</span>
+              {matchMinute !== undefined && (
+                <span className="text-amber-400 font-bold text-[10px]">· {matchMinute}&apos;</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Available Source Providers selector */}
