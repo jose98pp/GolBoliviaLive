@@ -26,6 +26,7 @@ import { useClubs } from './hooks/useClubs';
 import { apiClient } from './services/apiClient';
 import { LiveEventsShowcase } from './components/LiveEventsShowcase';
 import { getMatchSlug, findEventBySlug } from './utils/slug';
+import { getStreamUrlForEvent, detectProviderFromUrl } from './utils/streamUtils';
 import {
   subscribeScoreboardFirebase,
   subscribeMatchEventsFirebase,
@@ -348,6 +349,18 @@ export default function App() {
           if (matched.matchMinute !== undefined) {
             setMatchMinute(matched.matchMinute);
           }
+          const streamUrl = getStreamUrlForEvent(matched);
+          if (streamUrl) {
+            setStreamSettings((prev) => ({
+              ...prev,
+              title: matched.title,
+              homeClubId: matched.homeTeam,
+              awayClubId: matched.awayTeam,
+              isLive: matched.isLive,
+              tournamentName: matched.tournamentName || prev.tournamentName,
+              customVideoUrl: streamUrl,
+            }));
+          }
         }
       }
     };
@@ -372,6 +385,7 @@ export default function App() {
     if (evt.matchMinute !== undefined) {
       setMatchMinute(evt.matchMinute);
     }
+    const targetUrl = getStreamUrlForEvent(evt);
     setStreamSettings((prev) => ({
       ...prev,
       title: evt.title,
@@ -379,11 +393,7 @@ export default function App() {
       awayClubId: evt.awayTeam,
       isLive: evt.isLive,
       tournamentName: evt.tournamentName || prev.tournamentName,
-      customVideoUrl:
-        evt.cloudflare?.playbackUrl ||
-        (evt.youtube?.videoId ? `https://www.youtube.com/watch?v=${evt.youtube.videoId}` : '') ||
-        (evt.kick?.channel ? `https://kick.com/${evt.kick.channel}` : '') ||
-        prev.customVideoUrl,
+      customVideoUrl: targetUrl || prev.customVideoUrl,
     }));
   };
 
@@ -519,19 +529,29 @@ export default function App() {
 
     // Synchronize current liveEvent in liveEvents array
     setLiveEvents((prev) => {
-      const updated = prev.map((ev) =>
-        ev.id === activeEventId
-          ? {
-              ...ev,
-              title: newSettings.title || ev.title,
-              homeTeam: newSettings.homeClubId || ev.homeTeam,
-              awayTeam: newSettings.awayClubId || ev.awayTeam,
-              tournamentName: newSettings.tournamentName || ev.tournamentName,
-              stadiumName: newSettings.stadiumName || ev.stadiumName,
-              period: newSettings.period || ev.period,
-            }
-          : ev
-      );
+      const updated = prev.map((ev) => {
+        if (ev.id !== activeEventId) return ev;
+        const provider = newSettings.customVideoUrl ? detectProviderFromUrl(newSettings.customVideoUrl) : ev.primaryProvider;
+        return {
+          ...ev,
+          title: newSettings.title || ev.title,
+          homeTeam: newSettings.homeClubId || ev.homeTeam,
+          awayTeam: newSettings.awayClubId || ev.awayTeam,
+          tournamentName: newSettings.tournamentName || ev.tournamentName,
+          stadiumName: newSettings.stadiumName || ev.stadiumName,
+          period: newSettings.period || ev.period,
+          primaryProvider: provider,
+          cloudflare: provider === 'cloudflare' && newSettings.customVideoUrl
+            ? { liveInputId: ev.cloudflare?.liveInputId || '', playbackUrl: newSettings.customVideoUrl }
+            : ev.cloudflare,
+          youtube: provider === 'youtube' && newSettings.customVideoUrl
+            ? { videoId: newSettings.customVideoUrl.replace(/^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)/, '') }
+            : ev.youtube,
+          kick: provider === 'kick' && newSettings.customVideoUrl
+            ? { channel: newSettings.customVideoUrl.replace(/^https?:\/\/(?:www\.)?kick\.com\//, '') }
+            : ev.kick,
+        };
+      });
       try {
         localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
       } catch {}

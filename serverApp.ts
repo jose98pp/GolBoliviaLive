@@ -945,6 +945,42 @@ app.post(
       if (safeEvent.homeScore !== undefined) state.scoreboard.homeScore = safeEvent.homeScore;
       if (safeEvent.awayScore !== undefined) state.scoreboard.awayScore = safeEvent.awayScore;
       if (safeEvent.matchMinute !== undefined) state.scoreboard.matchMinute = safeEvent.matchMinute;
+
+      // Resolve stream URL according to primaryProvider and fallbacks
+      let effectivePlaybackUrl = '';
+      if (safeEvent.primaryProvider === 'kick' && safeEvent.kick?.channel) {
+        const ch = safeEvent.kick.channel.trim().replace(/^https?:\/\/(?:www\.)?kick\.com\//, '');
+        effectivePlaybackUrl = `https://kick.com/${ch}`;
+      } else if (safeEvent.primaryProvider === 'youtube' && safeEvent.youtube?.videoId) {
+        const vid = safeEvent.youtube.videoId.trim().replace(/^https?:\/\/(?:www\.)?youtube\.com\/watch\?v=/, '');
+        effectivePlaybackUrl = `https://www.youtube.com/watch?v=${vid}`;
+      } else if (safeEvent.primaryProvider === 'cloudflare' && safeEvent.cloudflare?.playbackUrl) {
+        effectivePlaybackUrl = safeEvent.cloudflare.playbackUrl.trim();
+      }
+
+      if (!effectivePlaybackUrl) {
+        for (const fb of safeEvent.fallbackOrder || []) {
+          if (fb === 'kick' && safeEvent.kick?.channel) {
+            const ch = safeEvent.kick.channel.trim().replace(/^https?:\/\/(?:www\.)?kick\.com\//, '');
+            effectivePlaybackUrl = `https://kick.com/${ch}`;
+            break;
+          }
+          if (fb === 'youtube' && safeEvent.youtube?.videoId) {
+            const vid = safeEvent.youtube.videoId.trim().replace(/^https?:\/\/(?:www\.)?youtube\.com\/watch\?v=/, '');
+            effectivePlaybackUrl = `https://www.youtube.com/watch?v=${vid}`;
+            break;
+          }
+          if (fb === 'cloudflare' && safeEvent.cloudflare?.playbackUrl) {
+            effectivePlaybackUrl = safeEvent.cloudflare.playbackUrl.trim();
+            break;
+          }
+        }
+      }
+
+      if (effectivePlaybackUrl) {
+        state.streamSettings.customVideoUrl = effectivePlaybackUrl;
+      }
+
       broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
       broadcastSseEvent('SCOREBOARD_UPDATED', state.scoreboard);
     }

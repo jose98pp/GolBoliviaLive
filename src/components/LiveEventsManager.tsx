@@ -55,6 +55,15 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
   const formDataRef = useRef(formData);
   formDataRef.current = formData;
 
+  const updateFormData = (updater: Partial<LiveEvent> | ((prev: LiveEvent) => LiveEvent)) => {
+    isDirtyRef.current = true;
+    if (typeof updater === 'function') {
+      setFormData(updater);
+    } else {
+      setFormData((prev) => ({ ...prev, ...updater }));
+    }
+  };
+
   // Sync selectedId when parent activeEventId prop changes
   useEffect(() => {
     if (activeEventId && activeEventId !== selectedId) {
@@ -583,7 +592,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             {/* Cloudflare */}
             <button
               type="button"
-              onClick={() => setFormData({ ...formData, primaryProvider: 'cloudflare' })}
+              onClick={() => updateFormData({ primaryProvider: 'cloudflare' })}
               className={`p-3 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
                 formData.primaryProvider === 'cloudflare'
                   ? 'bg-sky-950/80 border-sky-400 ring-1 ring-sky-400 text-white'
@@ -600,7 +609,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             {/* YouTube */}
             <button
               type="button"
-              onClick={() => setFormData({ ...formData, primaryProvider: 'youtube' })}
+              onClick={() => updateFormData({ primaryProvider: 'youtube' })}
               className={`p-3 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
                 formData.primaryProvider === 'youtube'
                   ? 'bg-red-950/80 border-red-400 ring-1 ring-red-400 text-white'
@@ -617,7 +626,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             {/* Kick (Paso 8) */}
             <button
               type="button"
-              onClick={() => setFormData({ ...formData, primaryProvider: 'kick' })}
+              onClick={() => updateFormData({ primaryProvider: 'kick' })}
               className={`p-3 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
                 formData.primaryProvider === 'kick'
                   ? 'bg-emerald-950/80 border-emerald-400 ring-1 ring-emerald-400 text-white'
@@ -652,8 +661,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
                   type="text"
                   value={formData.cloudflare?.liveInputId || ''}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
+                    updateFormData({
                       cloudflare: {
                         ...(formData.cloudflare || { playbackUrl: '' }),
                         liveInputId: e.target.value,
@@ -670,8 +678,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
                   type="url"
                   value={formData.cloudflare?.playbackUrl || ''}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
+                    updateFormData({
                       cloudflare: {
                         ...(formData.cloudflare || { liveInputId: '' }),
                         playbackUrl: e.target.value,
@@ -696,8 +703,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
                   type="text"
                   value={formData.youtube?.videoId || ''}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
+                    updateFormData({
                       youtube: {
                         videoId: e.target.value,
                       },
@@ -729,10 +735,9 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
                       type="text"
                       value={formData.kick?.channel || ''}
                       onChange={(e) =>
-                        setFormData({
-                          ...formData,
+                        updateFormData({
                           kick: {
-                            channel: e.target.value,
+                            channel: e.target.value.replace(/^https?:\/\/(?:www\.)?kick\.com\//, '').trim(),
                           },
                         })
                       }

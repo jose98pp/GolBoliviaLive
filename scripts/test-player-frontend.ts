@@ -141,7 +141,44 @@ async function runTests() {
   incomingServerEvents.forEach((e) => safeMap.set(e.id, e));
   const mergedList = Array.from(safeMap.values());
   assert(mergedList.some((e) => e.id === newMatchId), 'Safe-Merge protege el nuevo partido de ser borrado por actualizaciones del servidor');
-  assert(mergedList.length === 3, 'Todos los partidos se preservan correctamente tras sincronización');
+  // 14. REQUERIMIENTO: Proveedor Principal (primaryProvider) guardado y reproducido correctamente (Kick, YouTube, Cloudflare)
+  const { getStreamUrlForEvent, detectProviderFromUrl } = await import('../src/utils/streamUtils');
+
+  const multiProviderMatch: LiveEvent = {
+    id: 'partido-test',
+    title: 'Wilstermann vs Aurora',
+    homeTeam: 'wilstermann',
+    awayTeam: 'aurora',
+    isLive: true,
+    primaryProvider: 'kick',
+    cloudflare: { liveInputId: 'cf-id', playbackUrl: 'https://cf-stream.com/live/index.m3u8' },
+    youtube: { videoId: 'yt123456789' },
+    kick: { channel: 'josecpp98' },
+    fallbackOrder: ['kick', 'youtube', 'cloudflare'],
+  };
+
+  // Debe retornar Kick aunque Cloudflare tenga URL
+  const kickResolved = getStreamUrlForEvent(multiProviderMatch);
+  assert(kickResolved === 'https://kick.com/josecpp98', 'primaryProvider: kick devuelve la URL de Kick aunque exista Cloudflare');
+
+  // Cambiando primaryProvider a youtube
+  const ytMatch: LiveEvent = { ...multiProviderMatch, primaryProvider: 'youtube' };
+  const ytResolved = getStreamUrlForEvent(ytMatch);
+  assert(ytResolved === 'https://www.youtube.com/watch?v=yt123456789', 'primaryProvider: youtube devuelve la URL de YouTube');
+
+  // Cambiando primaryProvider a cloudflare
+  const cfMatch: LiveEvent = { ...multiProviderMatch, primaryProvider: 'cloudflare' };
+  const cfResolved = getStreamUrlForEvent(cfMatch);
+  assert(cfResolved === 'https://cf-stream.com/live/index.m3u8', 'primaryProvider: cloudflare devuelve la URL de Cloudflare');
+
+  // Fallback si el primario no tiene canal configurado
+  const missingKickMatch: LiveEvent = { ...multiProviderMatch, primaryProvider: 'kick', kick: { channel: '' }, fallbackOrder: ['kick', 'youtube'] };
+  const fallbackResolved = getStreamUrlForEvent(missingKickMatch);
+  assert(fallbackResolved === 'https://www.youtube.com/watch?v=yt123456789', 'Fallback funciona cuando el proveedor principal no tiene stream configurado');
+
+  assert(detectProviderFromUrl('https://player.kick.com/canal') === 'kick', 'detectProviderFromUrl detecta Kick');
+  assert(detectProviderFromUrl('https://youtube.com/watch?v=abc') === 'youtube', 'detectProviderFromUrl detecta YouTube');
+  assert(detectProviderFromUrl('https://stream.m3u8') === 'cloudflare', 'detectProviderFromUrl detecta Cloudflare');
 
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);

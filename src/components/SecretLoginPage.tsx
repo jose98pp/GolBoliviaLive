@@ -43,6 +43,7 @@ import { authService, AuthUser, UserRole } from '../services/auth';
 import { apiClient } from '../services/apiClient';
 import { StreamSettings, MatchEvent, LiveEvent, LivePoll, NotificationItem, PrivateIngestCredentials } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
+import { getStreamUrlForEvent } from '../utils/streamUtils';
 import { RealPresenceStats } from '../hooks/useRealPresence';
 import { MatchDetailsEditor } from './MatchDetailsEditor';
 import { TeamsManager } from './TeamsManager';
@@ -745,8 +746,9 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   if (onSelectActiveEventId) {
                     onSelectActiveEventId(ev.id);
                   }
-                  if (ev.cloudflare?.playbackUrl) {
-                    setVideoUrlInput(ev.cloudflare.playbackUrl);
+                  const effectiveUrl = getStreamUrlForEvent(ev);
+                  if (effectiveUrl) {
+                    setVideoUrlInput(effectiveUrl);
                   }
                   onUpdateStreamSettings({
                     title: ev.title,
@@ -755,7 +757,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     isLive: ev.isLive,
                     tournamentName: ev.tournamentName || streamSettings.tournamentName,
                     stadiumName: ev.stadiumName || streamSettings.stadiumName,
-                    customVideoUrl: ev.cloudflare?.playbackUrl || streamSettings.customVideoUrl,
+                    customVideoUrl: effectiveUrl || streamSettings.customVideoUrl,
                   });
                   if (ev.homeScore !== undefined && ev.awayScore !== undefined) {
                     onUpdateScore(ev.homeScore, ev.awayScore);

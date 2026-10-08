@@ -1,6 +1,7 @@
 import React from 'react';
 import { LiveEvent, StreamProvider, StreamSettings } from '../../types/football';
 import { StreamPlayer } from './StreamPlayer';
+import { getStreamUrlForEvent } from '../../utils/streamUtils';
 
 export interface UniversalStreamPlayerProps {
   event?: LiveEvent;
@@ -34,11 +35,7 @@ export const UniversalStreamPlayer: React.FC<UniversalStreamPlayerProps> = ({
     period: event?.period || '2T',
     isLive: event?.isLive ?? true,
     broadcastMode: 'obs_custom',
-    customVideoUrl:
-      event?.cloudflare?.playbackUrl ||
-      (event?.youtube?.videoId ? `https://www.youtube.com/watch?v=${event.youtube.videoId}` : '') ||
-      (event?.kick?.channel ? `https://kick.com/${event.kick.channel}` : '') ||
-      '',
+    customVideoUrl: getStreamUrlForEvent(event),
     backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
     backupChannelName: 'GolBolivia HD',
     activeStreamSource: 'obs',

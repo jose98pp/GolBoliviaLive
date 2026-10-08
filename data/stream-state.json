@@ -1,16 +1,16 @@
 {
   "streamSettings": {
-    "title": "Wilstermann vs Aurora - Clasico Cochabambino",
-    "tournamentName": "División Profesional de Bolivia",
-    "homeClubId": "bolivar",
-    "awayClubId": "strongest",
-    "stadiumName": "Estadio Olímpico Hernando Siles",
+    "title": "Oriente Petrolero Vs U. de Vinto",
+    "tournamentName": "Copa Paceña",
+    "homeClubId": "oriente",
+    "awayClubId": "u_vinto",
+    "stadiumName": "Estadio Ramon Tahuichi Aguilera",
     "altitudeMeters": 3637,
     "period": "1T",
     "isLive": true,
     "rtmpServer": "rtmp://localhost:1935/live",
     "streamKey": "bolivia",
-    "customVideoUrl": "https://elite-again-scripts-ronald.trycloudflare.com/live/partido/index.m3u8",
+    "customVideoUrl": "https://produces-element-victoria-implications.trycloudflare.com/live/partido/index.m3u8",
     "chatMode": "all",
     "officialAnnouncement": "Transmisión Oficial en HD para toda Bolivia por GolBolivia TV.",
     "broadcastMode": "obs_custom",
@@ -39,7 +39,7 @@
     "awayScore": 0,
     "matchMinute": 0,
     "period": "2T",
-    "updatedAt": 1791416736338
+    "updatedAt": 1791418984857
   },
   "clubs": {
     "bolivar": {
@@ -238,14 +238,14 @@
   "liveEvents": [
     {
       "id": "partido-001",
-      "title": "Wilstermann vs Aurora - Clasico Cochabambino",
-      "homeTeam": "bolivar",
-      "awayTeam": "strongest",
+      "title": "Oriente Petrolero Vs U. de Vinto",
+      "homeTeam": "oriente",
+      "awayTeam": "u_vinto",
       "isLive": true,
       "primaryProvider": "kick",
       "cloudflare": {
         "liveInputId": "fc815c43232145e69e7e59cba627d3fa",
-        "playbackUrl": "https://elite-again-scripts-ronald.trycloudflare.com/live/partido/index.m3u8"
+        "playbackUrl": "https://produces-element-victoria-implications.trycloudflare.com/live/partido/index.m3u8"
       },
       "youtube": {
         "videoId": "jfKfPfyJRdk"
@@ -258,8 +258,8 @@
         "cloudflare",
         "youtube"
       ],
-      "tournamentName": "División Profesional de Bolivia",
-      "stadiumName": "Estadio Olímpico Hernando Siles",
+      "tournamentName": "Copa Paceña",
+      "stadiumName": "Estadio Ramon Tahuichi Aguilera",
       "period": "1T",
       "homeScore": 0,
       "awayScore": 0,
@@ -295,5 +295,5 @@
       "matchMinute": 0
     }
   ],
-  "updatedAt": 1791416736338
+  "updatedAt": 1791418984857
 }
