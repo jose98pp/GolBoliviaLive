@@ -120,39 +120,7 @@ export default function App() {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  // Match live score & events fallback state
-  const [homeScore, setHomeScore] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('golbolivia_scoreboard');
-      if (saved) {
-        const val = JSON.parse(saved).homeScore;
-        if (typeof val === 'number') return val;
-      }
-    } catch {}
-    return 0;
-  });
-  const [awayScore, setAwayScore] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('golbolivia_scoreboard');
-      if (saved) {
-        const val = JSON.parse(saved).awayScore;
-        if (typeof val === 'number') return val;
-      }
-    } catch {}
-    return 0;
-  });
-  const [matchMinute, setMatchMinute] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('golbolivia_scoreboard');
-      if (saved) {
-        const val = JSON.parse(saved).matchMinute;
-        if (typeof val === 'number') return val;
-      }
-    } catch {}
-    return 0;
-  });
-
-  // Multi-Provider Live Events (Paso 9 & 10: Cloudflare, YouTube, Kick)
+  // Multi-Provider Live Events (Cloudflare, YouTube, Kick)
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>(() => {
     try {
       const saved = localStorage.getItem('golbolivia_live_events');
@@ -177,9 +145,10 @@ export default function App() {
     ? (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam])
     : (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId] || Object.values(clubs)[1]);
 
-  const currentHomeScore = currentLiveEvent?.homeScore !== undefined ? currentLiveEvent.homeScore : homeScore;
-  const currentAwayScore = currentLiveEvent?.awayScore !== undefined ? currentLiveEvent.awayScore : awayScore;
-  const currentMatchMinute = currentLiveEvent?.matchMinute !== undefined ? currentLiveEvent.matchMinute : matchMinute;
+  // Problema 2: Derivar el marcador visible directamente del evento confirmado más reciente, sin estado duplicado
+  const currentHomeScore = typeof currentLiveEvent?.homeScore === 'number' ? currentLiveEvent.homeScore : 0;
+  const currentAwayScore = typeof currentLiveEvent?.awayScore === 'number' ? currentLiveEvent.awayScore : 0;
+  const currentMatchMinute = typeof currentLiveEvent?.matchMinute === 'number' ? currentLiveEvent.matchMinute : 0;
   const currentPeriod = currentLiveEvent?.period || streamSettings.period || '1T';
 
   // Authoritative Backend Synchronization: Dedicated Match-Specific Stream Sync, GET /api/live & SSE /api/events
@@ -204,13 +173,14 @@ export default function App() {
     // 2. Dedicated Match-Scoped Stream & Failover Synchronization Subscriber
     const unsubscribeStream = apiClient.subscribeStreamSync((newConfig) => {
       const targetId = newConfig.eventId;
-      if (targetId) {
-        setLiveEvents((prev) =>
-          prev.map((ev) => (ev.id === targetId ? { ...ev, ...newConfig } : ev))
-        );
-      }
+      // Problema 3: Exigir eventId para configuraciones de transmisión específicas de un partido
+      if (!targetId) return;
 
-      if (!targetId || targetId === activeEventIdRef.current) {
+      setLiveEvents((prev) =>
+        prev.map((ev) => (ev.id === targetId ? { ...ev, ...newConfig } : ev))
+      );
+
+      if (targetId === activeEventIdRef.current) {
         setStreamSettings((prev) => {
           const isSwitchingToBackup =
             newConfig.activeStreamSource === 'backup' && prev.activeStreamSource !== 'backup';
@@ -238,12 +208,14 @@ export default function App() {
         const idx = result.findIndex((e) => e.id === inc.id);
         if (idx >= 0) {
           const current = result[idx];
-          const curVer = current.version || 0;
-          const incVer = inc.version || 0;
+          const curVer = typeof current.version === 'number' ? current.version : 0;
+          const incVer = typeof inc.version === 'number' ? inc.version : 0;
           const curUp = current.updatedAt || 0;
           const incUp = inc.updatedAt || 0;
-          // Regla 3: rechazar datos antiguos
-          if (incVer > curVer || (incVer === curVer && incUp >= curUp) || (incVer === 0 && curVer === 0 && incUp >= curUp)) {
+          // Regla 3 & Problema 5: Rechazar datos antiguos por versión o fecha
+          if (incVer > curVer) {
+            result[idx] = { ...current, ...inc };
+          } else if (incVer === curVer && incUp >= curUp) {
             result[idx] = { ...current, ...inc };
           }
         } else {
@@ -262,32 +234,33 @@ export default function App() {
         if (data.events) setEvents(data.events);
       } else if (type === 'STREAM_UPDATED' || type === 'STREAM_CONFIG_UPDATED') {
         const targetId = data.eventId;
+        // Problema 3: Exigir eventId para configuraciones específicas de un partido
         if (targetId) {
           setLiveEvents((prev) =>
             prev.map((ev) => {
               if (ev.id !== targetId) return ev;
-              const curVer = ev.version || 0;
-              const incVer = data.version || 0;
+              const curVer = typeof ev.version === 'number' ? ev.version : 0;
+              const incVer = typeof data.version === 'number' ? data.version : 0;
               if (incVer > 0 && incVer < curVer) return ev;
               return { ...ev, ...data };
             })
           );
-        }
-        if (!targetId || targetId === activeEventIdRef.current) {
-          setStreamSettings((prev) => ({ ...prev, ...data }));
+          if (targetId === activeEventIdRef.current) {
+            setStreamSettings((prev) => ({ ...prev, ...data }));
+          }
         }
       } else if (type === 'SCOREBOARD_UPDATED') {
         const targetId = data.eventId || activeEventIdRef.current;
         setLiveEvents((prev) =>
           prev.map((ev) => {
             if (ev.id !== targetId) return ev;
-            // Regla 3: Rechazar datos antiguos
-            const curVer = ev.version || 0;
-            const incVer = data.version || 0;
+            // Regla 3 & Problema 5: Rechazar datos antiguos
+            const curVer = typeof ev.version === 'number' ? ev.version : 0;
+            const incVer = typeof data.version === 'number' ? data.version : 0;
             const curUp = ev.updatedAt || 0;
             const incUp = data.updatedAt || 0;
             if (incVer > 0 && incVer < curVer) return ev;
-            if (incUp > 0 && incUp < curUp) return ev;
+            if (incVer === curVer && incUp > 0 && incUp < curUp) return ev;
 
             return {
               ...ev,
@@ -301,11 +274,6 @@ export default function App() {
             };
           })
         );
-        if (targetId === activeEventIdRef.current) {
-          if (data.homeScore !== undefined) setHomeScore(data.homeScore);
-          if (data.awayScore !== undefined) setAwayScore(data.awayScore);
-          if (data.matchMinute !== undefined) setMatchMinute(data.matchMinute);
-        }
       } else if (type === 'LIVE_EVENTS_UPDATED') {
         if (Array.isArray(data) && data.length > 0) {
           setLiveEvents((prev) => {
@@ -335,19 +303,13 @@ export default function App() {
           } catch {}
           return merged;
         });
-
-        const activeEvt = fbEvents.find((e) => e.id === activeEventIdRef.current);
-        if (activeEvt) {
-          if (activeEvt.homeScore !== undefined) setHomeScore(activeEvt.homeScore);
-          if (activeEvt.awayScore !== undefined) setAwayScore(activeEvt.awayScore);
-          if (activeEvt.matchMinute !== undefined) setMatchMinute(activeEvt.matchMinute);
-        }
       }
     });
 
+    // Problema 1: Usar mergeConfirmedEvents en la carga inicial para no sobrescribir datos recientes
     apiClient.getLiveEvents().then((evts) => {
       if (evts && evts.length > 0) {
-        setLiveEvents(evts);
+        setLiveEvents((prev) => mergeConfirmedEvents(prev, evts));
       }
     }).catch(() => {});
 
@@ -384,18 +346,8 @@ export default function App() {
       }
 
       if (matched) {
-        const isSwitchingMatch = prevActiveEventIdRef.current !== matched.id;
         prevActiveEventIdRef.current = matched.id;
         setActiveEventId(matched.id);
-        if (isSwitchingMatch) {
-          if (matched.homeScore !== undefined && matched.awayScore !== undefined) {
-            setHomeScore(matched.homeScore);
-            setAwayScore(matched.awayScore);
-          }
-          if (matched.matchMinute !== undefined) {
-            setMatchMinute(matched.matchMinute);
-          }
-        }
       }
     };
 
@@ -411,13 +363,6 @@ export default function App() {
       try {
         window.history.pushState(null, '', `/live/${slug}`);
       } catch {}
-    }
-    if (evt.homeScore !== undefined && evt.awayScore !== undefined) {
-      setHomeScore(evt.homeScore);
-      setAwayScore(evt.awayScore);
-    }
-    if (evt.matchMinute !== undefined) {
-      setMatchMinute(evt.matchMinute);
     }
     setStreamSettings((prev) => ({
       ...prev,
@@ -646,9 +591,9 @@ export default function App() {
           event={currentLiveEvent}
           isTheaterMode={false}
           setIsTheaterMode={() => {}}
-          homeScore={homeScore}
-          awayScore={awayScore}
-          matchMinute={matchMinute}
+          homeScore={currentHomeScore}
+          awayScore={currentAwayScore}
+          matchMinute={currentMatchMinute}
         />
       </div>
     );
@@ -754,27 +699,25 @@ export default function App() {
         onUpdateScore={(h, a) => {
           const safeH = Math.max(0, Math.min(50, Math.round(h)));
           const safeA = Math.max(0, Math.min(50, Math.round(a)));
-          const prevH = currentHomeScore;
-          const prevA = currentAwayScore;
-          setHomeScore(safeH);
-          setAwayScore(safeA);
+          const currentEv = liveEvents.find((e) => e.id === activeEventId);
+          const currentVer = typeof currentEv?.version === 'number' ? currentEv.version : 1;
+          const nextVer = currentVer + 1;
+          const prevEvents = liveEvents;
+
           setLiveEvents((prev) =>
             prev.map((ev) =>
-              ev.id === activeEventId ? { ...ev, homeScore: safeH, awayScore: safeA } : ev
+              ev.id === activeEventId ? { ...ev, homeScore: safeH, awayScore: safeA, version: nextVer } : ev
             )
           );
-          apiClient.updateScoreboard({ homeScore: safeH, awayScore: safeA, activeEventId })
-            .then(() => {
-              // Actualizar copia local de lectura únicamente tras confirmación oficial
-              try {
-                const current = JSON.parse(localStorage.getItem('golbolivia_live_events') || '[]');
-                const idx = current.findIndex((ev: any) => ev.id === activeEventId);
-                if (idx >= 0) {
-                  current[idx].homeScore = safeH;
-                  current[idx].awayScore = safeA;
-                  localStorage.setItem('golbolivia_live_events', JSON.stringify(current));
-                }
-              } catch {}
+          apiClient.updateScoreboard({ homeScore: safeH, awayScore: safeA, activeEventId, version: nextVer })
+            .then((res) => {
+              if (res.scoreboard?.version) {
+                setLiveEvents((prev) =>
+                  prev.map((ev) =>
+                    ev.id === activeEventId ? { ...ev, version: res.scoreboard.version } : ev
+                  )
+                );
+              }
               setActiveToast({
                 id: `score-ok-${Date.now()}`,
                 title: '✅ Guardado confirmado',
@@ -786,13 +729,7 @@ export default function App() {
             })
             .catch((err: any) => {
               // Revertir en fallo: no confirmar guardados fallidos
-              setHomeScore(prevH);
-              setAwayScore(prevA);
-              setLiveEvents((prev) =>
-                prev.map((ev) =>
-                  ev.id === activeEventId ? { ...ev, homeScore: prevH, awayScore: prevA } : ev
-                )
-              );
+              setLiveEvents(prevEvents);
               setActiveToast({
                 id: `score-err-${Date.now()}`,
                 title: '❌ Error al guardar marcador',
@@ -805,23 +742,25 @@ export default function App() {
         }}
         onUpdateMinute={(m) => {
           const safeM = Math.max(0, Math.min(130, Math.round(m)));
-          const prevM = currentMatchMinute;
-          setMatchMinute(safeM);
+          const currentEv = liveEvents.find((e) => e.id === activeEventId);
+          const currentVer = typeof currentEv?.version === 'number' ? currentEv.version : 1;
+          const nextVer = currentVer + 1;
+          const prevEvents = liveEvents;
+
           setLiveEvents((prev) =>
             prev.map((ev) =>
-              ev.id === activeEventId ? { ...ev, matchMinute: safeM } : ev
+              ev.id === activeEventId ? { ...ev, matchMinute: safeM, version: nextVer } : ev
             )
           );
-          apiClient.updateScoreboard({ matchMinute: safeM, activeEventId })
-            .then(() => {
-              try {
-                const current = JSON.parse(localStorage.getItem('golbolivia_live_events') || '[]');
-                const idx = current.findIndex((ev: any) => ev.id === activeEventId);
-                if (idx >= 0) {
-                  current[idx].matchMinute = safeM;
-                  localStorage.setItem('golbolivia_live_events', JSON.stringify(current));
-                }
-              } catch {}
+          apiClient.updateScoreboard({ matchMinute: safeM, activeEventId, version: nextVer })
+            .then((res) => {
+              if (res.scoreboard?.version) {
+                setLiveEvents((prev) =>
+                  prev.map((ev) =>
+                    ev.id === activeEventId ? { ...ev, version: res.scoreboard.version } : ev
+                  )
+                );
+              }
               setActiveToast({
                 id: `min-ok-${Date.now()}`,
                 title: '✅ Guardado confirmado',
@@ -833,12 +772,7 @@ export default function App() {
             })
             .catch((err: any) => {
               // Revertir en fallo: no confirmar guardados fallidos
-              setMatchMinute(prevM);
-              setLiveEvents((prev) =>
-                prev.map((ev) =>
-                  ev.id === activeEventId ? { ...ev, matchMinute: prevM } : ev
-                )
-              );
+              setLiveEvents(prevEvents);
               setActiveToast({
                 id: `min-err-${Date.now()}`,
                 title: '❌ Error al guardar minuto',

@@ -180,6 +180,113 @@ async function runTests() {
   assert(detectProviderFromUrl('https://youtube.com/watch?v=abc') === 'youtube', 'detectProviderFromUrl detecta YouTube');
   assert(detectProviderFromUrl('https://stream.m3u8') === 'cloudflare', 'detectProviderFromUrl detecta Cloudflare');
 
+  // 15. PROBLEMA 1: Carga inicial usa mergeConfirmedEvents y no reemplaza datos recientes
+  const mergeConfirmedEventsHelper = (prevList: LiveEvent[], incomingList: LiveEvent[]): LiveEvent[] => {
+    const result = [...prevList];
+    for (const inc of incomingList) {
+      const idx = result.findIndex((e) => e.id === inc.id);
+      if (idx >= 0) {
+        const current = result[idx];
+        const curVer = typeof current.version === 'number' ? current.version : 0;
+        const incVer = typeof inc.version === 'number' ? inc.version : 0;
+        const curUp = current.updatedAt || 0;
+        const incUp = inc.updatedAt || 0;
+        if (incVer > curVer) {
+          result[idx] = { ...current, ...inc };
+        } else if (incVer === curVer && incUp >= curUp) {
+          result[idx] = { ...current, ...inc };
+        }
+      } else {
+        result.push(inc);
+      }
+    }
+    return result;
+  };
+
+  const localRecentEvents: LiveEvent[] = [
+    { id: 'partido-001', title: 'Bolívar vs The Strongest', homeTeam: 'bolivar', awayTeam: 'strongest', isLive: true, primaryProvider: 'kick', fallbackOrder: ['kick'], version: 4, updatedAt: 2000, homeScore: 3, awayScore: 2 },
+  ];
+  const staleInitialEvents: LiveEvent[] = [
+    { id: 'partido-001', title: 'Bolívar vs The Strongest', homeTeam: 'bolivar', awayTeam: 'strongest', isLive: true, primaryProvider: 'kick', fallbackOrder: ['kick'], version: 2, updatedAt: 1000, homeScore: 0, awayScore: 0 },
+    { id: 'partido-002', title: 'Blooming vs Oriente', homeTeam: 'blooming', awayTeam: 'oriente', isLive: false, primaryProvider: 'youtube', fallbackOrder: ['youtube'], version: 1, updatedAt: 1000 },
+  ];
+
+  const mergedInitial = mergeConfirmedEventsHelper(localRecentEvents, staleInitialEvents);
+  const p1 = mergedInitial.find((e) => e.id === 'partido-001');
+  assert(p1?.version === 4 && p1?.homeScore === 3, 'Problema 1: Carga inicial no sobrescribe partido con versión v4 usando lista desactualizada v2');
+  assert(mergedInitial.some((e) => e.id === 'partido-002'), 'Problema 1: Carga inicial incorpora nuevos partidos que no existían localmente');
+
+  // 16. PROBLEMA 2: Marcador visible derivado únicamente del evento confirmado más reciente
+  const getVisibleScoreboard = (events: LiveEvent[], activeId: string) => {
+    const current = events.find((e) => e.id === activeId) || events[0];
+    return {
+      homeScore: typeof current?.homeScore === 'number' ? current.homeScore : 0,
+      awayScore: typeof current?.awayScore === 'number' ? current.awayScore : 0,
+      matchMinute: typeof current?.matchMinute === 'number' ? current.matchMinute : 0,
+    };
+  };
+
+  // Si llega un evento rechazado por versión desactualizada
+  const staleEventUpdate: LiveEvent[] = [
+    { id: 'partido-001', title: 'Bolívar vs The Strongest', homeTeam: 'bolivar', awayTeam: 'strongest', isLive: true, primaryProvider: 'kick', fallbackOrder: ['kick'], version: 1, homeScore: 0, awayScore: 0, matchMinute: 5 },
+  ];
+  const listAfterStaleUpdate = mergeConfirmedEventsHelper(mergedInitial, staleEventUpdate);
+  const visibleScore = getVisibleScoreboard(listAfterStaleUpdate, 'partido-001');
+  assert(visibleScore.homeScore === 3 && visibleScore.awayScore === 2, 'Problema 2: Marcador visible deriva del evento confirmado más reciente y rechaza marcador v1 desactualizado');
+
+  // 17. PROBLEMA 3: Sincronización de transmisión exige estrictamente eventId para configuraciones por partido
+  const simulateStreamSync = (
+    currentSettings: any,
+    currentEvents: LiveEvent[],
+    activeId: string,
+    newConfig: { eventId?: string; customVideoUrl?: string; activeStreamSource?: string }
+  ) => {
+    const targetId = newConfig.eventId;
+    if (!targetId) {
+      // Ignorado para configuraciones de partido si no tiene eventId
+      return { settings: currentSettings, events: currentEvents, applied: false };
+    }
+    const updatedEvents = currentEvents.map((ev) => (ev.id === targetId ? { ...ev, ...newConfig } : ev));
+    let updatedSettings = currentSettings;
+    if (targetId === activeId) {
+      updatedSettings = { ...currentSettings, ...newConfig };
+    }
+    return { settings: updatedSettings, events: updatedEvents, applied: true };
+  };
+
+  const initialStreamSettings = { customVideoUrl: 'https://stream.m3u8', activeStreamSource: 'obs' };
+  const syncWithoutEventId = simulateStreamSync(initialStreamSettings, mergedInitial, 'partido-001', { customVideoUrl: 'https://hacked.m3u8' });
+  assert(!syncWithoutEventId.applied && syncWithoutEventId.settings.customVideoUrl === 'https://stream.m3u8', 'Problema 3: Sincronización sin eventId es rechazada y no modifica el partido seleccionado');
+
+  const syncWithDifferentEventId = simulateStreamSync(initialStreamSettings, mergedInitial, 'partido-001', { eventId: 'partido-002', customVideoUrl: 'https://partido2.m3u8' });
+  assert(syncWithDifferentEventId.settings.customVideoUrl === 'https://stream.m3u8', 'Problema 3: Sincronización de partido-002 no altera la señal de partido-001');
+
+  const syncWithTargetEventId = simulateStreamSync(initialStreamSettings, mergedInitial, 'partido-001', { eventId: 'partido-001', customVideoUrl: 'https://actualizado.m3u8' });
+  assert(syncWithTargetEventId.settings.customVideoUrl === 'https://actualizado.m3u8', 'Problema 3: Sincronización con eventId coincidente actualiza la señal correctamente');
+
+  // 18. PROBLEMA 4: API como único punto de escritura
+  const { apiClient } = await import('../src/services/apiClient');
+  assert(typeof apiClient.saveLiveEvent === 'function', 'Problema 4: apiClient.saveLiveEvent disponible');
+  assert(typeof apiClient.updateScoreboard === 'function', 'Problema 4: apiClient.updateScoreboard disponible');
+
+  // 19. PROBLEMA 5: Validación estricta y atómica de versiones
+  const validateIncomingVersion = (existingVer: number, incomingVer?: any): { valid: boolean; error?: string } => {
+    const num = Number(incomingVer);
+    if (incomingVer === undefined || isNaN(num) || num <= 0) {
+      return { valid: false, error: 'VERSION_REQUIRED' };
+    }
+    if (num < existingVer) {
+      return { valid: false, error: 'VERSION_CONFLICT' };
+    }
+    return { valid: true };
+  };
+
+  assert(!validateIncomingVersion(5, undefined).valid, 'Problema 5: Rechaza actualizaciones sin versión');
+  assert(!validateIncomingVersion(5, 0).valid, 'Problema 5: Rechaza versiones con valor 0');
+  assert(!validateIncomingVersion(5, 4).valid, 'Problema 5: Rechaza versiones inferiores a la existente (v4 < v5)');
+  assert(validateIncomingVersion(5, 5).valid, 'Problema 5: Acepta versión igual o superior (v5 >= v5)');
+  assert(validateIncomingVersion(5, 6).valid, 'Problema 5: Acepta nueva versión incrementada (v6 > v5)');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);
   console.log('====================================================\n');

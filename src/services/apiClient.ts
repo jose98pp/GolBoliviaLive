@@ -97,7 +97,7 @@ class GolBoliviaApiClient {
     return await res.json();
   }
 
-  // 5. Update Scoreboard (Server-Authoritative + Firebase + LocalStorage read copy)
+  // 5. Update Scoreboard (Server-Authoritative single point of write)
   async updateScoreboard(data: {
     homeScore?: number;
     awayScore?: number;
@@ -106,10 +106,12 @@ class GolBoliviaApiClient {
     isClockRunning?: boolean;
     activeEventId?: string;
     eventId?: string;
+    version?: number;
   }): Promise<{ success: boolean; scoreboard: any }> {
     const targetEventId = data.activeEventId || data.eventId || 'partido-001';
 
-    // 1. Post to backend with explicit activeEventId via authenticated API
+    // 1. Authoritative single point of write via authenticated API
+    // Server handles Firestore persistence and returns confirmed scoreboard
     const res = await fetch('/api/scoreboard', {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -123,14 +125,7 @@ class GolBoliviaApiClient {
 
     const result = await res.json();
 
-    // 2. Mirror to match-specific Firebase Firestore with version & timestamp (Fuente única)
-    const fbRes = await saveMatchScoreboardFirebase(targetEventId, data);
-    if (fbRes) {
-      result.scoreboard = { ...result.scoreboard, version: fbRes.version, updatedAt: fbRes.updatedAt };
-    }
-    await saveScoreboardToFirebase(data).catch(() => {});
-
-    // 3. Keep read-only local storage copy only upon confirmed save
+    // 2. Keep read-only local storage copy only upon confirmed save
     try {
       const raw = localStorage.getItem('golbolivia_scoreboard');
       const existing = raw ? JSON.parse(raw) : {};
@@ -734,7 +729,8 @@ class GolBoliviaApiClient {
   }
 
   public async saveLiveEvent(event: LiveEvent): Promise<LiveEvent> {
-    // 1. Save to Server API with authentication headers
+    // 1. Single authoritative point of write: Server API with authentication headers
+    // The server handles Firestore persistence and returns the confirmed event with definitive version
     const res = await fetch('/api/live-events', {
       method: 'POST',
       headers: {
@@ -751,15 +747,10 @@ class GolBoliviaApiClient {
 
     const resData = await res.json();
     const confirmedEvent: LiveEvent = resData.event || event;
+    if (resData.version) confirmedEvent.version = resData.version;
+    if (resData.updatedAt) confirmedEvent.updatedAt = resData.updatedAt;
 
-    // 2. Save to Firebase Firestore with version & update timestamp (Fuente única de verdad)
-    const fbResult = await saveLiveEventToFirebase(confirmedEvent);
-    if (fbResult) {
-      confirmedEvent.version = fbResult.version;
-      confirmedEvent.updatedAt = fbResult.updatedAt;
-    }
-
-    // 3. Keep read-only local storage copy upon confirmed save
+    // 2. Keep read-only local storage copy upon confirmed save
     try {
       const raw = localStorage.getItem('golbolivia_live_events');
       let currentEvents: LiveEvent[] = raw ? JSON.parse(raw) : [];
@@ -776,7 +767,8 @@ class GolBoliviaApiClient {
   }
 
   public async deleteLiveEvent(eventId: string): Promise<boolean> {
-    // 1. Delete on Server API with authentication headers
+    // 1. Single authoritative point of deletion: Server API with authentication headers
+    // The server deletes from Firestore and broadcasts deletion
     const res = await fetch(`/api/live-events/${encodeURIComponent(eventId)}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
@@ -787,14 +779,7 @@ class GolBoliviaApiClient {
       throw new Error(err.error || 'No autorizado o error al eliminar el partido oficial en el servidor');
     }
 
-    // 2. Delete from Firebase Firestore
-    try {
-      await deleteLiveEventFromFirebase(eventId);
-    } catch (err) {
-      console.warn('[ApiClient] Advertencia al borrar en Firestore:', err);
-    }
-
-    // 3. Update read-only local storage copy
+    // 2. Update read-only local storage copy
     try {
       const raw = localStorage.getItem('golbolivia_live_events');
       if (raw) {

@@ -982,13 +982,25 @@ app.post(
       updatedBy: operator,
     };
 
-    // Regla 3: Verificar versiones para rechazar datos antiguos
-    if (existingEvent && raw.version !== undefined && raw.version < (existingEvent.version || 0)) {
-      res.status(409).json({
-        error: `Conflicto de versiones: El partido ya fue actualizado a la versión v${existingEvent.version}. Tu versión enviada es v${raw.version}.`,
-        code: 'VERSION_CONFLICT',
-      });
-      return;
+    // Problema 5: Exigir versiones válidas y rechazar versiones desactualizadas
+    if (existingEvent) {
+      const incomingVer = Number(raw.version);
+      if (raw.version === undefined || isNaN(incomingVer) || incomingVer <= 0) {
+        res.status(400).json({
+          error: 'Se requiere una versión válida (número mayor a 0) para actualizar un partido existente.',
+          code: 'VERSION_REQUIRED',
+        });
+        return;
+      }
+      const currentVer = typeof existingEvent.version === 'number' ? existingEvent.version : 1;
+      if (incomingVer < currentVer) {
+        res.status(409).json({
+          error: `Conflicto de versiones: El partido ya cuenta con la versión v${currentVer}. Tu versión enviada es v${incomingVer}.`,
+          code: 'VERSION_CONFLICT',
+        });
+        return;
+      }
+      safeEvent.version = incomingVer;
     }
 
     // Regla 4: Persistir primero a Cloud Firestore (Fuente única de datos reales por partido)
@@ -1087,13 +1099,26 @@ app.post(
       activeEvt = state.liveEvents[0];
     }
 
-    // Regla 3: Rechazar actualizaciones de versión desactualizada
-    if (activeEvt && req.body.version !== undefined && req.body.version < (activeEvt.version || 0)) {
-      res.status(409).json({
-        error: `Marcador desactualizado: El partido ya cuenta con la versión v${activeEvt.version}, superior a la enviada v${req.body.version}.`,
-        code: 'VERSION_CONFLICT',
-      });
-      return;
+    // Regla 3 & Problema 5: Exigir versión válida y rechazar actualizaciones desactualizadas
+    if (activeEvt) {
+      if (req.body.version !== undefined) {
+        const sentVersion = Number(req.body.version);
+        const curVer = typeof activeEvt.version === 'number' ? activeEvt.version : 1;
+        if (isNaN(sentVersion) || sentVersion <= 0) {
+          res.status(400).json({
+            error: 'La versión enviada debe ser un número válido mayor a 0.',
+            code: 'INVALID_VERSION',
+          });
+          return;
+        }
+        if (sentVersion < curVer) {
+          res.status(409).json({
+            error: `Marcador desactualizado: El partido ya cuenta con la versión v${curVer}, superior a la enviada v${sentVersion}.`,
+            code: 'VERSION_CONFLICT',
+          });
+          return;
+        }
+      }
     }
 
     const safeHome = homeScore !== undefined ? Math.max(0, Math.min(50, Math.round(Number(homeScore) || 0))) : undefined;
@@ -1374,19 +1399,23 @@ app.get(['/api/version', '/version'], (_req: Request, res: Response) => {
 });
 
 // Universal 404 Handler for unmatched routes
-app.all('*', (req: Request, res: Response) => {
-  res.status(404).json({
-    error: `Ruta no encontrada: ${req.method} ${req.originalUrl || req.url}`,
-    availableEndpoints: [
-      'GET /api/live',
-      'GET /api/streams',
-      'GET /api/auth/me',
-      'POST /api/auth/login',
-      'GET /api/scoreboard',
-      'GET /api/health',
-      'GET /api/version'
-    ]
-  });
+app.all('*', (req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith('/api') || (req.originalUrl && req.originalUrl.startsWith('/api'))) {
+    res.status(404).json({
+      error: `Ruta no encontrada: ${req.method} ${req.originalUrl || req.url}`,
+      availableEndpoints: [
+        'GET /api/live',
+        'GET /api/streams',
+        'GET /api/auth/me',
+        'POST /api/auth/login',
+        'GET /api/scoreboard',
+        'GET /api/health',
+        'GET /api/version'
+      ]
+    });
+    return;
+  }
+  next();
 });
 
 export { app, SYSTEM_USERS };

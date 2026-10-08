@@ -261,7 +261,8 @@ import {
   query,
   orderBy,
   limit,
-  getDocs
+  getDocs,
+  runTransaction
 } from "firebase/firestore";
 
 // firebase-applet-config.json
@@ -354,69 +355,68 @@ async function saveLiveEventToFirebase(event, operator) {
     throw new Error("Los identificadores de equipo local y visitante son obligatorios.");
   }
   const ref = doc(db, "liveEvents", safeId);
-  let nextVersion = (event.version || 0) + 1;
-  try {
-    const snap = await getDoc(ref);
+  const now = Date.now();
+  return await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    let nextVersion = 1;
     if (snap.exists()) {
       const existing = snap.data();
-      const existingVersion = existing?.version || 0;
-      const existingUpdatedAt = existing?.updatedAt || 0;
-      if (event.version !== void 0 && event.version < existingVersion) {
+      const existingVersion = typeof existing?.version === "number" ? existing.version : 0;
+      const existingUpdatedAt = typeof existing?.updatedAt === "number" ? existing.updatedAt : 0;
+      if (typeof event.version === "number" && event.version > 0 && event.version < existingVersion) {
         throw new Error(
           `Conflicto de versi\xF3n en Firebase: El partido ya cuenta con versi\xF3n v${existingVersion}, superior a la versi\xF3n v${event.version} recibida. Actualizaci\xF3n rechazada.`
         );
       }
-      if (event.updatedAt !== void 0 && event.updatedAt < existingUpdatedAt) {
+      if (typeof event.updatedAt === "number" && event.updatedAt > 0 && event.updatedAt < existingUpdatedAt) {
         throw new Error(
           `Conflicto de marca temporal en Firebase: El registro en Firestore (${new Date(existingUpdatedAt).toISOString()}) es m\xE1s reciente que el recibido (${new Date(event.updatedAt).toISOString()}). Guardado rechazado.`
         );
       }
-      nextVersion = Math.max(existingVersion, event.version || 0) + 1;
+      const baseVersion = typeof event.version === "number" && event.version > 0 ? Math.max(existingVersion, event.version) : existingVersion;
+      nextVersion = baseVersion + 1;
+    } else {
+      nextVersion = typeof event.version === "number" && event.version > 0 ? event.version : 1;
     }
-  } catch (err) {
-    if (err.message && (err.message.includes("Conflicto de versi\xF3n") || err.message.includes("Conflicto de marca temporal"))) {
-      throw err;
-    }
-  }
-  const now = Date.now();
-  const safePayload = {
-    id: safeId,
-    title: cleanTitle,
-    homeTeam: home,
-    awayTeam: away === home ? `${away}_alt` : away,
-    isLive: Boolean(event.isLive),
-    primaryProvider: event.primaryProvider,
-    cloudflare: event.cloudflare ? {
-      liveInputId: event.cloudflare.liveInputId,
-      playbackUrl: event.cloudflare.playbackUrl
-    } : void 0,
-    youtube: event.youtube ? {
-      videoId: event.youtube.videoId
-    } : void 0,
-    kick: event.kick ? {
-      channel: event.kick.channel
-    } : void 0,
-    fallbackOrder: event.fallbackOrder,
-    tournamentName: event.tournamentName ? event.tournamentName.trim().slice(0, 80) : void 0,
-    stadiumName: event.stadiumName ? event.stadiumName.trim().slice(0, 80) : void 0,
-    period: event.period,
-    homeScore: event.homeScore !== void 0 ? validateScore(event.homeScore) : void 0,
-    awayScore: event.awayScore !== void 0 ? validateScore(event.awayScore) : void 0,
-    matchMinute: event.matchMinute !== void 0 ? validateMinute(event.matchMinute) : void 0,
-    customVideoUrl: event.customVideoUrl ? event.customVideoUrl.trim().slice(0, 500) : void 0,
-    backupVideoUrl: event.backupVideoUrl ? event.backupVideoUrl.trim().slice(0, 500) : void 0,
-    backupChannelName: event.backupChannelName ? event.backupChannelName.trim().slice(0, 100) : void 0,
-    activeStreamSource: event.activeStreamSource || "obs",
-    autoFailoverEnabled: event.autoFailoverEnabled ?? true,
-    isClockRunning: event.isClockRunning ?? false,
-    clockUpdatedAt: event.clockUpdatedAt || now,
-    version: nextVersion,
-    updatedAt: now,
-    updatedAtIso: new Date(now).toISOString(),
-    updatedBy: operator || "admin"
-  };
-  await setDoc(ref, safePayload, { merge: true });
-  return { success: true, version: nextVersion, updatedAt: now };
+    const safePayload = {
+      id: safeId,
+      title: cleanTitle,
+      homeTeam: home,
+      awayTeam: away === home ? `${away}_alt` : away,
+      isLive: Boolean(event.isLive),
+      primaryProvider: event.primaryProvider,
+      cloudflare: event.cloudflare ? {
+        liveInputId: event.cloudflare.liveInputId,
+        playbackUrl: event.cloudflare.playbackUrl
+      } : void 0,
+      youtube: event.youtube ? {
+        videoId: event.youtube.videoId
+      } : void 0,
+      kick: event.kick ? {
+        channel: event.kick.channel
+      } : void 0,
+      fallbackOrder: event.fallbackOrder,
+      tournamentName: event.tournamentName ? event.tournamentName.trim().slice(0, 80) : void 0,
+      stadiumName: event.stadiumName ? event.stadiumName.trim().slice(0, 80) : void 0,
+      period: event.period,
+      homeScore: event.homeScore !== void 0 ? validateScore(event.homeScore) : void 0,
+      awayScore: event.awayScore !== void 0 ? validateScore(event.awayScore) : void 0,
+      matchMinute: event.matchMinute !== void 0 ? validateMinute(event.matchMinute) : void 0,
+      customVideoUrl: event.customVideoUrl ? event.customVideoUrl.trim().slice(0, 500) : void 0,
+      backupVideoUrl: event.backupVideoUrl ? event.backupVideoUrl.trim().slice(0, 500) : void 0,
+      backupChannelName: event.backupChannelName ? event.backupChannelName.trim().slice(0, 100) : void 0,
+      activeStreamSource: event.activeStreamSource || "obs",
+      autoFailoverEnabled: event.autoFailoverEnabled ?? true,
+      isClockRunning: event.isClockRunning ?? false,
+      clockUpdatedAt: event.clockUpdatedAt || now,
+      version: nextVersion,
+      updatedAt: now,
+      updatedAtIso: new Date(now).toISOString(),
+      updatedBy: operator || "admin"
+    };
+    transaction.set(ref, safePayload, { merge: true });
+    return { success: true, version: nextVersion, updatedAt: now };
+  });
 }
 async function saveMatchScoreboardFirebase(eventId, data, operator) {
   const safeId = sanitizeClubId(eventId);
@@ -424,43 +424,42 @@ async function saveMatchScoreboardFirebase(eventId, data, operator) {
     throw new Error("Identificador de partido inv\xE1lido para marcador.");
   }
   const ref = doc(db, "liveEvents", safeId);
-  let nextVersion = (data.version || 0) + 1;
-  try {
-    const snap = await getDoc(ref);
+  const now = Date.now();
+  return await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    let nextVersion = 1;
     if (snap.exists()) {
       const existing = snap.data();
-      const existingVersion = existing?.version || 0;
-      if (data.version !== void 0 && data.version < existingVersion) {
+      const existingVersion = typeof existing?.version === "number" ? existing.version : 0;
+      if (typeof data.version === "number" && data.version > 0 && data.version < existingVersion) {
         throw new Error(
           `Marcador desactualizado: La versi\xF3n actual en Firestore (v${existingVersion}) es superior a la versi\xF3n enviada (v${data.version}). Guardado rechazado.`
         );
       }
-      nextVersion = Math.max(existingVersion, data.version || 0) + 1;
+      const baseVersion = typeof data.version === "number" && data.version > 0 ? Math.max(existingVersion, data.version) : existingVersion;
+      nextVersion = baseVersion + 1;
+    } else {
+      nextVersion = typeof data.version === "number" && data.version > 0 ? data.version : 1;
     }
-  } catch (err) {
-    if (err.message && err.message.includes("Marcador desactualizado")) {
-      throw err;
+    const sanitized = {
+      version: nextVersion,
+      updatedAt: now,
+      updatedAtIso: new Date(now).toISOString(),
+      updatedBy: operator || "admin"
+    };
+    if (data.homeScore !== void 0) sanitized.homeScore = validateScore(data.homeScore);
+    if (data.awayScore !== void 0) sanitized.awayScore = validateScore(data.awayScore);
+    if (data.matchMinute !== void 0) sanitized.matchMinute = validateMinute(data.matchMinute);
+    if (data.period && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(data.period)) {
+      sanitized.period = data.period;
     }
-  }
-  const now = Date.now();
-  const sanitized = {
-    version: nextVersion,
-    updatedAt: now,
-    updatedAtIso: new Date(now).toISOString(),
-    updatedBy: operator || "admin"
-  };
-  if (data.homeScore !== void 0) sanitized.homeScore = validateScore(data.homeScore);
-  if (data.awayScore !== void 0) sanitized.awayScore = validateScore(data.awayScore);
-  if (data.matchMinute !== void 0) sanitized.matchMinute = validateMinute(data.matchMinute);
-  if (data.period && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(data.period)) {
-    sanitized.period = data.period;
-  }
-  if (typeof data.isClockRunning === "boolean") {
-    sanitized.isClockRunning = data.isClockRunning;
-    sanitized.clockUpdatedAt = now;
-  }
-  await setDoc(ref, sanitized, { merge: true });
-  return { success: true, version: nextVersion, updatedAt: now };
+    if (typeof data.isClockRunning === "boolean") {
+      sanitized.isClockRunning = data.isClockRunning;
+      sanitized.clockUpdatedAt = now;
+    }
+    transaction.set(ref, sanitized, { merge: true });
+    return { success: true, version: nextVersion, updatedAt: now };
+  });
 }
 async function getLiveEventsFromFirebase() {
   try {
@@ -1257,12 +1256,24 @@ app2.post(
       updatedAtIso: new Date(now).toISOString(),
       updatedBy: operator
     };
-    if (existingEvent && raw.version !== void 0 && raw.version < (existingEvent.version || 0)) {
-      res.status(409).json({
-        error: `Conflicto de versiones: El partido ya fue actualizado a la versi\xF3n v${existingEvent.version}. Tu versi\xF3n enviada es v${raw.version}.`,
-        code: "VERSION_CONFLICT"
-      });
-      return;
+    if (existingEvent) {
+      const incomingVer = Number(raw.version);
+      if (raw.version === void 0 || isNaN(incomingVer) || incomingVer <= 0) {
+        res.status(400).json({
+          error: "Se requiere una versi\xF3n v\xE1lida (n\xFAmero mayor a 0) para actualizar un partido existente.",
+          code: "VERSION_REQUIRED"
+        });
+        return;
+      }
+      const currentVer = typeof existingEvent.version === "number" ? existingEvent.version : 1;
+      if (incomingVer < currentVer) {
+        res.status(409).json({
+          error: `Conflicto de versiones: El partido ya cuenta con la versi\xF3n v${currentVer}. Tu versi\xF3n enviada es v${incomingVer}.`,
+          code: "VERSION_CONFLICT"
+        });
+        return;
+      }
+      safeEvent.version = incomingVer;
     }
     try {
       const fbResult = await saveLiveEventToFirebase(safeEvent, operator);
@@ -1347,12 +1358,25 @@ app2.post(
     if (!activeEvt && state.liveEvents.length > 0) {
       activeEvt = state.liveEvents[0];
     }
-    if (activeEvt && req.body.version !== void 0 && req.body.version < (activeEvt.version || 0)) {
-      res.status(409).json({
-        error: `Marcador desactualizado: El partido ya cuenta con la versi\xF3n v${activeEvt.version}, superior a la enviada v${req.body.version}.`,
-        code: "VERSION_CONFLICT"
-      });
-      return;
+    if (activeEvt) {
+      if (req.body.version !== void 0) {
+        const sentVersion = Number(req.body.version);
+        const curVer = typeof activeEvt.version === "number" ? activeEvt.version : 1;
+        if (isNaN(sentVersion) || sentVersion <= 0) {
+          res.status(400).json({
+            error: "La versi\xF3n enviada debe ser un n\xFAmero v\xE1lido mayor a 0.",
+            code: "INVALID_VERSION"
+          });
+          return;
+        }
+        if (sentVersion < curVer) {
+          res.status(409).json({
+            error: `Marcador desactualizado: El partido ya cuenta con la versi\xF3n v${curVer}, superior a la enviada v${sentVersion}.`,
+            code: "VERSION_CONFLICT"
+          });
+          return;
+        }
+      }
     }
     const safeHome = homeScore !== void 0 ? Math.max(0, Math.min(50, Math.round(Number(homeScore) || 0))) : void 0;
     const safeAway = awayScore !== void 0 ? Math.max(0, Math.min(50, Math.round(Number(awayScore) || 0))) : void 0;
@@ -1595,19 +1619,23 @@ app2.get(["/api/version", "/version"], (_req, res) => {
     builtAt: "2026-10-04T07:15:00Z"
   });
 });
-app2.all("*", (req, res) => {
-  res.status(404).json({
-    error: `Ruta no encontrada: ${req.method} ${req.originalUrl || req.url}`,
-    availableEndpoints: [
-      "GET /api/live",
-      "GET /api/streams",
-      "GET /api/auth/me",
-      "POST /api/auth/login",
-      "GET /api/scoreboard",
-      "GET /api/health",
-      "GET /api/version"
-    ]
-  });
+app2.all("*", (req, res, next) => {
+  if (req.path.startsWith("/api") || req.originalUrl && req.originalUrl.startsWith("/api")) {
+    res.status(404).json({
+      error: `Ruta no encontrada: ${req.method} ${req.originalUrl || req.url}`,
+      availableEndpoints: [
+        "GET /api/live",
+        "GET /api/streams",
+        "GET /api/auth/me",
+        "POST /api/auth/login",
+        "GET /api/scoreboard",
+        "GET /api/health",
+        "GET /api/version"
+      ]
+    });
+    return;
+  }
+  next();
 });
 var serverApp_default = app2;
 export {
