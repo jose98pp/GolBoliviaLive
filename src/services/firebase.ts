@@ -73,11 +73,23 @@ export function validateMinute(minute: any, defaultValue = 0): number {
 /**
  * 1. STREAM SETTINGS & M3U8 SIGNALS
  */
-export async function saveStreamSettingsToFirebase(settings: Partial<StreamSettings>): Promise<void> {
+export async function saveStreamSettingsToFirebase(settings: Partial<StreamSettings>, operator?: string): Promise<void> {
   const ref = doc(db, 'config', 'stream_settings');
+  let nextVersion = (settings.version || 0) + 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      nextVersion = (snap.data()?.version || 0) + 1;
+    }
+  } catch {}
+
+  const now = Date.now();
   const payload: any = {
     ...settings,
-    updatedAt: Date.now(),
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || 'admin',
   };
   if (settings.homeClubId) payload.homeClubId = sanitizeClubId(settings.homeClubId);
   if (settings.awayClubId) payload.awayClubId = sanitizeClubId(settings.awayClubId);
@@ -132,10 +144,22 @@ export async function saveScoreboardToFirebase(data: {
   awayScore?: number;
   matchMinute?: number;
   period?: string;
-}): Promise<void> {
+}, operator?: string): Promise<void> {
   const ref = doc(db, 'match', 'scoreboard');
+  let nextVersion = 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      nextVersion = (snap.data()?.version || 0) + 1;
+    }
+  } catch {}
+
+  const now = Date.now();
   const sanitized: any = {
-    updatedAt: Date.now(),
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || 'admin',
   };
   if (data.homeScore !== undefined) {
     sanitized.homeScore = validateScore(data.homeScore);
@@ -541,16 +565,38 @@ export const DEFAULT_LIVE_EVENTS: LiveEvent[] = [
   },
 ];
 
-export async function saveLiveEventToFirebase(event: LiveEvent): Promise<void> {
-  const safeId = sanitizeClubId(event.id) || 'partido-001';
-  const ref = doc(db, 'liveEvents', safeId);
-  const home = sanitizeClubId(event.homeTeam) || 'bolivar';
-  const away = sanitizeClubId(event.awayTeam) || 'strongest';
+export async function saveLiveEventToFirebase(event: LiveEvent, operator?: string): Promise<{ success: boolean; version: number; updatedAt: number }> {
+  const safeId = sanitizeClubId(event.id);
+  if (!safeId) {
+    throw new Error('ID de partido inválido o no especificado.');
+  }
+  const cleanTitle = (event.title || '').trim().slice(0, 120);
+  if (!cleanTitle) {
+    throw new Error('El título del partido es obligatorio.');
+  }
 
+  const home = sanitizeClubId(event.homeTeam);
+  const away = sanitizeClubId(event.awayTeam);
+  if (!home || !away) {
+    throw new Error('Los identificadores de equipo local y visitante son obligatorios.');
+  }
+
+  const ref = doc(db, 'liveEvents', safeId);
+
+  let nextVersion = (event.version || 0) + 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const d = snap.data();
+      nextVersion = (d.version || 0) + 1;
+    }
+  } catch {}
+
+  const now = Date.now();
   // Guarantee no secret keys ever get stored or transmitted here
   const safePayload: LiveEvent = {
     id: safeId,
-    title: (event.title || 'Partido en Vivo').trim().slice(0, 120),
+    title: cleanTitle,
     homeTeam: home,
     awayTeam: away === home ? `${away}_alt` : away,
     isLive: Boolean(event.isLive),
@@ -578,9 +624,14 @@ export async function saveLiveEventToFirebase(event: LiveEvent): Promise<void> {
     activeStreamSource: event.activeStreamSource || 'obs',
     autoFailoverEnabled: event.autoFailoverEnabled ?? true,
     isClockRunning: event.isClockRunning ?? false,
-    clockUpdatedAt: event.clockUpdatedAt || Date.now(),
+    clockUpdatedAt: event.clockUpdatedAt || now,
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || 'admin',
   };
-  await setDoc(ref, { ...safePayload, updatedAt: Date.now() }, { merge: true });
+  await setDoc(ref, safePayload, { merge: true });
+  return { success: true, version: nextVersion, updatedAt: now };
 }
 
 export async function saveMatchScoreboardFirebase(
@@ -591,12 +642,29 @@ export async function saveMatchScoreboardFirebase(
     matchMinute?: number;
     period?: string;
     isClockRunning?: boolean;
+    version?: number;
+  },
+  operator?: string
+): Promise<{ success: boolean; version: number; updatedAt: number }> {
+  const safeId = sanitizeClubId(eventId);
+  if (!safeId) {
+    throw new Error('Identificador de partido inválido para marcador.');
   }
-): Promise<void> {
-  const safeId = sanitizeClubId(eventId) || 'partido-001';
   const ref = doc(db, 'liveEvents', safeId);
+  let nextVersion = (data.version || 0) + 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      nextVersion = (snap.data()?.version || 0) + 1;
+    }
+  } catch {}
+
+  const now = Date.now();
   const sanitized: any = {
-    updatedAt: Date.now(),
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || 'admin',
   };
   if (data.homeScore !== undefined) sanitized.homeScore = validateScore(data.homeScore);
   if (data.awayScore !== undefined) sanitized.awayScore = validateScore(data.awayScore);
@@ -606,9 +674,10 @@ export async function saveMatchScoreboardFirebase(
   }
   if (typeof data.isClockRunning === 'boolean') {
     sanitized.isClockRunning = data.isClockRunning;
-    sanitized.clockUpdatedAt = Date.now();
+    sanitized.clockUpdatedAt = now;
   }
   await setDoc(ref, sanitized, { merge: true });
+  return { success: true, version: nextVersion, updatedAt: now };
 }
 
 export async function getLiveEventsFromFirebase(): Promise<LiveEvent[]> {
@@ -623,7 +692,7 @@ export async function getLiveEventsFromFirebase(): Promise<LiveEvent[]> {
   } catch (err) {
     console.warn('[Firebase] Error al leer liveEvents:', err);
   }
-  return DEFAULT_LIVE_EVENTS;
+  return [];
 }
 
 export function subscribeLiveEventsFirebase(

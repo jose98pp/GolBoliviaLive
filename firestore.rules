@@ -1,8 +1,36 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Lectura pública para visitantes en todas las colecciones oficiales
     match /{document=**} {
-      allow read, write: if true;
+      allow read: if true;
+    }
+
+    // Colecciones de datos oficiales: sólo administradores autenticados pueden modificar
+    match /config/{docId} {
+      allow write: if request.auth != null;
+    }
+
+    match /match/{docId} {
+      allow write: if request.auth != null;
+    }
+
+    match /liveEvents/{eventId} {
+      allow write: if request.auth != null;
+    }
+
+    // Chat interactivo: los visitantes pueden enviar mensajes de texto válidos
+    match /chat/{msgId} {
+      allow create: if request.resource.data.text is string 
+                    && request.resource.data.text.size() > 0 
+                    && request.resource.data.text.size() <= 300;
+      allow update, delete: if request.auth != null;
+    }
+
+    // Registro de auditoría
+    match /audit_logs/{logId} {
+      allow read, create: if true;
+      allow update, delete: if false;
     }
   }
 }

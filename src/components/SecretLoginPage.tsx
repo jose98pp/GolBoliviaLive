@@ -539,9 +539,9 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
       });
       setFirebaseSavedBanner(res.message);
       setTimeout(() => setFirebaseSavedBanner(null), 6000);
-    } catch {
-      setFirebaseSavedBanner('Copia guardada localmente. Error de conexión con Firebase.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
+    } catch (err: any) {
+      setFirebaseSavedBanner(`❌ Error al guardar datos oficiales: ${err.message || 'Error de conexión o permisos insuficientes en el servidor'}`);
+      setTimeout(() => setFirebaseSavedBanner(null), 7000);
     } finally {
       setIsSavingFirebase(false);
     }

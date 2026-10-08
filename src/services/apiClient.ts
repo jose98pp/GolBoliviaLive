@@ -90,83 +90,15 @@ class GolBoliviaApiClient {
 
   // 4. Fetch full authoritative live state from backend
   async getLiveState(): Promise<LiveStateResponse> {
-    try {
-      const res = await fetch('/api/live');
-      const contentType = res.headers.get('content-type') || '';
-      if (!res.ok || !contentType.includes('application/json')) {
-        throw new Error('API no disponible o respuesta estática');
-      }
-      return await res.json();
-    } catch {
-      // Graceful fallback reading from localStorage persistence
-      let localObsUrl = '';
-      let localBackupUrl = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
-      let localSource: any = 'obs';
-      let localSettings: Partial<StreamSettings> = {};
-      let localScoreboard: any = { homeScore: 2, awayScore: 1, matchMinute: 78, period: '2T' };
-      try {
-        localObsUrl = localStorage.getItem('golbolivia_custom_video_url') || '';
-        localBackupUrl = localStorage.getItem('golbolivia_backup_m3u8_url') || localBackupUrl;
-        localSource = localStorage.getItem('golbolivia_active_stream_source') || (localObsUrl ? 'obs' : 'simulation');
-        const rawSettings = localStorage.getItem('golbolivia_stream_settings');
-        if (rawSettings) localSettings = JSON.parse(rawSettings);
-        const rawScore = localStorage.getItem('golbolivia_scoreboard');
-        if (rawScore) localScoreboard = { ...localScoreboard, ...JSON.parse(rawScore) };
-      } catch {}
-
-      return {
-        live: localSettings.isLive ?? true,
-        playbackUrl: localSource === 'backup' ? localBackupUrl : (localSettings.customVideoUrl || localObsUrl),
-        match: localSettings.title || 'Bolívar vs The Strongest',
-        streamSettings: {
-          title: localSettings.title || 'Bolívar vs The Strongest — Clásico Paceño N° 234',
-          tournamentName: localSettings.tournamentName || 'Liga Tigo División Profesional - Torneo Clausura',
-          homeClubId: localSettings.homeClubId || 'bolivar',
-          awayClubId: localSettings.awayClubId || 'strongest',
-          stadiumName: localSettings.stadiumName || 'Estadio Olímpico Hernando Siles',
-          altitudeMeters: localSettings.altitudeMeters || 3637,
-          period: (localSettings.period as any) || localScoreboard.period || '2T',
-          isLive: localSettings.isLive ?? true,
-          rtmpServer: 'rtmp://localhost:1935/live',
-          streamKey: 'bolivia',
-          customVideoUrl: localSettings.customVideoUrl || localObsUrl,
-          backupVideoUrl: localSettings.backupVideoUrl || localBackupUrl,
-          backupChannelName: localSettings.backupChannelName || 'GolBolivia 24/7 Señal Alternativa HD',
-          activeStreamSource: (localSettings.activeStreamSource as any) || localSource,
-          autoFailoverEnabled: localSettings.autoFailoverEnabled ?? true,
-          broadcastMode: (localSettings.broadcastMode as any) || (localObsUrl ? 'obs_custom' : 'simulation'),
-          chatMode: (localSettings.chatMode as any) || 'all',
-          officialAnnouncement: localSettings.officialAnnouncement || 'Transmisión oficial de GolBolivia Live.',
-          overlayScoreboardVisible: localSettings.overlayScoreboardVisible ?? false,
-          lowLatencyMode: localSettings.lowLatencyMode ?? true,
-        },
-        scoreboard: {
-          homeScore: localScoreboard.homeScore ?? 2,
-          awayScore: localScoreboard.awayScore ?? 1,
-          matchMinute: localScoreboard.matchMinute ?? 78,
-          period: localScoreboard.period || '2T',
-          updatedAt: Date.now(),
-        },
-        matchStats: {
-          possession: [56, 44],
-          shots: [15, 9],
-          shotsOnTarget: [7, 4],
-          corners: [6, 3],
-          fouls: [11, 14],
-          yellowCards: [2, 3],
-          redCards: [0, 0],
-          offsides: [2, 1],
-          passes: [412, 318],
-          passAccuracy: [86, 80],
-        },
-        events: [],
-        viewersCount: 14820,
-        serverTimestamp: Date.now(),
-      };
+    const res = await fetch('/api/live');
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok || !contentType.includes('application/json')) {
+      throw new Error(`API no disponible o respuesta no válida (HTTP ${res.status})`);
     }
+    return await res.json();
   }
 
-  // 5. Update Scoreboard (Server-Authoritative + Firebase + LocalStorage)
+  // 5. Update Scoreboard (Server-Authoritative + Firebase + LocalStorage read copy)
   async updateScoreboard(data: {
     homeScore?: number;
     awayScore?: number;
@@ -178,37 +110,60 @@ class GolBoliviaApiClient {
   }): Promise<{ success: boolean; scoreboard: any }> {
     const targetEventId = data.activeEventId || data.eventId || 'partido-001';
 
-    // 1. Save to LocalStorage immediately
+    // 1. Post to backend with explicit activeEventId via authenticated API
+    const res = await fetch('/api/scoreboard', {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ ...data, activeEventId: targetEventId, eventId: targetEventId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `Error HTTP ${res.status} al actualizar marcador` }));
+      throw new Error(err.error || 'No autorizado o error al actualizar el marcador oficial');
+    }
+
+    const result = await res.json();
+
+    // 2. Mirror to match-specific Firebase Firestore with version & timestamp
+    await saveMatchScoreboardFirebase(targetEventId, data).catch((err) => {
+      console.warn('[ApiClient] Advertencia al sincronizar marcador en Firestore:', err);
+    });
+    await saveScoreboardToFirebase(data).catch(() => {});
+
+    // 3. Keep read-only local storage copy
     try {
       const raw = localStorage.getItem('golbolivia_scoreboard');
       const existing = raw ? JSON.parse(raw) : {};
-      const merged = { ...existing, ...data, activeEventId: targetEventId, updatedAt: Date.now() };
+      const merged = { ...existing, ...result.scoreboard, activeEventId: targetEventId, updatedAt: Date.now() };
       localStorage.setItem('golbolivia_scoreboard', JSON.stringify(merged));
     } catch {}
 
-    // 2. Mirror to match-specific Firebase Firestore immediately
-    saveMatchScoreboardFirebase(targetEventId, data).catch(() => {});
-    saveScoreboardToFirebase(data).catch(() => {});
-
-    // 3. Post to backend with explicit activeEventId
-    try {
-      const res = await fetch('/api/scoreboard', {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify({ ...data, activeEventId: targetEventId, eventId: targetEventId }),
-      });
-      if (res.ok) {
-        const result = await res.json();
-        return result;
-      }
-    } catch {}
-
-    return { success: true, scoreboard: data };
+    return result;
   }
 
   // 6. Update Stream Settings (Server-Authoritative + Firebase)
   async updateStreamSettings(settings: Partial<StreamSettings>): Promise<{ success: boolean; streamSettings: any }> {
-    // 1. Local storage backup
+    // 1. Post to backend API with authentication
+    const res = await fetch('/api/streams', {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(settings),
+    });
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `Error HTTP ${res.status} al guardar señal` }));
+      throw new Error(err.error || 'No autorizado o error al actualizar configuración de transmisión');
+    }
+
+    const result = contentType.includes('application/json') ? await res.json() : { success: true, streamSettings: settings };
+
+    // 2. Persist to Firebase Firestore with versioning
+    await saveStreamSettingsToFirebase(settings).catch((err) => {
+      console.warn('[ApiClient] Advertencia al guardar configuración en Firestore:', err);
+    });
+
+    // 3. Update local storage copy for reading only
     try {
       if (settings.customVideoUrl !== undefined) {
         localStorage.setItem('golbolivia_custom_video_url', settings.customVideoUrl);
@@ -221,28 +176,7 @@ class GolBoliviaApiClient {
       }
     } catch {}
 
-    // 2. Persist to Firebase Firestore
-    saveStreamSettingsToFirebase(settings).catch(() => {});
-
-    // 3. Post to backend API
-    const res = await fetch('/api/streams', {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(settings),
-    });
-
-    const contentType = res.headers.get('content-type') || '';
-    if (res.ok && contentType.includes('application/json')) {
-      const result = await res.json();
-      return result;
-    }
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Error del servidor al guardar señal' }));
-      throw new Error(err.error || 'Error al actualizar configuración de transmisión');
-    }
-
-    return { success: true, streamSettings: settings };
+    return result;
   }
 
   // 6.1 Switch Active Stream Source (OBS vs Backup M3U8 vs Simulation)
@@ -293,7 +227,24 @@ class GolBoliviaApiClient {
   async syncStreamConfig(config: Partial<StreamSettings> & { activeEventId?: string; eventId?: string }): Promise<{ success: boolean; config?: any }> {
     const targetEventId = config.eventId || config.activeEventId || 'partido-001';
 
-    // 1. Save locally for instant offline feedback and permanent persistence
+    // 1. Post to dedicated /api/streams/config with explicit eventId via authenticated API
+    const res = await fetch('/api/streams/config', {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ ...config, eventId: targetEventId, activeEventId: targetEventId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `Error HTTP ${res.status} al sincronizar señal` }));
+      throw new Error(err.error || 'No autorizado o error al sincronizar la configuración de transmisión');
+    }
+
+    const json = await res.json();
+
+    // 2. Persist to Firebase Firestore
+    await saveStreamSettingsToFirebase(config).catch(() => {});
+
+    // 3. Save locally for reading copy
     try {
       const raw = localStorage.getItem('golbolivia_stream_settings');
       const existing = raw ? JSON.parse(raw) : {};
@@ -304,24 +255,7 @@ class GolBoliviaApiClient {
       if (config.activeStreamSource !== undefined) localStorage.setItem('golbolivia_active_stream_source', config.activeStreamSource);
     } catch {}
 
-    // 2. Persist to Firebase Firestore
-    saveStreamSettingsToFirebase(config).catch(() => {});
-
-    // 3. Post to dedicated /api/streams/config with explicit eventId
-    try {
-      const res = await fetch('/api/streams/config', {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify({ ...config, eventId: targetEventId, activeEventId: targetEventId }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        return json;
-      }
-    } catch {}
-
-    // 4. Fallback to /api/streams
-    return this.updateStreamSettings(config);
+    return json;
   }
 
   // 6.4 Dedicated Real-Time Subscriber for Match-Specific Stream Synchronization
@@ -795,56 +729,83 @@ class GolBoliviaApiClient {
       }
     } catch {}
 
-    // 4. Fallback to default sample matches
-    return DEFAULT_LIVE_EVENTS;
+    // 4. Do not return default sample matches automatically
+    return [];
   }
 
   public async saveLiveEvent(event: LiveEvent): Promise<LiveEvent> {
-    // 1. Save to LocalStorage immediately
+    // 1. Save to Server API with authentication headers
+    const res = await fetch('/api/live-events', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders(),
+      },
+      body: JSON.stringify(event),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `Error HTTP ${res.status} al guardar partido` }));
+      throw new Error(err.error || 'No autorizado o error al guardar el partido oficial en el servidor');
+    }
+
+    const resData = await res.json();
+    const confirmedEvent: LiveEvent = resData.event || event;
+
+    // 2. Save to Firebase Firestore with version & update timestamp
+    try {
+      const fbResult = await saveLiveEventToFirebase(confirmedEvent);
+      if (fbResult) {
+        confirmedEvent.version = fbResult.version;
+        confirmedEvent.updatedAt = fbResult.updatedAt;
+      }
+    } catch (err: any) {
+      console.warn('[ApiClient] Advertencia al sincronizar en Firestore:', err);
+    }
+
+    // 3. Keep read-only local storage copy upon confirmed save
     try {
       const raw = localStorage.getItem('golbolivia_live_events');
-      let currentEvents: LiveEvent[] = raw ? JSON.parse(raw) : [...DEFAULT_LIVE_EVENTS];
-      const idx = currentEvents.findIndex((e) => e.id === event.id);
+      let currentEvents: LiveEvent[] = raw ? JSON.parse(raw) : [];
+      const idx = currentEvents.findIndex((e) => e.id === confirmedEvent.id);
       if (idx >= 0) {
-        currentEvents[idx] = event;
+        currentEvents[idx] = confirmedEvent;
       } else {
-        currentEvents.push(event);
+        currentEvents.push(confirmedEvent);
       }
       localStorage.setItem('golbolivia_live_events', JSON.stringify(currentEvents));
     } catch {}
 
-    // 2. Save to Firebase Firestore
-    try {
-      await saveLiveEventToFirebase(event);
-    } catch (err) {
-      console.warn('[ApiClient] Error guardando liveEvent en Firebase:', err);
-    }
-
-    // 3. Save to Server API if accessible
-    try {
-      await fetch('/api/live-events', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...this.getAuthHeaders(),
-        },
-        body: JSON.stringify(event),
-      });
-    } catch {}
-
-    return event;
+    return confirmedEvent;
   }
 
   public async deleteLiveEvent(eventId: string): Promise<boolean> {
+    // 1. Delete on Server API with authentication headers
+    const res = await fetch(`/api/live-events/${encodeURIComponent(eventId)}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `Error HTTP ${res.status} al eliminar partido` }));
+      throw new Error(err.error || 'No autorizado o error al eliminar el partido oficial en el servidor');
+    }
+
+    // 2. Delete from Firebase Firestore
     try {
       await deleteLiveEventFromFirebase(eventId);
-    } catch {}
+    } catch (err) {
+      console.warn('[ApiClient] Advertencia al borrar en Firestore:', err);
+    }
 
+    // 3. Update read-only local storage copy
     try {
-      await fetch(`/api/live-events/${encodeURIComponent(eventId)}`, {
-        method: 'DELETE',
-        headers: this.getAuthHeaders(),
-      });
+      const raw = localStorage.getItem('golbolivia_live_events');
+      if (raw) {
+        const currentEvents: LiveEvent[] = JSON.parse(raw);
+        const filtered = currentEvents.filter((e) => e.id !== eventId);
+        localStorage.setItem('golbolivia_live_events', JSON.stringify(filtered));
+      }
     } catch {}
 
     return true;

@@ -39,7 +39,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return DEFAULT_LIVE_EVENTS;
+    return [];
   });
   const [selectedId, setSelectedId] = useState<string>(activeEventId || 'partido-001');
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -47,7 +47,15 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Form edit state for currently selected event
-  const currentEvent = events.find((e) => e.id === selectedId) || events[0] || DEFAULT_LIVE_EVENTS[0];
+  const currentEvent = events.find((e) => e.id === selectedId) || events[0] || ({
+    id: selectedId || 'partido-001',
+    title: 'Nuevo Partido',
+    homeTeam: 'oriente',
+    awayTeam: 'u_vinto',
+    isLive: true,
+    primaryProvider: 'kick',
+    fallbackOrder: ['kick', 'cloudflare', 'youtube'],
+  } as LiveEvent);
 
   const [formData, setFormData] = useState<LiveEvent>({ ...currentEvent });
   const prevSelectedIdRef = useRef(selectedId);

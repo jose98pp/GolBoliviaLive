@@ -76,7 +76,6 @@ export default function App() {
 
   // Broadcaster & Page Settings
   const [streamSettings, setStreamSettings] = useState<StreamSettings>(() => {
-    const defaultUrl = 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8';
     let saved: Partial<StreamSettings> = {};
     if (typeof window !== 'undefined') {
       try {
@@ -92,26 +91,26 @@ export default function App() {
     }
     const finalUrl = (saved.customVideoUrl && saved.customVideoUrl.trim().length > 5)
       ? saved.customVideoUrl.trim()
-      : defaultUrl;
+      : '';
 
     return {
-      title: saved.title || 'Bolívar vs The Strongest — Fecha 22 Torneo Clausura',
-      tournamentName: saved.tournamentName || 'División Profesional de Bolivia',
-      homeClubId: saved.homeClubId || 'bolivar',
-      awayClubId: saved.awayClubId || 'strongest',
-      stadiumName: saved.stadiumName || 'Estadio Olímpico Hernando Siles',
-      altitudeMeters: saved.altitudeMeters || 3637,
-      period: saved.period || '2T',
+      title: saved.title || '',
+      tournamentName: saved.tournamentName || '',
+      homeClubId: saved.homeClubId || '',
+      awayClubId: saved.awayClubId || '',
+      stadiumName: saved.stadiumName || '',
+      altitudeMeters: saved.altitudeMeters || 0,
+      period: saved.period || '1T',
       isLive: saved.isLive ?? true,
       broadcastMode: saved.broadcastMode || (finalUrl ? 'obs_custom' : 'simulation'),
       customVideoUrl: finalUrl,
-      backupVideoUrl: saved.backupVideoUrl || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-      backupChannelName: saved.backupChannelName || 'GolBolivia 24/7 Señal HD',
+      backupVideoUrl: saved.backupVideoUrl || '',
+      backupChannelName: saved.backupChannelName || 'GolBolivia HD',
       activeStreamSource: saved.activeStreamSource || 'obs',
       autoFailoverEnabled: saved.autoFailoverEnabled ?? true,
       chatMode: saved.chatMode || 'all',
-      officialAnnouncement: saved.officialAnnouncement || 'Transmisión oficial de GolBolivia Live desde el Hernando Siles.',
-      overlayScoreboardVisible: saved.overlayScoreboardVisible ?? true,
+      officialAnnouncement: saved.officialAnnouncement || '',
+      overlayScoreboardVisible: saved.overlayScoreboardVisible ?? false,
       lowLatencyMode: saved.lowLatencyMode ?? true,
     };
   });
@@ -131,7 +130,7 @@ export default function App() {
         if (typeof val === 'number') return val;
       }
     } catch {}
-    return 2;
+    return 0;
   });
   const [awayScore, setAwayScore] = useState<number>(() => {
     try {
@@ -141,7 +140,7 @@ export default function App() {
         if (typeof val === 'number') return val;
       }
     } catch {}
-    return 1;
+    return 0;
   });
   const [matchMinute, setMatchMinute] = useState<number>(() => {
     try {
@@ -151,7 +150,7 @@ export default function App() {
         if (typeof val === 'number') return val;
       }
     } catch {}
-    return 78;
+    return 0;
   });
 
   // Multi-Provider Live Events (Paso 9 & 10: Cloudflare, YouTube, Kick)
@@ -163,7 +162,7 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return DEFAULT_LIVE_EVENTS;
+    return [];
   });
   const [activeEventId, setActiveEventId] = useState<string>('partido-001');
   const activeEventIdRef = useRef(activeEventId);
@@ -171,14 +170,18 @@ export default function App() {
     activeEventIdRef.current = activeEventId;
   }, [activeEventId]);
 
-  const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || DEFAULT_LIVE_EVENTS[0];
-  const currentHomeClub = (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam]) || BOLIVIAN_CLUBS.bolivar;
-  const currentAwayClub = (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam]) || BOLIVIAN_CLUBS.strongest;
+  const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0];
+  const currentHomeClub = currentLiveEvent?.homeTeam
+    ? (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam])
+    : (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId] || Object.values(clubs)[0]);
+  const currentAwayClub = currentLiveEvent?.awayTeam
+    ? (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam])
+    : (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId] || Object.values(clubs)[1]);
 
-  const currentHomeScore = currentLiveEvent.homeScore !== undefined ? currentLiveEvent.homeScore : homeScore;
-  const currentAwayScore = currentLiveEvent.awayScore !== undefined ? currentLiveEvent.awayScore : awayScore;
-  const currentMatchMinute = currentLiveEvent.matchMinute !== undefined ? currentLiveEvent.matchMinute : matchMinute;
-  const currentPeriod = currentLiveEvent.period || streamSettings.period || '2T';
+  const currentHomeScore = currentLiveEvent?.homeScore !== undefined ? currentLiveEvent.homeScore : homeScore;
+  const currentAwayScore = currentLiveEvent?.awayScore !== undefined ? currentLiveEvent.awayScore : awayScore;
+  const currentMatchMinute = currentLiveEvent?.matchMinute !== undefined ? currentLiveEvent.matchMinute : matchMinute;
+  const currentPeriod = currentLiveEvent?.period || streamSettings.period || '1T';
 
   // Authoritative Backend Synchronization: Dedicated Match-Specific Stream Sync, GET /api/live & SSE /api/events
   useEffect(() => {
@@ -186,23 +189,17 @@ export default function App() {
     apiClient.getLiveState()
       .then((data) => {
         if (data.streamSettings) {
-          setStreamSettings((prev) => {
-            try {
-              const local = localStorage.getItem('golbolivia_stream_settings');
-              if (local) {
-                const parsed = JSON.parse(local);
-                return { ...prev, ...data.streamSettings, ...parsed };
-              }
-            } catch {}
-            return { ...prev, ...data.streamSettings };
-          });
+          setStreamSettings((prev) => ({ ...prev, ...data.streamSettings }));
+          try {
+            localStorage.setItem('golbolivia_stream_settings', JSON.stringify(data.streamSettings));
+          } catch {}
         }
         if (data.events && data.events.length > 0) {
           setEvents(data.events);
         }
       })
       .catch(() => {
-        // Fallback gracefully to default match state if offline
+        // Fallback gracefully if offline
       });
 
     // 2. Dedicated Match-Scoped Stream & Failover Synchronization Subscriber
@@ -659,7 +656,25 @@ export default function App() {
             homeScore: currentHomeScore,
             awayScore: currentAwayScore,
             matchMinute: currentMatchMinute,
-          }).catch(() => {});
+          }).then(() => {
+            setActiveToast({
+              id: `period-ok-${Date.now()}`,
+              title: '✅ Guardado confirmado',
+              body: `Periodo "${p}" guardado en servidor y Firestore`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              type: 'exclusive',
+              read: false,
+            });
+          }).catch((err: any) => {
+            setActiveToast({
+              id: `period-err-${Date.now()}`,
+              title: '❌ Error al guardar',
+              body: err.message || 'No autorizado para cambiar periodo',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              type: 'exclusive',
+              read: false,
+            });
+          });
         }}
         onUpdateScore={(h, a) => {
           const safeH = Math.max(0, Math.min(50, Math.round(h)));
@@ -675,7 +690,27 @@ export default function App() {
             } catch {}
             return updated;
           });
-          apiClient.updateScoreboard({ homeScore: safeH, awayScore: safeA, activeEventId }).catch(() => {});
+          apiClient.updateScoreboard({ homeScore: safeH, awayScore: safeA, activeEventId })
+            .then(() => {
+              setActiveToast({
+                id: `score-ok-${Date.now()}`,
+                title: '✅ Guardado confirmado',
+                body: `Marcador oficial ${safeH} - ${safeA} sincronizado en Firestore`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                type: 'exclusive',
+                read: false,
+              });
+            })
+            .catch((err: any) => {
+              setActiveToast({
+                id: `score-err-${Date.now()}`,
+                title: '❌ Error al guardar marcador',
+                body: err.message || 'No autorizado o error al guardar marcador',
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                type: 'exclusive',
+                read: false,
+              });
+            });
         }}
         onUpdateMinute={(m) => {
           const safeM = Math.max(0, Math.min(130, Math.round(m)));
@@ -689,7 +724,27 @@ export default function App() {
             } catch {}
             return updated;
           });
-          apiClient.updateScoreboard({ matchMinute: safeM, activeEventId }).catch(() => {});
+          apiClient.updateScoreboard({ matchMinute: safeM, activeEventId })
+            .then(() => {
+              setActiveToast({
+                id: `min-ok-${Date.now()}`,
+                title: '✅ Guardado confirmado',
+                body: `Minuto oficial ${safeM}' sincronizado en Firestore`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                type: 'exclusive',
+                read: false,
+              });
+            })
+            .catch((err: any) => {
+              setActiveToast({
+                id: `min-err-${Date.now()}`,
+                title: '❌ Error al guardar minuto',
+                body: err.message || 'No autorizado o error al guardar minuto',
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                type: 'exclusive',
+                read: false,
+              });
+            });
         }}
         onUpdateLiveEvent={(data) => {
           setLiveEvents((prev) => {

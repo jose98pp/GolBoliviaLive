@@ -315,11 +315,23 @@ function validateMinute(minute, defaultValue = 0) {
   }
   return Math.max(0, Math.min(130, Math.round(minute)));
 }
-async function saveStreamSettingsToFirebase(settings) {
+async function saveStreamSettingsToFirebase(settings, operator) {
   const ref = doc(db, "config", "stream_settings");
+  let nextVersion = (settings.version || 0) + 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      nextVersion = (snap.data()?.version || 0) + 1;
+    }
+  } catch {
+  }
+  const now = Date.now();
   const payload = {
     ...settings,
-    updatedAt: Date.now()
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || "admin"
   };
   if (settings.homeClubId) payload.homeClubId = sanitizeClubId(settings.homeClubId);
   if (settings.awayClubId) payload.awayClubId = sanitizeClubId(settings.awayClubId);
@@ -343,10 +355,22 @@ async function getStreamSettingsFromFirebase() {
   }
   return null;
 }
-async function saveScoreboardToFirebase(data) {
+async function saveScoreboardToFirebase(data, operator) {
   const ref = doc(db, "match", "scoreboard");
+  let nextVersion = 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      nextVersion = (snap.data()?.version || 0) + 1;
+    }
+  } catch {
+  }
+  const now = Date.now();
   const sanitized = {
-    updatedAt: Date.now()
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || "admin"
   };
   if (data.homeScore !== void 0) {
     sanitized.homeScore = validateScore(data.homeScore);
@@ -398,38 +422,74 @@ var DEFAULT_LIVE_EVENTS = [
     period: "2T",
     homeScore: 2,
     awayScore: 1,
-    matchMinute: 75
+    matchMinute: 78,
+    customVideoUrl: "https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8",
+    backupVideoUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    backupChannelName: "GolBolivia Se\xF1al 1 HD",
+    activeStreamSource: "obs",
+    autoFailoverEnabled: true,
+    isClockRunning: false
   },
   {
     id: "partido-002",
-    title: "Blooming vs Oriente",
+    title: "Blooming vs Oriente Petrolero",
     homeTeam: "blooming",
     awayTeam: "oriente",
     isLive: true,
     primaryProvider: "youtube",
+    cloudflare: {
+      liveInputId: "cb471284920412841920",
+      playbackUrl: "https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8"
+    },
     youtube: {
       videoId: "5qap5aO4i9A"
     },
     kick: {
-      channel: "golbolivia"
+      channel: "golbolivia_senal2"
     },
-    fallbackOrder: ["youtube", "kick"],
+    fallbackOrder: ["youtube", "kick", "cloudflare"],
     tournamentName: "Cl\xE1sico Cruce\xF1o - Fecha 22",
     stadiumName: "Estadio Ram\xF3n Tahuichi Aguilera - Santa Cruz",
     period: "1T",
     homeScore: 1,
     awayScore: 1,
-    matchMinute: 38
+    matchMinute: 38,
+    customVideoUrl: "https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8",
+    backupVideoUrl: "https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8",
+    backupChannelName: "GolBolivia Se\xF1al 2 HD",
+    activeStreamSource: "obs",
+    autoFailoverEnabled: true,
+    isClockRunning: false
   }
 ];
-async function saveLiveEventToFirebase(event) {
-  const safeId = sanitizeClubId(event.id) || "partido-001";
+async function saveLiveEventToFirebase(event, operator) {
+  const safeId = sanitizeClubId(event.id);
+  if (!safeId) {
+    throw new Error("ID de partido inv\xE1lido o no especificado.");
+  }
+  const cleanTitle = (event.title || "").trim().slice(0, 120);
+  if (!cleanTitle) {
+    throw new Error("El t\xEDtulo del partido es obligatorio.");
+  }
+  const home = sanitizeClubId(event.homeTeam);
+  const away = sanitizeClubId(event.awayTeam);
+  if (!home || !away) {
+    throw new Error("Los identificadores de equipo local y visitante son obligatorios.");
+  }
   const ref = doc(db, "liveEvents", safeId);
-  const home = sanitizeClubId(event.homeTeam) || "bolivar";
-  const away = sanitizeClubId(event.awayTeam) || "strongest";
+  let nextVersion = (event.version || 0) + 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const d = snap.data();
+      nextVersion = (d.version || 0) + 1;
+    }
+  } catch {
+  }
+  const now = Date.now();
   const safePayload = {
     id: safeId,
-    title: (event.title || "Partido en Vivo").trim().slice(0, 120),
+    title: cleanTitle,
     homeTeam: home,
     awayTeam: away === home ? `${away}_alt` : away,
     isLive: Boolean(event.isLive),
@@ -450,9 +510,21 @@ async function saveLiveEventToFirebase(event) {
     period: event.period,
     homeScore: event.homeScore !== void 0 ? validateScore(event.homeScore) : void 0,
     awayScore: event.awayScore !== void 0 ? validateScore(event.awayScore) : void 0,
-    matchMinute: event.matchMinute !== void 0 ? validateMinute(event.matchMinute) : void 0
+    matchMinute: event.matchMinute !== void 0 ? validateMinute(event.matchMinute) : void 0,
+    customVideoUrl: event.customVideoUrl ? event.customVideoUrl.trim().slice(0, 500) : void 0,
+    backupVideoUrl: event.backupVideoUrl ? event.backupVideoUrl.trim().slice(0, 500) : void 0,
+    backupChannelName: event.backupChannelName ? event.backupChannelName.trim().slice(0, 100) : void 0,
+    activeStreamSource: event.activeStreamSource || "obs",
+    autoFailoverEnabled: event.autoFailoverEnabled ?? true,
+    isClockRunning: event.isClockRunning ?? false,
+    clockUpdatedAt: event.clockUpdatedAt || now,
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || "admin"
   };
-  await setDoc(ref, { ...safePayload, updatedAt: Date.now() }, { merge: true });
+  await setDoc(ref, safePayload, { merge: true });
+  return { success: true, version: nextVersion, updatedAt: now };
 }
 async function getLiveEventsFromFirebase() {
   try {
@@ -466,7 +538,7 @@ async function getLiveEventsFromFirebase() {
   } catch (err) {
     console.warn("[Firebase] Error al leer liveEvents:", err);
   }
-  return DEFAULT_LIVE_EVENTS;
+  return [];
 }
 async function deleteLiveEventFromFirebase(eventId) {
   try {
@@ -576,18 +648,6 @@ function verifyToken(token) {
   if (session && session.expiresAt > Date.now()) {
     return session.user;
   }
-  if (token.startsWith("session_admin_")) {
-    return { id: "usr-admin-1", username: "admin", name: "Director General de Transmisi\xF3n", role: "ADMIN" };
-  }
-  if (token.startsWith("session_transmisor_") || token.startsWith("session_trans_")) {
-    return { id: "usr-trans-1", username: "transmisor", name: "Operador OBS & MediaMTX", role: "TRANSMISOR" };
-  }
-  if (token.startsWith("session_moderador_") || token.startsWith("session_mod_")) {
-    return { id: "usr-mod-1", username: "moderador", name: "Moderador Oficial de Chat", role: "MODERADOR" };
-  }
-  if (token.startsWith("session_editor_") || token.startsWith("session_edit_")) {
-    return { id: "usr-edit-1", username: "editor", name: "Estad\xEDgrafo & Cronista", role: "EDITOR" };
-  }
   const parts = token.split(".");
   if (parts.length === 3) {
     const [headerB64, payloadB64, signature] = parts;
@@ -631,26 +691,25 @@ function verifyToken(token) {
   }
   return null;
 }
-function authenticate(req, _res, next) {
+function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    req.user = {
-      id: "usr-admin-1",
-      username: "admin",
-      name: "Director General de Transmisi\xF3n",
-      role: "ADMIN"
-    };
-    next();
+    res.status(401).json({
+      error: "No autorizado. Se requiere token Bearer de autenticaci\xF3n para modificar datos oficiales.",
+      code: "AUTH_REQUIRED"
+    });
     return;
   }
   const token = authHeader.substring(7);
   const user = verifyToken(token);
-  req.user = user || {
-    id: "usr-admin-1",
-    username: "admin",
-    name: "Director General de Transmisi\xF3n",
-    role: "ADMIN"
-  };
+  if (!user) {
+    res.status(401).json({
+      error: "Sesi\xF3n expirada o token inv\xE1lido. Por favor inicia sesi\xF3n nuevamente en el panel de control.",
+      code: "INVALID_TOKEN"
+    });
+    return;
+  }
+  req.user = user;
   next();
 }
 function requireRoles(allowedRoles) {
@@ -1128,27 +1187,40 @@ app2.post(
     if (typeof body.autoFailoverEnabled === "boolean") state.streamSettings.autoFailoverEnabled = body.autoFailoverEnabled;
     if (typeof body.isLive === "boolean") state.streamSettings.isLive = body.isLive;
     if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
+    const targetEventId = body.eventId || body.activeEventId || "partido-001";
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
-      const activeEvt = state.liveEvents.find((e) => e.id === body.activeEventId) || state.liveEvents[0];
-      if (activeEvt) {
-        if (state.streamSettings.title) activeEvt.title = state.streamSettings.title;
-        if (state.streamSettings.homeClubId) activeEvt.homeTeam = state.streamSettings.homeClubId;
-        if (state.streamSettings.awayClubId) activeEvt.awayTeam = state.streamSettings.awayClubId;
-        if (state.streamSettings.tournamentName) activeEvt.tournamentName = state.streamSettings.tournamentName;
-        if (state.streamSettings.stadiumName) activeEvt.stadiumName = state.streamSettings.stadiumName;
-        if (state.streamSettings.period) activeEvt.period = state.streamSettings.period;
+      const targetEvt = state.liveEvents.find((e) => e.id === targetEventId) || state.liveEvents[0];
+      if (targetEvt) {
+        if (state.streamSettings.title) targetEvt.title = state.streamSettings.title;
+        if (state.streamSettings.homeClubId) targetEvt.homeTeam = state.streamSettings.homeClubId;
+        if (state.streamSettings.awayClubId) targetEvt.awayTeam = state.streamSettings.awayClubId;
+        if (state.streamSettings.tournamentName) targetEvt.tournamentName = state.streamSettings.tournamentName;
+        if (state.streamSettings.stadiumName) targetEvt.stadiumName = state.streamSettings.stadiumName;
+        if (state.streamSettings.period) targetEvt.period = state.streamSettings.period;
+        if (body.customVideoUrl) {
+          targetEvt.customVideoUrl = body.customVideoUrl;
+          if (targetEvt.cloudflare) targetEvt.cloudflare.playbackUrl = body.customVideoUrl;
+        }
+        if (body.backupVideoUrl) targetEvt.backupVideoUrl = body.backupVideoUrl;
+        if (body.backupChannelName) targetEvt.backupChannelName = body.backupChannelName;
+        if (body.activeStreamSource) targetEvt.activeStreamSource = body.activeStreamSource;
+        if (typeof body.autoFailoverEnabled === "boolean") targetEvt.autoFailoverEnabled = body.autoFailoverEnabled;
       }
     }
     persistState();
-    const payload = getPublicStreamPayload();
+    const payload = {
+      ...getPublicStreamPayload(),
+      eventId: targetEventId
+    };
     broadcastSseEvent("STREAM_CONFIG_UPDATED", payload);
     broadcastSseEvent("STREAM_UPDATED", payload);
     broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
     res.json({
       success: true,
-      message: "Configuraci\xF3n de se\xF1ales m3u8 sincronizada globalmente para todos los usuarios.",
+      message: "Configuraci\xF3n de se\xF1ales sincronizada por partido con \xE9xito.",
       config: payload,
-      streamSettings: payload
+      streamSettings: payload,
+      eventId: targetEventId
     });
   }
 );
@@ -1156,7 +1228,7 @@ app2.get(["/api/live-events", "/live-events"], (_req, res) => {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.json({
     success: true,
-    events: state.liveEvents || DEFAULT_LIVE_EVENTS,
+    events: state.liveEvents || [],
     updatedAt: Date.now()
   });
 });
@@ -1172,17 +1244,59 @@ app2.post(
   ["/api/live-events", "/live-events"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR"]),
-  (req, res) => {
+  async (req, res) => {
     const raw = req.body;
-    if (!raw || !raw.id || !raw.title) {
-      res.status(400).json({ error: "id y title son requeridos" });
+    if (!raw || !raw.id || typeof raw.id !== "string" || !raw.id.trim()) {
+      res.status(400).json({ error: "El identificador (id) del partido es obligatorio." });
       return;
     }
+    const cleanId = raw.id.trim();
+    const cleanTitle = (raw.title || "").trim();
+    if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
+      res.status(400).json({ error: "El t\xEDtulo del partido debe tener entre 3 y 120 caracteres." });
+      return;
+    }
+    const cleanHome = (raw.homeTeam || "").trim().toLowerCase();
+    const cleanAway = (raw.awayTeam || "").trim().toLowerCase();
+    if (!cleanHome || !cleanAway) {
+      res.status(400).json({ error: "Los equipos local y visitante son obligatorios." });
+      return;
+    }
+    if (cleanHome === cleanAway) {
+      res.status(400).json({ error: "El equipo local y el equipo visitante no pueden ser el mismo club." });
+      return;
+    }
+    if (raw.homeScore !== void 0) {
+      const hScore = Number(raw.homeScore);
+      if (isNaN(hScore) || hScore < 0 || hScore > 50) {
+        res.status(400).json({ error: "Los goles del equipo local deben ser un n\xFAmero entre 0 y 50." });
+        return;
+      }
+    }
+    if (raw.awayScore !== void 0) {
+      const aScore = Number(raw.awayScore);
+      if (isNaN(aScore) || aScore < 0 || aScore > 50) {
+        res.status(400).json({ error: "Los goles del equipo visitante deben ser un n\xFAmero entre 0 y 50." });
+        return;
+      }
+    }
+    if (raw.matchMinute !== void 0) {
+      const min = Number(raw.matchMinute);
+      if (isNaN(min) || min < 0 || min > 130) {
+        res.status(400).json({ error: "El minuto del partido debe ser un n\xFAmero entre 0 y 130." });
+        return;
+      }
+    }
+    const existingIndex = state.liveEvents.findIndex((e) => e.id === cleanId);
+    const existingEvent = existingIndex >= 0 ? state.liveEvents[existingIndex] : null;
+    const nextVersion = (existingEvent?.version || raw.version || 0) + 1;
+    const now = Date.now();
+    const operator = req.user?.username || "admin";
     const safeEvent = {
-      id: String(raw.id).trim(),
-      title: String(raw.title).trim(),
-      homeTeam: String(raw.homeTeam || "bolivar").trim(),
-      awayTeam: String(raw.awayTeam || "strongest").trim(),
+      id: cleanId,
+      title: cleanTitle,
+      homeTeam: cleanHome,
+      awayTeam: cleanAway,
       isLive: Boolean(raw.isLive ?? true),
       primaryProvider: ["cloudflare", "youtube", "kick"].includes(raw.primaryProvider) ? raw.primaryProvider : "cloudflare",
       cloudflare: raw.cloudflare ? {
@@ -1198,12 +1312,22 @@ app2.post(
       fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ["cloudflare", "youtube", "kick"],
       tournamentName: raw.tournamentName ? String(raw.tournamentName).trim() : void 0,
       stadiumName: raw.stadiumName ? String(raw.stadiumName).trim() : void 0,
-      period: raw.period,
+      period: raw.period || "1T",
       homeScore: raw.homeScore !== void 0 ? Number(raw.homeScore) : void 0,
       awayScore: raw.awayScore !== void 0 ? Number(raw.awayScore) : void 0,
-      matchMinute: raw.matchMinute !== void 0 ? Number(raw.matchMinute) : void 0
+      matchMinute: raw.matchMinute !== void 0 ? Number(raw.matchMinute) : void 0,
+      customVideoUrl: raw.customVideoUrl ? String(raw.customVideoUrl).trim() : void 0,
+      backupVideoUrl: raw.backupVideoUrl ? String(raw.backupVideoUrl).trim() : void 0,
+      backupChannelName: raw.backupChannelName ? String(raw.backupChannelName).trim() : void 0,
+      activeStreamSource: raw.activeStreamSource || "obs",
+      autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
+      isClockRunning: raw.isClockRunning ?? false,
+      clockUpdatedAt: raw.clockUpdatedAt || now,
+      version: nextVersion,
+      updatedAt: now,
+      updatedAtIso: new Date(now).toISOString(),
+      updatedBy: operator
     };
-    const existingIndex = state.liveEvents.findIndex((e) => e.id === safeEvent.id);
     if (existingIndex >= 0) {
       state.liveEvents[existingIndex] = safeEvent;
     } else {
@@ -1219,14 +1343,30 @@ app2.post(
       if (safeEvent.homeScore !== void 0) state.scoreboard.homeScore = safeEvent.homeScore;
       if (safeEvent.awayScore !== void 0) state.scoreboard.awayScore = safeEvent.awayScore;
       if (safeEvent.matchMinute !== void 0) state.scoreboard.matchMinute = safeEvent.matchMinute;
-      broadcastSseEvent("STREAM_UPDATED", getPublicStreamPayload());
-      broadcastSseEvent("SCOREBOARD_UPDATED", state.scoreboard);
     }
     persistState();
+    try {
+      await saveLiveEventToFirebase(safeEvent, operator);
+    } catch (fbErr) {
+      console.warn("[GolBolivia Server] Advertencia al guardar evento en Firestore:", fbErr);
+    }
+    broadcastSseEvent("STREAM_CONFIG_UPDATED", { eventId: safeEvent.id, ...safeEvent });
+    broadcastSseEvent("SCOREBOARD_UPDATED", {
+      eventId: safeEvent.id,
+      homeScore: safeEvent.homeScore,
+      awayScore: safeEvent.awayScore,
+      matchMinute: safeEvent.matchMinute,
+      period: safeEvent.period,
+      isClockRunning: safeEvent.isClockRunning,
+      version: safeEvent.version,
+      updatedAt: now
+    });
     broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
     res.json({
       success: true,
       message: `Partido ${safeEvent.title} guardado con \xE9xito.`,
+      version: safeEvent.version,
+      updatedAt: safeEvent.updatedAt,
       event: safeEvent,
       events: state.liveEvents
     });
@@ -1247,35 +1387,55 @@ app2.delete(
   }
 );
 app2.get(["/api/scoreboard", "/scoreboard"], (_req, res) => {
-  res.json({ scoreboard: state.scoreboard });
+  res.json({ scoreboard: state.scoreboard, events: state.liveEvents });
 });
 app2.post(
   ["/api/scoreboard", "/scoreboard"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
   (req, res) => {
-    const { homeScore, awayScore, matchMinute, period } = req.body;
-    if (homeScore !== void 0) state.scoreboard.homeScore = Math.max(0, Math.min(50, Math.round(Number(homeScore) || 0)));
-    if (awayScore !== void 0) state.scoreboard.awayScore = Math.max(0, Math.min(50, Math.round(Number(awayScore) || 0)));
-    if (matchMinute !== void 0) state.scoreboard.matchMinute = Math.max(0, Math.min(130, Math.round(Number(matchMinute) || 0)));
+    const { homeScore, awayScore, matchMinute, period, isClockRunning } = req.body;
+    const targetEventId = req.body.activeEventId || req.body.eventId || "partido-001";
+    let activeEvt = state.liveEvents.find((e) => e.id === targetEventId);
+    if (!activeEvt && state.liveEvents.length > 0) {
+      activeEvt = state.liveEvents[0];
+    }
+    const safeHome = homeScore !== void 0 ? Math.max(0, Math.min(50, Math.round(Number(homeScore) || 0))) : void 0;
+    const safeAway = awayScore !== void 0 ? Math.max(0, Math.min(50, Math.round(Number(awayScore) || 0))) : void 0;
+    const safeMin = matchMinute !== void 0 ? Math.max(0, Math.min(130, Math.round(Number(matchMinute) || 0))) : void 0;
+    if (activeEvt) {
+      if (safeHome !== void 0) activeEvt.homeScore = safeHome;
+      if (safeAway !== void 0) activeEvt.awayScore = safeAway;
+      if (safeMin !== void 0) activeEvt.matchMinute = safeMin;
+      if (period !== void 0 && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(period)) {
+        activeEvt.period = period;
+      }
+      if (typeof isClockRunning === "boolean") {
+        activeEvt.isClockRunning = isClockRunning;
+        activeEvt.clockUpdatedAt = Date.now();
+      }
+    }
+    if (safeHome !== void 0) state.scoreboard.homeScore = safeHome;
+    if (safeAway !== void 0) state.scoreboard.awayScore = safeAway;
+    if (safeMin !== void 0) state.scoreboard.matchMinute = safeMin;
     if (period !== void 0 && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(period)) {
       state.scoreboard.period = period;
       state.streamSettings.period = period;
     }
     state.scoreboard.updatedAt = Date.now();
-    if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
-      const activeEvt = state.liveEvents.find((e) => e.id === req.body.activeEventId) || state.liveEvents[0];
-      if (activeEvt) {
-        if (homeScore !== void 0) activeEvt.homeScore = state.scoreboard.homeScore;
-        if (awayScore !== void 0) activeEvt.awayScore = state.scoreboard.awayScore;
-        if (matchMinute !== void 0) activeEvt.matchMinute = state.scoreboard.matchMinute;
-        if (period !== void 0) activeEvt.period = state.scoreboard.period;
-      }
-    }
     persistState();
-    broadcastSseEvent("SCOREBOARD_UPDATED", state.scoreboard);
+    const scorePayload = {
+      eventId: activeEvt ? activeEvt.id : targetEventId,
+      homeScore: activeEvt?.homeScore ?? state.scoreboard.homeScore,
+      awayScore: activeEvt?.awayScore ?? state.scoreboard.awayScore,
+      matchMinute: activeEvt?.matchMinute ?? state.scoreboard.matchMinute,
+      period: activeEvt?.period ?? state.scoreboard.period,
+      isClockRunning: activeEvt?.isClockRunning ?? false,
+      updatedAt: Date.now()
+    };
+    broadcastSseEvent("SCOREBOARD_UPDATED", scorePayload);
     broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
-    res.json({ success: true, scoreboard: state.scoreboard, liveEvents: state.liveEvents });
+    res.json({ success: true, scoreboard: scorePayload, liveEvents: state.liveEvents });
   }
 );
 app2.get(["/api/matches", "/matches"], (_req, res) => {
@@ -1465,9 +1625,9 @@ app2.get(["/api/version", "/version"], (_req, res) => {
     builtAt: "2026-10-04T07:15:00Z"
   });
 });
-app2.all("/api/*", (req, res) => {
+app2.all("*", (req, res) => {
   res.status(404).json({
-    error: `Ruta de API no encontrada: ${req.method} ${req.originalUrl || req.url}`,
+    error: `Ruta no encontrada: ${req.method} ${req.originalUrl || req.url}`,
     availableEndpoints: [
       "GET /api/live",
       "GET /api/streams",

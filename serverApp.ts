@@ -149,20 +149,6 @@ function verifyToken(token: string): SessionData['user'] | null {
     return session.user;
   }
 
-  // 2. Emergency fallback session tokens minted by client
-  if (token.startsWith('session_admin_')) {
-    return { id: 'usr-admin-1', username: 'admin', name: 'Director General de Transmisión', role: 'ADMIN' };
-  }
-  if (token.startsWith('session_transmisor_') || token.startsWith('session_trans_')) {
-    return { id: 'usr-trans-1', username: 'transmisor', name: 'Operador OBS & MediaMTX', role: 'TRANSMISOR' };
-  }
-  if (token.startsWith('session_moderador_') || token.startsWith('session_mod_')) {
-    return { id: 'usr-mod-1', username: 'moderador', name: 'Moderador Oficial de Chat', role: 'MODERADOR' };
-  }
-  if (token.startsWith('session_editor_') || token.startsWith('session_edit_')) {
-    return { id: 'usr-edit-1', username: 'editor', name: 'Estadígrafo & Cronista', role: 'EDITOR' };
-  }
-
   const parts = token.split('.');
 
   // Standard RFC 7519 3-part JWT
@@ -217,28 +203,28 @@ function verifyToken(token: string): SessionData['user'] | null {
   return null;
 }
 
-// Authentication Middleware (resilient to avoid dropping live match updates)
-function authenticate(req: Request, _res: Response, next: NextFunction): void {
+// Authentication Middleware: Enforce authenticated API for official modifications
+function authenticate(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    (req as any).user = {
-      id: 'usr-admin-1',
-      username: 'admin',
-      name: 'Director General de Transmisión',
-      role: 'ADMIN',
-    };
-    next();
+    res.status(401).json({
+      error: 'No autorizado. Se requiere token Bearer de autenticación para modificar datos oficiales.',
+      code: 'AUTH_REQUIRED',
+    });
     return;
   }
 
   const token = authHeader.substring(7);
   const user = verifyToken(token);
-  (req as any).user = user || {
-    id: 'usr-admin-1',
-    username: 'admin',
-    name: 'Director General de Transmisión',
-    role: 'ADMIN',
-  };
+  if (!user) {
+    res.status(401).json({
+      error: 'Sesión expirada o token inválido. Por favor inicia sesión nuevamente en el panel de control.',
+      code: 'INVALID_TOKEN',
+    });
+    return;
+  }
+
+  (req as any).user = user;
   next();
 }
 
@@ -884,7 +870,7 @@ app.get(['/api/live-events', '/live-events'], (_req: Request, res: Response) => 
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.json({
     success: true,
-    events: state.liveEvents || DEFAULT_LIVE_EVENTS,
+    events: state.liveEvents || [],
     updatedAt: Date.now(),
   });
 });
@@ -902,19 +888,66 @@ app.post(
   ['/api/live-events', '/live-events'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR']),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const raw = req.body;
-    if (!raw || !raw.id || !raw.title) {
-      res.status(400).json({ error: 'id y title son requeridos' });
+    if (!raw || !raw.id || typeof raw.id !== 'string' || !raw.id.trim()) {
+      res.status(400).json({ error: 'El identificador (id) del partido es obligatorio.' });
+      return;
+    }
+    const cleanId = raw.id.trim();
+    const cleanTitle = (raw.title || '').trim();
+    if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
+      res.status(400).json({ error: 'El título del partido debe tener entre 3 y 120 caracteres.' });
       return;
     }
 
+    const cleanHome = (raw.homeTeam || '').trim().toLowerCase();
+    const cleanAway = (raw.awayTeam || '').trim().toLowerCase();
+    if (!cleanHome || !cleanAway) {
+      res.status(400).json({ error: 'Los equipos local y visitante son obligatorios.' });
+      return;
+    }
+    if (cleanHome === cleanAway) {
+      res.status(400).json({ error: 'El equipo local y el equipo visitante no pueden ser el mismo club.' });
+      return;
+    }
+
+    if (raw.homeScore !== undefined) {
+      const hScore = Number(raw.homeScore);
+      if (isNaN(hScore) || hScore < 0 || hScore > 50) {
+        res.status(400).json({ error: 'Los goles del equipo local deben ser un número entre 0 y 50.' });
+        return;
+      }
+    }
+
+    if (raw.awayScore !== undefined) {
+      const aScore = Number(raw.awayScore);
+      if (isNaN(aScore) || aScore < 0 || aScore > 50) {
+        res.status(400).json({ error: 'Los goles del equipo visitante deben ser un número entre 0 y 50.' });
+        return;
+      }
+    }
+
+    if (raw.matchMinute !== undefined) {
+      const min = Number(raw.matchMinute);
+      if (isNaN(min) || min < 0 || min > 130) {
+        res.status(400).json({ error: 'El minuto del partido debe ser un número entre 0 y 130.' });
+        return;
+      }
+    }
+
+    const existingIndex = state.liveEvents.findIndex((e) => e.id === cleanId);
+    const existingEvent = existingIndex >= 0 ? state.liveEvents[existingIndex] : null;
+    const nextVersion = (existingEvent?.version || raw.version || 0) + 1;
+    const now = Date.now();
+    const operator = (req as any).user?.username || 'admin';
+
     // Sanitize to NEVER store or accept stream keys in public event
     const safeEvent: LiveEvent = {
-      id: String(raw.id).trim(),
-      title: String(raw.title).trim(),
-      homeTeam: String(raw.homeTeam || 'bolivar').trim(),
-      awayTeam: String(raw.awayTeam || 'strongest').trim(),
+      id: cleanId,
+      title: cleanTitle,
+      homeTeam: cleanHome,
+      awayTeam: cleanAway,
       isLive: Boolean(raw.isLive ?? true),
       primaryProvider: ['cloudflare', 'youtube', 'kick'].includes(raw.primaryProvider)
         ? raw.primaryProvider
@@ -934,13 +967,23 @@ app.post(
         : ['cloudflare', 'youtube', 'kick'],
       tournamentName: raw.tournamentName ? String(raw.tournamentName).trim() : undefined,
       stadiumName: raw.stadiumName ? String(raw.stadiumName).trim() : undefined,
-      period: raw.period,
+      period: raw.period || '1T',
       homeScore: raw.homeScore !== undefined ? Number(raw.homeScore) : undefined,
       awayScore: raw.awayScore !== undefined ? Number(raw.awayScore) : undefined,
       matchMinute: raw.matchMinute !== undefined ? Number(raw.matchMinute) : undefined,
+      customVideoUrl: raw.customVideoUrl ? String(raw.customVideoUrl).trim() : undefined,
+      backupVideoUrl: raw.backupVideoUrl ? String(raw.backupVideoUrl).trim() : undefined,
+      backupChannelName: raw.backupChannelName ? String(raw.backupChannelName).trim() : undefined,
+      activeStreamSource: raw.activeStreamSource || 'obs',
+      autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
+      isClockRunning: raw.isClockRunning ?? false,
+      clockUpdatedAt: raw.clockUpdatedAt || now,
+      version: nextVersion,
+      updatedAt: now,
+      updatedAtIso: new Date(now).toISOString(),
+      updatedBy: operator,
     };
 
-    const existingIndex = state.liveEvents.findIndex((e) => e.id === safeEvent.id);
     if (existingIndex >= 0) {
       state.liveEvents[existingIndex] = safeEvent;
     } else {
@@ -962,6 +1005,13 @@ app.post(
 
     persistState();
 
+    // Persist to Cloud Firestore with version & update timestamp
+    try {
+      await saveLiveEventToFirebase(safeEvent, operator);
+    } catch (fbErr) {
+      console.warn('[GolBolivia Server] Advertencia al guardar evento en Firestore:', fbErr);
+    }
+
     broadcastSseEvent('STREAM_CONFIG_UPDATED', { eventId: safeEvent.id, ...safeEvent });
     broadcastSseEvent('SCOREBOARD_UPDATED', {
       eventId: safeEvent.id,
@@ -970,13 +1020,16 @@ app.post(
       matchMinute: safeEvent.matchMinute,
       period: safeEvent.period,
       isClockRunning: safeEvent.isClockRunning,
-      updatedAt: Date.now(),
+      version: safeEvent.version,
+      updatedAt: now,
     });
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
 
     res.json({
       success: true,
       message: `Partido ${safeEvent.title} guardado con éxito.`,
+      version: safeEvent.version,
+      updatedAt: safeEvent.updatedAt,
       event: safeEvent,
       events: state.liveEvents,
     });

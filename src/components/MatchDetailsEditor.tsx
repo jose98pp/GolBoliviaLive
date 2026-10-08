@@ -191,25 +191,22 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       }
 
       // 4. Update and persist active live event directly via apiClient
-      try {
-        const evts = await apiClient.getLiveEvents();
-        const activeId = activeEventId || 'partido-001';
-        const targetEvt = evts.find((e) => e.id === activeId) || evts[0];
-        if (targetEvt) {
-          const updatedEvt = {
-            ...targetEvt,
-            title: payload.title || targetEvt.title,
-            homeTeam: payload.homeClubId || targetEvt.homeTeam,
-            awayTeam: payload.awayClubId || targetEvt.awayTeam,
-            tournamentName: payload.tournamentName || targetEvt.tournamentName,
-            stadiumName: payload.stadiumName || targetEvt.stadiumName,
-          };
-          await apiClient.saveLiveEvent(updatedEvt);
-        }
-      } catch {}
+      const evts = await apiClient.getLiveEvents();
+      const activeId = activeEventId || 'partido-001';
+      const targetEvt = evts.find((e) => e.id === activeId) || evts[0];
+      if (targetEvt) {
+        const updatedEvt = {
+          ...targetEvt,
+          title: payload.title || targetEvt.title,
+          homeTeam: payload.homeClubId || targetEvt.homeTeam,
+          awayTeam: payload.awayClubId || targetEvt.awayTeam,
+          tournamentName: payload.tournamentName || targetEvt.tournamentName,
+          stadiumName: payload.stadiumName || targetEvt.stadiumName,
+        };
+        await apiClient.saveLiveEvent(updatedEvt);
+      }
 
       // 5. Direct server call ensuring server and cloud persistence
-      const activeId = activeEventId || 'partido-001';
       await apiClient.syncStreamConfig({ ...payload, activeEventId: activeId, eventId: activeId });
 
       setIsDirty(false);

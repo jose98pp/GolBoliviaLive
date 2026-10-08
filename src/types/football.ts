@@ -157,6 +157,10 @@ export interface StreamSettings {
   backupChannelName?: string;
   activeStreamSource?: 'obs' | 'backup' | 'simulation';
   autoFailoverEnabled?: boolean;
+  version?: number;
+  updatedAt?: number;
+  updatedAtIso?: string;
+  updatedBy?: string;
 }
 
 export interface VipTransaction {
@@ -210,7 +214,10 @@ export interface LiveEvent {
   // Admin-controlled match clock
   isClockRunning?: boolean;
   clockUpdatedAt?: number;
+  version?: number;
   updatedAt?: number;
+  updatedAtIso?: string;
+  updatedBy?: string;
 }
 
 

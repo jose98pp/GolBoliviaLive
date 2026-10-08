@@ -1,16 +1,16 @@
 {
   "streamSettings": {
-    "title": "Oriente Petrolero Vs U. de Vinto",
-    "tournamentName": "Copa Paceña",
-    "homeClubId": "oriente",
-    "awayClubId": "u_vinto",
-    "stadiumName": "Estadio Ramon Tahuichi Aguilera",
+    "title": "Bolívar vs The Strongest - Clásico Paceño N° 234",
+    "tournamentName": "Liga Tigo División Profesional - Torneo Clausura",
+    "homeClubId": "bolivar",
+    "awayClubId": "strongest",
+    "stadiumName": "Estadio Hernando Siles - La Paz",
     "altitudeMeters": 3637,
-    "period": "1T",
+    "period": "2T",
     "isLive": true,
     "rtmpServer": "rtmp://localhost:1935/live",
     "streamKey": "bolivia",
-    "customVideoUrl": "https://produces-element-victoria-implications.trycloudflare.com/live/partido/index.m3u8",
+    "customVideoUrl": "https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8",
     "chatMode": "all",
     "officialAnnouncement": "Transmisión Oficial en HD para toda Bolivia por GolBolivia TV.",
     "broadcastMode": "obs_custom",
@@ -27,11 +27,11 @@
       "360p (Móvil Ahorro)",
       "Automática (Adaptive HLS)"
     ],
-    "playbackUrl": "https://kernel-wallet-flush-laugh.trycloudflare.com/live/partido/index.m3u8",
+    "playbackUrl": "https://kick.com/futbol98",
     "success": true,
-    "match": "Bolívar vs The Strongest - Clásico Paceño N° 234",
-    "tournament": "Liga Tigo División Profesional - Torneo Clausura",
-    "updatedAt": 1791411844655,
+    "match": "Guabirá vs The Strongest",
+    "tournament": "Copa Paceña",
+    "updatedAt": 1791426836779,
     "live": true
   },
   "scoreboard": {
@@ -43,257 +43,229 @@
   },
   "clubs": {
     "bolivar": {
-      "secondaryColor": "#ffffff",
       "primaryColor": "#0284c7",
-      "city": "La Paz",
-      "shortName": "Bolívar",
       "name": "Club Bolívar",
+      "city": "La Paz",
       "stadium": "Estadio Hernando Siles",
       "id": "bolivar",
+      "secondaryColor": "#ffffff",
       "textColor": "#ffffff",
+      "shortName": "Bolívar",
       "badgeEmoji": "⚡",
       "altitudeMeters": 3637
     },
     "strongest": {
-      "stadium": "Estadio Rafael Mendoza Castellón / Siles",
       "altitudeMeters": 3637,
-      "textColor": "#0f172a",
+      "secondaryColor": "#0f172a",
       "badgeEmoji": "🐯",
-      "shortName": "Strongest",
-      "primaryColor": "#eab308",
-      "city": "La Paz",
       "id": "strongest",
+      "stadium": "Estadio Rafael Mendoza Castellón / Siles",
+      "primaryColor": "#eab308",
+      "textColor": "#0f172a",
+      "city": "La Paz",
       "name": "The Strongest",
-      "secondaryColor": "#0f172a"
+      "shortName": "Strongest"
     },
     "wilstermann": {
-      "textColor": "#ffffff",
-      "altitudeMeters": 2558,
-      "stadium": "Estadio Félix Capriles",
-      "primaryColor": "#dc2626",
-      "name": "C.A. Jorge Wilstermann",
       "shortName": "Wilstermann",
-      "badgeEmoji": "✈️",
+      "stadium": "Estadio Félix Capriles",
+      "textColor": "#ffffff",
+      "city": "Cochabamba",
+      "name": "C.A. Jorge Wilstermann",
       "secondaryColor": "#1e3a8a",
       "id": "wilstermann",
-      "city": "Cochabamba"
+      "primaryColor": "#dc2626",
+      "badgeEmoji": "✈️",
+      "altitudeMeters": 2558
     },
     "oriente": {
-      "stadium": "Estadio Ramón Tahuichi Aguilera",
       "shortName": "Oriente",
+      "id": "oriente",
       "secondaryColor": "#ffffff",
-      "textColor": "#ffffff",
-      "city": "Santa Cruz",
-      "name": "Oriente Petrolero",
-      "altitudeMeters": 416,
       "primaryColor": "#16a34a",
+      "city": "Santa Cruz",
+      "textColor": "#ffffff",
+      "name": "Oriente Petrolero",
       "badgeEmoji": "🛢️",
-      "id": "oriente"
+      "altitudeMeters": 416,
+      "stadium": "Estadio Ramón Tahuichi Aguilera"
     },
     "blooming": {
       "primaryColor": "#38bdf8",
-      "secondaryColor": "#1e3a8a",
-      "city": "Santa Cruz",
-      "altitudeMeters": 416,
-      "name": "Club Blooming",
-      "shortName": "Blooming",
       "stadium": "Estadio Ramón Tahuichi Aguilera",
-      "textColor": "#ffffff",
+      "city": "Santa Cruz",
+      "name": "Club Blooming",
       "badgeEmoji": "🦅",
-      "id": "blooming"
+      "textColor": "#ffffff",
+      "id": "blooming",
+      "shortName": "Blooming",
+      "secondaryColor": "#1e3a8a",
+      "altitudeMeters": 416
     },
     "always": {
+      "stadium": "Estadio Municipal de Villa Ingenio",
+      "badgeEmoji": "🔴",
+      "secondaryColor": "#ffffff",
+      "name": "Always Ready",
+      "altitudeMeters": 4083,
+      "city": "El Alto",
       "primaryColor": "#e11d48",
       "textColor": "#ffffff",
-      "id": "always",
-      "altitudeMeters": 4083,
-      "name": "Always Ready",
       "shortName": "Always Ready",
-      "city": "El Alto",
-      "badgeEmoji": "🔴",
-      "stadium": "Estadio Municipal de Villa Ingenio",
-      "secondaryColor": "#ffffff"
+      "id": "always"
     },
     "nacional": {
+      "stadium": "Estadio Víctor Agustín Ugarte",
+      "city": "Potosí",
+      "name": "Nacional Potosí",
       "secondaryColor": "#ffffff",
       "id": "nacional",
-      "stadium": "Estadio Víctor Agustín Ugarte",
-      "badgeEmoji": "🎸",
-      "name": "Nacional Potosí",
-      "primaryColor": "#991b1b",
-      "shortName": "Nacional Potosí",
-      "city": "Potosí",
       "altitudeMeters": 3900,
+      "shortName": "Nacional Potosí",
+      "badgeEmoji": "🎸",
+      "primaryColor": "#991b1b",
       "textColor": "#ffffff"
     },
     "aurora": {
-      "textColor": "#ffffff",
-      "altitudeMeters": 2558,
-      "shortName": "Aurora",
-      "city": "Cochabamba",
-      "name": "Club Aurora",
-      "primaryColor": "#0284c7",
-      "badgeEmoji": "⭐",
       "stadium": "Estadio Félix Capriles",
       "id": "aurora",
+      "shortName": "Aurora",
+      "primaryColor": "#0284c7",
+      "name": "Club Aurora",
+      "textColor": "#ffffff",
+      "badgeEmoji": "⭐",
+      "city": "Cochabamba",
+      "altitudeMeters": 2558,
       "secondaryColor": "#ffffff"
     },
     "san_antonio": {
-      "shortName": "San Antonio",
       "altitudeMeters": 232,
       "city": "Entre Ríos / Cochabamba",
-      "textColor": "#ffffff",
       "secondaryColor": "#ffffff",
+      "name": "San Antonio Bulo Bulo",
+      "textColor": "#ffffff",
+      "badgeEmoji": "🌟",
       "id": "san_antonio",
       "stadium": "Estadio Dr. Carlos Villegas",
-      "primaryColor": "#059669",
-      "name": "San Antonio Bulo Bulo",
-      "badgeEmoji": "🌟"
+      "shortName": "San Antonio",
+      "primaryColor": "#059669"
     },
     "gv_san_jose": {
+      "badgeEmoji": "🛡️",
+      "id": "gv_san_jose",
+      "primaryColor": "#1d4ed8",
+      "altitudeMeters": 3735,
+      "textColor": "#ffffff",
       "stadium": "Estadio Jesús Bermúdez",
       "name": "GV San José",
-      "textColor": "#ffffff",
-      "badgeEmoji": "🛡️",
       "secondaryColor": "#ffffff",
-      "shortName": "GV San José",
-      "id": "gv_san_jose",
-      "altitudeMeters": 3735,
       "city": "Oruro",
-      "primaryColor": "#1d4ed8"
+      "shortName": "GV San José"
     },
     "tomayapo": {
-      "stadium": "Estadio IV Centenario",
+      "city": "Tarija",
+      "id": "tomayapo",
+      "name": "Real Tomayapo",
       "badgeEmoji": "🦁",
-      "primaryColor": "#15803d",
-      "altitudeMeters": 1854,
       "textColor": "#ffffff",
       "shortName": "Tomayapo",
-      "name": "Real Tomayapo",
-      "id": "tomayapo",
+      "stadium": "Estadio IV Centenario",
       "secondaryColor": "#ffffff",
-      "city": "Tarija"
+      "altitudeMeters": 1854,
+      "primaryColor": "#15803d"
     },
     "independiente": {
-      "secondaryColor": "#ffffff",
-      "primaryColor": "#b91c1c",
-      "shortName": "Independiente",
+      "name": "Independiente Petrolero",
       "city": "Sucre",
+      "shortName": "Independiente",
       "textColor": "#ffffff",
       "altitudeMeters": 2790,
       "stadium": "Estadio Olímpico Patria",
+      "secondaryColor": "#ffffff",
+      "badgeEmoji": "🔴",
       "id": "independiente",
-      "name": "Independiente Petrolero",
-      "badgeEmoji": "🔴"
+      "primaryColor": "#b91c1c"
     },
     "u_vinto": {
-      "badgeEmoji": "🎓",
-      "name": "FC Universitario de Vinto",
-      "secondaryColor": "#1e293b",
-      "altitudeMeters": 2558,
       "textColor": "#ffffff",
-      "id": "u_vinto",
-      "stadium": "Estadio Hipólito Lazarte / Capriles",
-      "primaryColor": "#65a30d",
+      "shortName": "U de Vinto",
+      "name": "FC Universitario de Vinto",
       "city": "Vinto / Cochabamba",
-      "shortName": "U de Vinto"
+      "badgeEmoji": "🎓",
+      "altitudeMeters": 2558,
+      "secondaryColor": "#1e293b",
+      "stadium": "Estadio Hipólito Lazarte / Capriles",
+      "id": "u_vinto",
+      "primaryColor": "#65a30d"
     },
     "guabira": {
       "stadium": "Estadio Gilberto Parada",
       "secondaryColor": "#ffffff",
-      "primaryColor": "#dc2626",
-      "city": "Montero / Santa Cruz",
-      "id": "guabira",
       "name": "Club Deportivo Guabirá",
-      "altitudeMeters": 298,
-      "shortName": "Guabirá",
       "badgeEmoji": "👹",
-      "textColor": "#ffffff"
+      "city": "Montero / Santa Cruz",
+      "altitudeMeters": 298,
+      "id": "guabira",
+      "shortName": "Guabirá",
+      "textColor": "#ffffff",
+      "primaryColor": "#dc2626"
     },
     "royal_pari": {
+      "altitudeMeters": 416,
       "shortName": "Royal Pari",
-      "city": "Santa Cruz",
-      "textColor": "#ffffff",
-      "badgeEmoji": "🦁",
-      "secondaryColor": "#1e293b",
-      "primaryColor": "#ea580c",
       "stadium": "Estadio Ramón Tahuichi Aguilera",
       "name": "Royal Pari FC",
-      "altitudeMeters": 416,
-      "id": "royal_pari"
+      "textColor": "#ffffff",
+      "city": "Santa Cruz",
+      "secondaryColor": "#1e293b",
+      "badgeEmoji": "🦁",
+      "id": "royal_pari",
+      "primaryColor": "#ea580c"
     },
     "real_santa_cruz": {
-      "stadium": "Estadio Real Santa Cruz",
-      "altitudeMeters": 416,
-      "badgeEmoji": "⚪",
+      "id": "real_santa_cruz",
+      "city": "Santa Cruz",
       "name": "Real Santa Cruz",
       "shortName": "Real Santa Cruz",
-      "city": "Santa Cruz",
-      "secondaryColor": "#ffffff",
-      "id": "real_santa_cruz",
       "textColor": "#ffffff",
-      "primaryColor": "#334155"
+      "stadium": "Estadio Real Santa Cruz",
+      "secondaryColor": "#ffffff",
+      "primaryColor": "#334155",
+      "badgeEmoji": "⚪",
+      "altitudeMeters": 416
     }
   },
   "liveEvents": [
     {
-      "id": "partido-001",
-      "title": "Oriente Petrolero Vs U. de Vinto",
-      "homeTeam": "oriente",
-      "awayTeam": "u_vinto",
-      "isLive": true,
-      "primaryProvider": "kick",
+      "kick": {
+        "channel": "golbolivia"
+      },
+      "awayTeam": "strongest",
+      "primaryProvider": "cloudflare",
+      "homeScore": 2,
+      "matchMinute": 78,
+      "awayScore": 1,
+      "title": "Bolívar vs The Strongest",
+      "fallbackOrder": [
+        "cloudflare",
+        "youtube",
+        "kick"
+      ],
+      "stadiumName": "Estadio Olímpico Hernando Siles - La Paz",
       "cloudflare": {
-        "liveInputId": "fc815c43232145e69e7e59cba627d3fa",
-        "playbackUrl": "https://produces-element-victoria-implications.trycloudflare.com/live/partido/index.m3u8"
+        "playbackUrl": "https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8",
+        "liveInputId": "fc815c43232145e69e7e59cba627d3fa"
       },
       "youtube": {
         "videoId": "jfKfPfyJRdk"
       },
-      "kick": {
-        "channel": "josecpp98"
-      },
-      "fallbackOrder": [
-        "kick",
-        "cloudflare",
-        "youtube"
-      ],
-      "tournamentName": "Copa Paceña",
-      "stadiumName": "Estadio Ramon Tahuichi Aguilera",
-      "period": "1T",
-      "homeScore": 0,
-      "awayScore": 0,
-      "matchMinute": 0
-    },
-    {
-      "id": "partido-002",
-      "title": "Wilstermann vs Aurora - Clasico Cochabambino",
-      "homeTeam": "bolivar",
-      "awayTeam": "strongest",
+      "id": "partido-001",
+      "updatedAt": 1791426836781,
+      "tournamentName": "Liga Tigo División Profesional - Torneo Clausura",
       "isLive": true,
-      "primaryProvider": "kick",
-      "cloudflare": {
-        "liveInputId": "",
-        "playbackUrl": ""
-      },
-      "youtube": {
-        "videoId": ""
-      },
-      "kick": {
-        "channel": "josecpp98"
-      },
-      "fallbackOrder": [
-        "kick",
-        "cloudflare",
-        "youtube"
-      ],
-      "tournamentName": "División Profesional de Bolivia",
-      "stadiumName": "Estadio Olímpico Hernando Siles",
-      "period": "1T",
-      "homeScore": 0,
-      "awayScore": 0,
-      "matchMinute": 0
+      "homeTeam": "bolivar",
+      "period": "2T"
     }
   ],
-  "updatedAt": 1791418984857
+  "updatedAt": 1791471909440
 }
