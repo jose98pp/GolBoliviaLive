@@ -131,7 +131,15 @@
         "period": { "type": "string", "maxLength": 20 },
         "homeScore": { "type": "number" },
         "awayScore": { "type": "number" },
-        "matchMinute": { "type": "number" }
+        "matchMinute": { "type": "number" },
+        "customVideoUrl": { "type": "string", "maxLength": 500 },
+        "backupVideoUrl": { "type": "string", "maxLength": 500 },
+        "backupChannelName": { "type": "string", "maxLength": 100 },
+        "activeStreamSource": { "type": "string", "enum": ["obs", "backup", "simulation"] },
+        "autoFailoverEnabled": { "type": "boolean" },
+        "isClockRunning": { "type": "boolean" },
+        "clockUpdatedAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
       },
       "required": ["id", "title", "homeTeam", "awayTeam", "isLive", "primaryProvider", "fallbackOrder"]
     }

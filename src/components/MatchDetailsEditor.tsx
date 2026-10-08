@@ -11,7 +11,7 @@ import {
   Mountain,
   AlertCircle
 } from 'lucide-react';
-import { StreamSettings } from '../types/football';
+import { StreamSettings, LiveEvent } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
@@ -20,6 +20,7 @@ interface MatchDetailsEditorProps {
   streamSettings: StreamSettings;
   onUpdateStreamSettings: (newSettings: Partial<StreamSettings>) => void;
   activeEventId?: string;
+  activeEvent?: LiveEvent;
   onUpdateLiveEvent?: (eventData: Partial<any>) => void;
 }
 
@@ -36,13 +37,14 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   streamSettings,
   onUpdateStreamSettings,
   activeEventId,
+  activeEvent,
   onUpdateLiveEvent,
 }) => {
-  const [title, setTitle] = useState(streamSettings.title || '');
-  const [tournamentName, setTournamentName] = useState(streamSettings.tournamentName || '');
-  const [homeClubId, setHomeClubId] = useState(streamSettings.homeClubId || 'bolivar');
-  const [awayClubId, setAwayClubId] = useState(streamSettings.awayClubId || 'strongest');
-  const [stadiumName, setStadiumName] = useState(streamSettings.stadiumName || '');
+  const [title, setTitle] = useState(activeEvent?.title || streamSettings.title || '');
+  const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName || streamSettings.tournamentName || '');
+  const [homeClubId, setHomeClubId] = useState(activeEvent?.homeTeam || streamSettings.homeClubId || 'bolivar');
+  const [awayClubId, setAwayClubId] = useState(activeEvent?.awayTeam || streamSettings.awayClubId || 'strongest');
+  const [stadiumName, setStadiumName] = useState(activeEvent?.stadiumName || streamSettings.stadiumName || '');
   const [altitudeMeters, setAltitudeMeters] = useState(streamSettings.altitudeMeters || 3637);
   const [officialAnnouncement, setOfficialAnnouncement] = useState(streamSettings.officialAnnouncement || '');
 
@@ -52,31 +54,38 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [isDirty, setIsDirty] = useState(false);
 
   const { clubs } = useClubs();
+  const prevEventIdRef = useRef(activeEventId);
 
-  const prevActiveEventIdRef = useRef(activeEventId);
-
-  // Sync internal state when activeEventId changes or when streamSettings change and form is clean
+  // Sync internal state when activeEventId or external props change
   useEffect(() => {
-    if (prevActiveEventIdRef.current !== activeEventId) {
-      prevActiveEventIdRef.current = activeEventId;
+    if (prevEventIdRef.current !== activeEventId) {
+      prevEventIdRef.current = activeEventId;
       setIsDirty(false);
-      if (streamSettings.title) setTitle(streamSettings.title);
-      if (streamSettings.tournamentName) setTournamentName(streamSettings.tournamentName);
-      if (streamSettings.homeClubId) setHomeClubId(streamSettings.homeClubId);
-      if (streamSettings.awayClubId) setAwayClubId(streamSettings.awayClubId);
-      if (streamSettings.stadiumName) setStadiumName(streamSettings.stadiumName);
-      if (streamSettings.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
-      if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
+      const srcTitle = activeEvent?.title || streamSettings.title || '';
+      const srcTourn = activeEvent?.tournamentName || streamSettings.tournamentName || '';
+      const srcHome = activeEvent?.homeTeam || streamSettings.homeClubId || 'bolivar';
+      const srcAway = activeEvent?.awayTeam || streamSettings.awayClubId || 'strongest';
+      const srcStadium = activeEvent?.stadiumName || streamSettings.stadiumName || '';
+      setTitle(srcTitle);
+      setTournamentName(srcTourn);
+      setHomeClubId(srcHome);
+      setAwayClubId(srcAway);
+      setStadiumName(srcStadium);
     } else if (!isDirty) {
-      if (streamSettings.title) setTitle(streamSettings.title);
-      if (streamSettings.tournamentName) setTournamentName(streamSettings.tournamentName);
-      if (streamSettings.homeClubId) setHomeClubId(streamSettings.homeClubId);
-      if (streamSettings.awayClubId) setAwayClubId(streamSettings.awayClubId);
-      if (streamSettings.stadiumName) setStadiumName(streamSettings.stadiumName);
+      const srcTitle = activeEvent?.title || streamSettings.title || '';
+      const srcTourn = activeEvent?.tournamentName || streamSettings.tournamentName || '';
+      const srcHome = activeEvent?.homeTeam || streamSettings.homeClubId || 'bolivar';
+      const srcAway = activeEvent?.awayTeam || streamSettings.awayClubId || 'strongest';
+      const srcStadium = activeEvent?.stadiumName || streamSettings.stadiumName || '';
+      if (srcTitle) setTitle(srcTitle);
+      if (srcTourn) setTournamentName(srcTourn);
+      if (srcHome) setHomeClubId(srcHome);
+      if (srcAway) setAwayClubId(srcAway);
+      if (srcStadium) setStadiumName(srcStadium);
       if (streamSettings.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
       if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
     }
-  }, [activeEventId, streamSettings, isDirty]);
+  }, [activeEventId, activeEvent, streamSettings, isDirty]);
 
   const handleGenerateTitle = () => {
     setIsDirty(true);
@@ -200,7 +209,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       } catch {}
 
       // 5. Direct server call ensuring server and cloud persistence
-      await apiClient.syncStreamConfig(payload);
+      const activeId = activeEventId || 'partido-001';
+      await apiClient.syncStreamConfig({ ...payload, activeEventId: activeId, eventId: activeId });
 
       setIsDirty(false);
       setSaveSuccess(true);

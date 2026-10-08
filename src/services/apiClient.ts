@@ -20,6 +20,7 @@ import {
   subscribeScoreboardFirebase,
   logConfirmationToFirebase,
   saveLiveEventToFirebase,
+  saveMatchScoreboardFirebase,
   getLiveEventsFromFirebase,
   subscribeLiveEventsFirebase,
   deleteLiveEventFromFirebase,
@@ -171,25 +172,30 @@ class GolBoliviaApiClient {
     awayScore?: number;
     matchMinute?: number;
     period?: string;
+    isClockRunning?: boolean;
     activeEventId?: string;
+    eventId?: string;
   }): Promise<{ success: boolean; scoreboard: any }> {
+    const targetEventId = data.activeEventId || data.eventId || 'partido-001';
+
     // 1. Save to LocalStorage immediately
     try {
       const raw = localStorage.getItem('golbolivia_scoreboard');
       const existing = raw ? JSON.parse(raw) : {};
-      const merged = { ...existing, ...data, updatedAt: Date.now() };
+      const merged = { ...existing, ...data, activeEventId: targetEventId, updatedAt: Date.now() };
       localStorage.setItem('golbolivia_scoreboard', JSON.stringify(merged));
     } catch {}
 
-    // 2. Mirror to Firebase Firestore immediately
+    // 2. Mirror to match-specific Firebase Firestore immediately
+    saveMatchScoreboardFirebase(targetEventId, data).catch(() => {});
     saveScoreboardToFirebase(data).catch(() => {});
 
-    // 3. Post to backend
+    // 3. Post to backend with explicit activeEventId
     try {
       const res = await fetch('/api/scoreboard', {
         method: 'POST',
         headers: this.getAuthHeaders(),
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, activeEventId: targetEventId, eventId: targetEventId }),
       });
       if (res.ok) {
         const result = await res.json();
@@ -284,12 +290,14 @@ class GolBoliviaApiClient {
   }
 
   // 6.3 Dedicated Endpoint: Synchronize Stream & Backup M3U8 URLs Globally to Backend
-  async syncStreamConfig(config: Partial<StreamSettings>): Promise<{ success: boolean; config?: any }> {
+  async syncStreamConfig(config: Partial<StreamSettings> & { activeEventId?: string; eventId?: string }): Promise<{ success: boolean; config?: any }> {
+    const targetEventId = config.eventId || config.activeEventId || 'partido-001';
+
     // 1. Save locally for instant offline feedback and permanent persistence
     try {
       const raw = localStorage.getItem('golbolivia_stream_settings');
       const existing = raw ? JSON.parse(raw) : {};
-      const merged = { ...existing, ...config };
+      const merged = { ...existing, ...config, eventId: targetEventId };
       localStorage.setItem('golbolivia_stream_settings', JSON.stringify(merged));
       if (config.customVideoUrl !== undefined) localStorage.setItem('golbolivia_custom_video_url', config.customVideoUrl);
       if (config.backupVideoUrl !== undefined) localStorage.setItem('golbolivia_backup_m3u8_url', config.backupVideoUrl);
@@ -299,12 +307,12 @@ class GolBoliviaApiClient {
     // 2. Persist to Firebase Firestore
     saveStreamSettingsToFirebase(config).catch(() => {});
 
-    // 3. Post to dedicated /api/streams/config
+    // 3. Post to dedicated /api/streams/config with explicit eventId
     try {
       const res = await fetch('/api/streams/config', {
         method: 'POST',
         headers: this.getAuthHeaders(),
-        body: JSON.stringify(config),
+        body: JSON.stringify({ ...config, eventId: targetEventId, activeEventId: targetEventId }),
       });
       if (res.ok) {
         const json = await res.json();
@@ -316,8 +324,11 @@ class GolBoliviaApiClient {
     return this.updateStreamSettings(config);
   }
 
-  // 6.4 Dedicated Real-Time Subscriber for Global Stream & Backup M3U8 URLs Synchronization
-  subscribeStreamSync(onSync: (config: Partial<StreamSettings>) => void): () => void {
+  // 6.4 Dedicated Real-Time Subscriber for Match-Specific Stream Synchronization
+  subscribeStreamSync(
+    onSync: (config: Partial<StreamSettings> & { eventId?: string }) => void,
+    targetEventId?: string
+  ): () => void {
     if (typeof window === 'undefined') return () => {};
 
     let lastKnownPlayback = '';
@@ -327,10 +338,18 @@ class GolBoliviaApiClient {
 
     const applyIfChanged = (newConfig: any) => {
       if (!newConfig) return;
-      const effectivePlayback = newConfig.playbackUrl ||
+      // If targetEventId is specified and incoming update is for a different event, do not touch!
+      if (targetEventId && newConfig.eventId && newConfig.eventId !== targetEventId) {
+        return;
+      }
+
+      const effectivePlayback =
+        newConfig.playbackUrl ||
         (newConfig.activeStreamSource === 'backup'
-          ? (newConfig.backupVideoUrl || newConfig.customVideoUrl)
-          : (newConfig.activeStreamSource === 'simulation' ? '' : (newConfig.customVideoUrl || newConfig.backupVideoUrl)));
+          ? newConfig.backupVideoUrl || newConfig.customVideoUrl
+          : newConfig.activeStreamSource === 'simulation'
+          ? ''
+          : newConfig.customVideoUrl || newConfig.backupVideoUrl);
 
       const hasChange =
         newConfig.activeStreamSource !== lastKnownSource ||
@@ -341,7 +360,8 @@ class GolBoliviaApiClient {
         lastKnownSource = newConfig.activeStreamSource;
         lastKnownBackup = newConfig.backupVideoUrl;
         lastKnownPlayback = effectivePlayback;
-        const failoverUpdate: Partial<StreamSettings> = {
+        const failoverUpdate: Partial<StreamSettings> & { eventId?: string } = {
+          eventId: newConfig.eventId || targetEventId,
           activeStreamSource: newConfig.activeStreamSource,
           backupVideoUrl: newConfig.backupVideoUrl,
           backupChannelName: newConfig.backupChannelName,
@@ -353,41 +373,18 @@ class GolBoliviaApiClient {
       }
     };
 
-    // 1. Initial immediate sync from REST/Backend
-    this.getStreamConfig().then((cfg) => {
-      if (isSubscribed) applyIfChanged(cfg);
-    });
-
-    // 2. Real-time Firebase Firestore Push Listener (instant cross-device global sync)
-    const unsubFirebase = subscribeStreamSettingsFirebase((firebaseSettings) => {
-      if (!isSubscribed) return;
-      applyIfChanged(firebaseSettings);
-    });
-
-    // 3. SSE Subscription
+    // Real-time Server-Sent Events (SSE) listener: only reacts when eventId matches or is relevant
     const unsubSSE = this.subscribeLiveEvents((type, data) => {
       if (!isSubscribed) return;
-      if (type === 'STREAM_CONFIG_UPDATED' || type === 'STREAM_UPDATED' || type === 'INITIAL_STATE') {
+      if (type === 'STREAM_CONFIG_UPDATED' || type === 'STREAM_UPDATED') {
         const payload = data.streamSettings || data.stream || data;
         applyIfChanged(payload);
       }
     });
 
-    // 4. High-frequency failover sync heartbeat (every 3.5s) to ensure ALL clients worldwide
-    // catch backup switches even when SSE is dormant or serverless connections reset
-    const syncInterval = setInterval(async () => {
-      if (!isSubscribed) return;
-      try {
-        const fresh = await this.getStreamConfig();
-        if (isSubscribed) applyIfChanged(fresh);
-      } catch {}
-    }, 3500);
-
     return () => {
       isSubscribed = false;
-      unsubFirebase();
       unsubSSE();
-      clearInterval(syncInterval);
     };
   }
 

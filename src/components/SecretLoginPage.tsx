@@ -43,7 +43,6 @@ import { authService, AuthUser, UserRole } from '../services/auth';
 import { apiClient } from '../services/apiClient';
 import { StreamSettings, MatchEvent, LiveEvent, LivePoll, NotificationItem, PrivateIngestCredentials } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
-import { getStreamUrlForEvent } from '../utils/streamUtils';
 import { RealPresenceStats } from '../hooks/useRealPresence';
 import { MatchDetailsEditor } from './MatchDetailsEditor';
 import { TeamsManager } from './TeamsManager';
@@ -68,7 +67,11 @@ interface SecretLoginPageProps {
   presenceStats?: RealPresenceStats;
   activeEventId?: string;
   onUpdateLiveEvent?: (event: Partial<LiveEvent>) => void;
-  onSelectActiveEventId?: (id: string) => void;
+  liveEvents?: LiveEvent[];
+  onSelectEvent?: (eventId: string) => void;
+  isClockRunning?: boolean;
+  onToggleMatchClock?: (running: boolean) => void;
+  onUpdatePeriod?: (period: string) => void;
 }
 
 export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
@@ -88,18 +91,14 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   presenceStats,
   activeEventId,
   onUpdateLiveEvent,
-  onSelectActiveEventId,
+  liveEvents,
+  onSelectEvent,
+  isClockRunning = false,
+  onToggleMatchClock,
+  onUpdatePeriod,
 }) => {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => authService.getUser());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated());
-  const [currentActiveEventId, setCurrentActiveEventId] = useState<string>(activeEventId || 'partido-001');
-
-  React.useEffect(() => {
-    if (activeEventId) {
-      setCurrentActiveEventId(activeEventId);
-    }
-  }, [activeEventId]);
-
   const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() => {
     // If we already have stored credentials, don't show loading blocker, render dashboard immediately!
     return !authService.isAuthenticated() && !!authService.getToken();
@@ -459,8 +458,11 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
     }
   };
 
-  const homeClub = clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId] || BOLIVIAN_CLUBS.bolivar;
-  const awayClub = clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId] || BOLIVIAN_CLUBS.strongest;
+  const currentEvent = liveEvents?.find((e) => e.id === activeEventId) || liveEvents?.[0];
+  const currentHomeId = currentEvent?.homeTeam || streamSettings.homeClubId || 'bolivar';
+  const currentAwayId = currentEvent?.awayTeam || streamSettings.awayClubId || 'strongest';
+  const homeClub = clubs[currentHomeId] || BOLIVIAN_CLUBS[currentHomeId] || BOLIVIAN_CLUBS.bolivar;
+  const awayClub = clubs[currentAwayId] || BOLIVIAN_CLUBS[currentAwayId] || BOLIVIAN_CLUBS.strongest;
 
   const [isSavingFirebase, setIsSavingFirebase] = useState(false);
   const [firebaseSavedBanner, setFirebaseSavedBanner] = useState<string | null>(null);
@@ -740,15 +742,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             <div className="space-y-6">
               {/* GESTIÓN MULTI-PARTIDO Y FUENTES UNIVERSALES (CLOUDFLARE · YOUTUBE · KICK) */}
               <LiveEventsManager
-                activeEventId={currentActiveEventId}
+                activeEventId={activeEventId}
                 onEventSelected={(ev) => {
-                  setCurrentActiveEventId(ev.id);
-                  if (onSelectActiveEventId) {
-                    onSelectActiveEventId(ev.id);
-                  }
-                  const effectiveUrl = getStreamUrlForEvent(ev);
-                  if (effectiveUrl) {
-                    setVideoUrlInput(effectiveUrl);
+                  if (ev.cloudflare?.playbackUrl) {
+                    setVideoUrlInput(ev.cloudflare.playbackUrl);
                   }
                   onUpdateStreamSettings({
                     title: ev.title,
@@ -757,7 +754,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     isLive: ev.isLive,
                     tournamentName: ev.tournamentName || streamSettings.tournamentName,
                     stadiumName: ev.stadiumName || streamSettings.stadiumName,
-                    customVideoUrl: effectiveUrl || streamSettings.customVideoUrl,
+                    customVideoUrl: ev.cloudflare?.playbackUrl || streamSettings.customVideoUrl,
                   });
                   if (ev.homeScore !== undefined && ev.awayScore !== undefined) {
                     onUpdateScore(ev.homeScore, ev.awayScore);
@@ -1742,13 +1739,45 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             <div className="space-y-6">
               {/* Controles Rápidos de Marcador & Minuto en Tiempo Real */}
               <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
+                {/* Selector de Partido a Administrar */}
+                {liveEvents && liveEvents.length > 0 && (
+                  <div className="bg-[#070b14] p-3 rounded-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">
+                        Partido en Edición:
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {liveEvents.map((evt) => (
+                        <button
+                          key={evt.id}
+                          type="button"
+                          onClick={() => onSelectEvent?.(evt.id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                            evt.id === activeEventId
+                              ? 'bg-emerald-600 text-white border border-emerald-400 shadow-md ring-1 ring-emerald-400/50'
+                              : 'bg-slate-900 text-slate-400 border border-slate-700 hover:text-white hover:bg-slate-800'
+                          }`}
+                        >
+                          <span>{evt.title}</span>
+                          <span className="text-[10px] font-mono px-1 py-0.2 bg-black/50 rounded">
+                            {evt.homeScore ?? 0}-{evt.awayScore ?? 0}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
                   <div>
                     <h3 className="text-sm font-bold text-white font-display flex items-center gap-2">
                       <span>Control de Marcador en Vivo</span>
+                      <span className="text-xs text-emerald-400 font-mono">({currentEvent?.title || 'Partido Seleccionado'})</span>
                     </h3>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Los cambios actualizan el marcador en el monitor y en las pantallas de todos los espectadores en tiempo real.
+                      Los cambios actualizan únicamente el marcador de este partido en tiempo real.
                     </p>
                   </div>
 
@@ -1759,10 +1788,11 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         key={p}
                         onClick={() => {
                           onUpdateStreamSettings({ period: p });
+                          onUpdatePeriod?.(p);
                           setTimeout(() => setPreviewKey((prev) => prev + 1), 100);
                         }}
                         className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                          streamSettings.period === p
+                          (currentEvent?.period || streamSettings.period) === p
                             ? 'bg-amber-500 text-black font-bold'
                             : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                         }`}
@@ -1770,6 +1800,94 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         {p}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Control de Reloj Oficial Administrado */}
+                <div className="bg-[#070b14] p-3.5 rounded-xl border border-slate-800 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => onToggleMatchClock?.(!isClockRunning)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md ${
+                        isClockRunning
+                          ? 'bg-amber-500 hover:bg-amber-400 text-black border border-amber-300'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400'
+                      }`}
+                    >
+                      {isClockRunning ? '⏸ Pausar Reloj' : '▶ Iniciar Reloj Oficial'}
+                    </button>
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span>Reloj del Partido:</span>
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded font-bold ${
+                          isClockRunning
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {isClockRunning ? '● EN JUEGO (1 min real)' : '○ PAUSADO / CONTROL MANUAL'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        Avanza 1 minuto real cada 60 segundos. Se detiene automáticamente en descansos o al finalizar.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Botones de Acceso Rápido para Operadores */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateMinute(1);
+                        onUpdateStreamSettings({ period: '1T' });
+                        onUpdatePeriod?.('1T');
+                        onToggleMatchClock?.(true);
+                      }}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-slate-200 border border-slate-700 cursor-pointer"
+                      title="Fijar en 1' y arrancar reloj"
+                    >
+                      1&apos; Inicio 1T
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateMinute(45);
+                        onUpdateStreamSettings({ period: 'Descanso' });
+                        onUpdatePeriod?.('Descanso');
+                        onToggleMatchClock?.(false);
+                      }}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-amber-300 border border-slate-700 cursor-pointer"
+                      title="Fijar en 45' Descanso y pausar reloj"
+                    >
+                      45&apos; Entretiempo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateMinute(46);
+                        onUpdateStreamSettings({ period: '2T' });
+                        onUpdatePeriod?.('2T');
+                        onToggleMatchClock?.(true);
+                      }}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-slate-200 border border-slate-700 cursor-pointer"
+                      title="Fijar en 46' y arrancar reloj"
+                    >
+                      46&apos; Inicio 2T
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateMinute(90);
+                        onUpdateStreamSettings({ period: 'Finalizado' });
+                        onUpdatePeriod?.('Finalizado');
+                        onToggleMatchClock?.(false);
+                      }}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-red-300 border border-slate-700 cursor-pointer"
+                      title="Fijar en 90' Finalizado y pausar reloj"
+                    >
+                      90&apos; Final
+                    </button>
                   </div>
                 </div>
 
@@ -1900,7 +2018,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <MatchDetailsEditor
                 streamSettings={streamSettings}
                 onUpdateStreamSettings={onUpdateStreamSettings}
-                activeEventId={currentActiveEventId}
+                activeEventId={activeEventId}
+                activeEvent={currentEvent}
                 onUpdateLiveEvent={onUpdateLiveEvent}
               />
             </div>

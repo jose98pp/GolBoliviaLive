@@ -197,6 +197,20 @@ export interface LiveEvent {
   homeScore?: number;
   awayScore?: number;
   matchMinute?: number;
+  // Match-independent signals and stream settings
+  customVideoUrl?: string;
+  backupVideoUrl?: string;
+  backupChannelName?: string;
+  activeStreamSource?: 'obs' | 'backup' | 'simulation';
+  autoFailoverEnabled?: boolean;
+  broadcastMode?: string;
+  officialAnnouncement?: string;
+  overlayScoreboardVisible?: boolean;
+  lowLatencyMode?: boolean;
+  // Admin-controlled match clock
+  isClockRunning?: boolean;
+  clockUpdatedAt?: number;
+  updatedAt?: number;
 }
 
 

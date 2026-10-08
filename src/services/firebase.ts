@@ -500,28 +500,44 @@ export const DEFAULT_LIVE_EVENTS: LiveEvent[] = [
     period: '2T',
     homeScore: 2,
     awayScore: 1,
-    matchMinute: 75,
+    matchMinute: 78,
+    customVideoUrl: 'https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8',
+    backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    backupChannelName: 'GolBolivia Señal 1 HD',
+    activeStreamSource: 'obs',
+    autoFailoverEnabled: true,
+    isClockRunning: false,
   },
   {
     id: 'partido-002',
-    title: 'Blooming vs Oriente',
+    title: 'Blooming vs Oriente Petrolero',
     homeTeam: 'blooming',
     awayTeam: 'oriente',
     isLive: true,
     primaryProvider: 'youtube',
+    cloudflare: {
+      liveInputId: 'cb471284920412841920',
+      playbackUrl: 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8',
+    },
     youtube: {
       videoId: '5qap5aO4i9A',
     },
     kick: {
-      channel: 'golbolivia',
+      channel: 'golbolivia_senal2',
     },
-    fallbackOrder: ['youtube', 'kick'],
+    fallbackOrder: ['youtube', 'kick', 'cloudflare'],
     tournamentName: 'Clásico Cruceño - Fecha 22',
     stadiumName: 'Estadio Ramón Tahuichi Aguilera - Santa Cruz',
     period: '1T',
     homeScore: 1,
     awayScore: 1,
     matchMinute: 38,
+    customVideoUrl: 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8',
+    backupVideoUrl: 'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8',
+    backupChannelName: 'GolBolivia Señal 2 HD',
+    activeStreamSource: 'obs',
+    autoFailoverEnabled: true,
+    isClockRunning: false,
   },
 ];
 
@@ -556,8 +572,43 @@ export async function saveLiveEventToFirebase(event: LiveEvent): Promise<void> {
     homeScore: event.homeScore !== undefined ? validateScore(event.homeScore) : undefined,
     awayScore: event.awayScore !== undefined ? validateScore(event.awayScore) : undefined,
     matchMinute: event.matchMinute !== undefined ? validateMinute(event.matchMinute) : undefined,
+    customVideoUrl: event.customVideoUrl ? event.customVideoUrl.trim().slice(0, 500) : undefined,
+    backupVideoUrl: event.backupVideoUrl ? event.backupVideoUrl.trim().slice(0, 500) : undefined,
+    backupChannelName: event.backupChannelName ? event.backupChannelName.trim().slice(0, 100) : undefined,
+    activeStreamSource: event.activeStreamSource || 'obs',
+    autoFailoverEnabled: event.autoFailoverEnabled ?? true,
+    isClockRunning: event.isClockRunning ?? false,
+    clockUpdatedAt: event.clockUpdatedAt || Date.now(),
   };
   await setDoc(ref, { ...safePayload, updatedAt: Date.now() }, { merge: true });
+}
+
+export async function saveMatchScoreboardFirebase(
+  eventId: string,
+  data: {
+    homeScore?: number;
+    awayScore?: number;
+    matchMinute?: number;
+    period?: string;
+    isClockRunning?: boolean;
+  }
+): Promise<void> {
+  const safeId = sanitizeClubId(eventId) || 'partido-001';
+  const ref = doc(db, 'liveEvents', safeId);
+  const sanitized: any = {
+    updatedAt: Date.now(),
+  };
+  if (data.homeScore !== undefined) sanitized.homeScore = validateScore(data.homeScore);
+  if (data.awayScore !== undefined) sanitized.awayScore = validateScore(data.awayScore);
+  if (data.matchMinute !== undefined) sanitized.matchMinute = validateMinute(data.matchMinute);
+  if (data.period && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado'].includes(data.period)) {
+    sanitized.period = data.period;
+  }
+  if (typeof data.isClockRunning === 'boolean') {
+    sanitized.isClockRunning = data.isClockRunning;
+    sanitized.clockUpdatedAt = Date.now();
+  }
+  await setDoc(ref, sanitized, { merge: true });
 }
 
 export async function getLiveEventsFromFirebase(): Promise<LiveEvent[]> {

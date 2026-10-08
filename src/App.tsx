@@ -26,7 +26,6 @@ import { useClubs } from './hooks/useClubs';
 import { apiClient } from './services/apiClient';
 import { LiveEventsShowcase } from './components/LiveEventsShowcase';
 import { getMatchSlug, findEventBySlug } from './utils/slug';
-import { getStreamUrlForEvent, detectProviderFromUrl } from './utils/streamUtils';
 import {
   subscribeScoreboardFirebase,
   subscribeMatchEventsFirebase,
@@ -112,7 +111,7 @@ export default function App() {
       autoFailoverEnabled: saved.autoFailoverEnabled ?? true,
       chatMode: saved.chatMode || 'all',
       officialAnnouncement: saved.officialAnnouncement || 'Transmisión oficial de GolBolivia Live desde el Hernando Siles.',
-      overlayScoreboardVisible: saved.overlayScoreboardVisible ?? false,
+      overlayScoreboardVisible: saved.overlayScoreboardVisible ?? true,
       lowLatencyMode: saved.lowLatencyMode ?? true,
     };
   });
@@ -122,6 +121,38 @@ export default function App() {
   useEffect(() => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
+
+  // Match live score & events fallback state
+  const [homeScore, setHomeScore] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_scoreboard');
+      if (saved) {
+        const val = JSON.parse(saved).homeScore;
+        if (typeof val === 'number') return val;
+      }
+    } catch {}
+    return 2;
+  });
+  const [awayScore, setAwayScore] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_scoreboard');
+      if (saved) {
+        const val = JSON.parse(saved).awayScore;
+        if (typeof val === 'number') return val;
+      }
+    } catch {}
+    return 1;
+  });
+  const [matchMinute, setMatchMinute] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_scoreboard');
+      if (saved) {
+        const val = JSON.parse(saved).matchMinute;
+        if (typeof val === 'number') return val;
+      }
+    } catch {}
+    return 78;
+  });
 
   // Multi-Provider Live Events (Paso 9 & 10: Cloudflare, YouTube, Kick)
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>(() => {
@@ -135,12 +166,21 @@ export default function App() {
     return DEFAULT_LIVE_EVENTS;
   });
   const [activeEventId, setActiveEventId] = useState<string>('partido-001');
+  const activeEventIdRef = useRef(activeEventId);
+  useEffect(() => {
+    activeEventIdRef.current = activeEventId;
+  }, [activeEventId]);
 
   const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || DEFAULT_LIVE_EVENTS[0];
-  const currentHomeClub = (streamSettings && (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId])) || BOLIVIAN_CLUBS.bolivar;
-  const currentAwayClub = (streamSettings && (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId])) || BOLIVIAN_CLUBS.strongest;
+  const currentHomeClub = (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam]) || BOLIVIAN_CLUBS.bolivar;
+  const currentAwayClub = (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam]) || BOLIVIAN_CLUBS.strongest;
 
-  // Authoritative Backend Synchronization: Dedicated Stream Sync, GET /api/live & SSE /api/events
+  const currentHomeScore = currentLiveEvent.homeScore !== undefined ? currentLiveEvent.homeScore : homeScore;
+  const currentAwayScore = currentLiveEvent.awayScore !== undefined ? currentLiveEvent.awayScore : awayScore;
+  const currentMatchMinute = currentLiveEvent.matchMinute !== undefined ? currentLiveEvent.matchMinute : matchMinute;
+  const currentPeriod = currentLiveEvent.period || streamSettings.period || '2T';
+
+  // Authoritative Backend Synchronization: Dedicated Match-Specific Stream Sync, GET /api/live & SSE /api/events
   useEffect(() => {
     // 1. Fetch authoritative initial state from backend
     apiClient.getLiveState()
@@ -157,21 +197,6 @@ export default function App() {
             return { ...prev, ...data.streamSettings };
           });
         }
-        if (data.scoreboard) {
-          try {
-            const local = localStorage.getItem('golbolivia_scoreboard');
-            if (local) {
-              const parsed = JSON.parse(local);
-              if (typeof parsed.homeScore === 'number') setHomeScore(parsed.homeScore);
-              if (typeof parsed.awayScore === 'number') setAwayScore(parsed.awayScore);
-              if (typeof parsed.matchMinute === 'number') setMatchMinute(parsed.matchMinute);
-              return;
-            }
-          } catch {}
-          setHomeScore(data.scoreboard.homeScore);
-          setAwayScore(data.scoreboard.awayScore);
-          setMatchMinute(data.scoreboard.matchMinute);
-        }
         if (data.events && data.events.length > 0) {
           setEvents(data.events);
         }
@@ -180,64 +205,81 @@ export default function App() {
         // Fallback gracefully to default match state if offline
       });
 
-    // 2. Dedicated Global M3U8 Stream & Failover Synchronization Subscriber
+    // 2. Dedicated Match-Scoped Stream & Failover Synchronization Subscriber
     const unsubscribeStream = apiClient.subscribeStreamSync((newConfig) => {
-      setStreamSettings((prev) => {
-        const isSwitchingToBackup =
-          newConfig.activeStreamSource === 'backup' && prev.activeStreamSource !== 'backup';
+      const targetId = newConfig.eventId;
+      if (targetId) {
+        setLiveEvents((prev) =>
+          prev.map((ev) => (ev.id === targetId ? { ...ev, ...newConfig } : ev))
+        );
+      }
 
-        if (isSwitchingToBackup) {
-          setActiveToast({
-            id: `failover-${Date.now()}`,
-            title: '📡 Señal de Respaldo HLS Activada',
-            body: `Transmisión conectada a canal alternativo: ${newConfig.backupChannelName || 'GolBolivia 24/7 HD'}`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            type: 'stream_start',
-            read: false,
-          });
-        }
+      if (!targetId || targetId === activeEventIdRef.current) {
+        setStreamSettings((prev) => {
+          const isSwitchingToBackup =
+            newConfig.activeStreamSource === 'backup' && prev.activeStreamSource !== 'backup';
 
-        return { ...prev, ...newConfig };
-      });
+          if (isSwitchingToBackup) {
+            setActiveToast({
+              id: `failover-${Date.now()}`,
+              title: '📡 Señal de Respaldo HLS Activada',
+              body: `Transmisión conectada a canal alternativo: ${newConfig.backupChannelName || 'GolBolivia 24/7 HD'}`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              type: 'stream_start',
+              read: false,
+            });
+          }
+
+          return { ...prev, ...newConfig };
+        });
+      }
     });
 
-    // 3. Subscribe to Real-Time Server-Sent Events (SSE) for match & chat events
+    // 3. Subscribe to Real-Time Server-Sent Events (SSE) strictly matching each event to its match
     const unsubscribeEvents = apiClient.subscribeLiveEvents((type, data) => {
       if (type === 'INITIAL_STATE') {
-        if (data.streamSettings) {
-          setStreamSettings((prev) => {
-            try {
-              const local = localStorage.getItem('golbolivia_stream_settings');
-              if (local) {
-                const parsed = JSON.parse(local);
-                return { ...prev, ...data.streamSettings, ...parsed };
-              }
-            } catch {}
-            return { ...prev, ...data.streamSettings };
-          });
-        }
-        if (data.scoreboard) {
-          try {
-            const local = localStorage.getItem('golbolivia_scoreboard');
-            if (local) {
-              const parsed = JSON.parse(local);
-              if (typeof parsed.homeScore === 'number') setHomeScore(parsed.homeScore);
-              if (typeof parsed.awayScore === 'number') setAwayScore(parsed.awayScore);
-              if (typeof parsed.matchMinute === 'number') setMatchMinute(parsed.matchMinute);
-              return;
-            }
-          } catch {}
-          setHomeScore(data.scoreboard.homeScore);
-          setAwayScore(data.scoreboard.awayScore);
-          setMatchMinute(data.scoreboard.matchMinute);
+        if (Array.isArray(data.liveEvents) && data.liveEvents.length > 0) {
+          setLiveEvents(data.liveEvents);
         }
         if (data.events) setEvents(data.events);
       } else if (type === 'STREAM_UPDATED' || type === 'STREAM_CONFIG_UPDATED') {
-        setStreamSettings((prev) => ({ ...prev, ...data }));
+        const targetId = data.eventId;
+        if (targetId) {
+          setLiveEvents((prev) =>
+            prev.map((ev) => (ev.id === targetId ? { ...ev, ...data } : ev))
+          );
+        }
+        if (!targetId || targetId === activeEventIdRef.current) {
+          setStreamSettings((prev) => ({ ...prev, ...data }));
+        }
       } else if (type === 'SCOREBOARD_UPDATED') {
-        if (data.homeScore !== undefined) setHomeScore(data.homeScore);
-        if (data.awayScore !== undefined) setAwayScore(data.awayScore);
-        if (data.matchMinute !== undefined) setMatchMinute(data.matchMinute);
+        const targetId = data.eventId || activeEventIdRef.current;
+        setLiveEvents((prev) =>
+          prev.map((ev) =>
+            ev.id === targetId
+              ? {
+                  ...ev,
+                  ...(data.homeScore !== undefined && { homeScore: data.homeScore }),
+                  ...(data.awayScore !== undefined && { awayScore: data.awayScore }),
+                  ...(data.matchMinute !== undefined && { matchMinute: data.matchMinute }),
+                  ...(data.period !== undefined && { period: data.period }),
+                  ...(data.isClockRunning !== undefined && { isClockRunning: data.isClockRunning }),
+                }
+              : ev
+          )
+        );
+        if (targetId === activeEventIdRef.current) {
+          if (data.homeScore !== undefined) setHomeScore(data.homeScore);
+          if (data.awayScore !== undefined) setAwayScore(data.awayScore);
+          if (data.matchMinute !== undefined) setMatchMinute(data.matchMinute);
+        }
+      } else if (type === 'LIVE_EVENTS_UPDATED') {
+        if (Array.isArray(data) && data.length > 0) {
+          setLiveEvents(data);
+          try {
+            localStorage.setItem('golbolivia_live_events', JSON.stringify(data));
+          } catch {}
+        }
       } else if (type === 'MATCH_EVENT_ADDED') {
         setEvents((prev) => [data, ...prev]);
       } else if (type === 'MATCH_EVENT_UPDATED') {
@@ -247,33 +289,28 @@ export default function App() {
       }
     });
 
-    // 4. Real-time Firebase Firestore Push Listeners (Authoritative Cloud State)
-    const unsubscribeStreamSettingsFirebase = subscribeStreamSettingsFirebase((firebaseSettings) => {
-      if (firebaseSettings && Object.keys(firebaseSettings).length > 0) {
-        setStreamSettings((prev) => ({ ...prev, ...firebaseSettings }));
+    // 4. Real-time Firebase Firestore Push Listeners: Listen to liveEvents collection (Authoritative Cloud State)
+    const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((fbEvents) => {
+      if (fbEvents && fbEvents.length > 0) {
+        setLiveEvents(fbEvents);
+        try {
+          localStorage.setItem('golbolivia_live_events', JSON.stringify(fbEvents));
+        } catch {}
+
+        const activeEvt = fbEvents.find((e) => e.id === activeEventIdRef.current);
+        if (activeEvt) {
+          if (activeEvt.homeScore !== undefined) setHomeScore(activeEvt.homeScore);
+          if (activeEvt.awayScore !== undefined) setAwayScore(activeEvt.awayScore);
+          if (activeEvt.matchMinute !== undefined) setMatchMinute(activeEvt.matchMinute);
+        }
       }
     });
 
-    // Initial Firestore check to ensure saved settings take precedence
-    getStreamSettingsFromFirebase().then((savedFb) => {
-      if (savedFb && Object.keys(savedFb).length > 0) {
-        setStreamSettings((prev) => ({ ...prev, ...savedFb }));
+    apiClient.getLiveEvents().then((evts) => {
+      if (evts && evts.length > 0) {
+        setLiveEvents(evts);
       }
     }).catch(() => {});
-
-    const unsubscribeScoreboardFirebase = subscribeScoreboardFirebase((scoreData) => {
-      if (scoreData) {
-        if (typeof scoreData.homeScore === 'number') setHomeScore(scoreData.homeScore);
-        if (typeof scoreData.awayScore === 'number') setAwayScore(scoreData.awayScore);
-        if (typeof scoreData.matchMinute === 'number') setMatchMinute(scoreData.matchMinute);
-      }
-    });
-
-    const unsubscribeEventsFirebase = subscribeMatchEventsFirebase((firebaseEvents) => {
-      if (firebaseEvents && firebaseEvents.length > 0) {
-        setEvents(firebaseEvents);
-      }
-    });
 
     // 5. Heartbeat to report real active viewer session to server
     const heartbeatTimer = setInterval(() => {
@@ -282,39 +319,9 @@ export default function App() {
       }
     }, 15000);
 
-    // 6. Multi-Provider Live Events subscription (Paso 9 & 10) with safe merge
-    const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((events) => {
-      if (events && events.length > 0) {
-        setLiveEvents((prev) => {
-          const map = new Map<string, LiveEvent>();
-          prev.forEach((e) => map.set(e.id, e));
-          events.forEach((e) => map.set(e.id, e));
-          const merged = Array.from(map.values());
-          try { localStorage.setItem('golbolivia_live_events', JSON.stringify(merged)); } catch {}
-          return merged;
-        });
-      }
-    });
-
-    apiClient.getLiveEvents().then((events) => {
-      if (events && events.length > 0) {
-        setLiveEvents((prev) => {
-          const map = new Map<string, LiveEvent>();
-          prev.forEach((e) => map.set(e.id, e));
-          events.forEach((e) => map.set(e.id, e));
-          const merged = Array.from(map.values());
-          try { localStorage.setItem('golbolivia_live_events', JSON.stringify(merged)); } catch {}
-          return merged;
-        });
-      }
-    }).catch(() => {});
-
     return () => {
       unsubscribeStream();
       unsubscribeEvents();
-      unsubscribeStreamSettingsFirebase();
-      unsubscribeScoreboardFirebase();
-      unsubscribeEventsFirebase();
       unsubscribeMultiLiveEvents();
       clearInterval(heartbeatTimer);
     };
@@ -349,18 +356,6 @@ export default function App() {
           if (matched.matchMinute !== undefined) {
             setMatchMinute(matched.matchMinute);
           }
-          const streamUrl = getStreamUrlForEvent(matched);
-          if (streamUrl) {
-            setStreamSettings((prev) => ({
-              ...prev,
-              title: matched.title,
-              homeClubId: matched.homeTeam,
-              awayClubId: matched.awayTeam,
-              isLive: matched.isLive,
-              tournamentName: matched.tournamentName || prev.tournamentName,
-              customVideoUrl: streamUrl,
-            }));
-          }
         }
       }
     };
@@ -385,7 +380,6 @@ export default function App() {
     if (evt.matchMinute !== undefined) {
       setMatchMinute(evt.matchMinute);
     }
-    const targetUrl = getStreamUrlForEvent(evt);
     setStreamSettings((prev) => ({
       ...prev,
       title: evt.title,
@@ -393,7 +387,13 @@ export default function App() {
       awayClubId: evt.awayTeam,
       isLive: evt.isLive,
       tournamentName: evt.tournamentName || prev.tournamentName,
-      customVideoUrl: targetUrl || prev.customVideoUrl,
+      stadiumName: evt.stadiumName || prev.stadiumName,
+      period: evt.period || prev.period,
+      customVideoUrl: evt.customVideoUrl || evt.cloudflare?.playbackUrl || prev.customVideoUrl,
+      backupVideoUrl: evt.backupVideoUrl || prev.backupVideoUrl,
+      backupChannelName: evt.backupChannelName || prev.backupChannelName,
+      activeStreamSource: evt.activeStreamSource || prev.activeStreamSource,
+      autoFailoverEnabled: evt.autoFailoverEnabled ?? prev.autoFailoverEnabled,
     }));
   };
 
@@ -417,37 +417,6 @@ export default function App() {
     });
   };
 
-  // Match live score & events
-  const [homeScore, setHomeScore] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('golbolivia_scoreboard');
-      if (saved) {
-        const val = JSON.parse(saved).homeScore;
-        if (typeof val === 'number') return val;
-      }
-    } catch {}
-    return 2;
-  });
-  const [awayScore, setAwayScore] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('golbolivia_scoreboard');
-      if (saved) {
-        const val = JSON.parse(saved).awayScore;
-        if (typeof val === 'number') return val;
-      }
-    } catch {}
-    return 1;
-  });
-  const [matchMinute, setMatchMinute] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('golbolivia_scoreboard');
-      if (saved) {
-        const val = JSON.parse(saved).matchMinute;
-        if (typeof val === 'number') return val;
-      }
-    } catch {}
-    return 78;
-  });
   const [events, setEvents] = useState<MatchEvent[]>(INITIAL_EVENTS);
   const [activePoll, setActivePoll] = useState<LivePoll>(INITIAL_POLL);
 
@@ -486,13 +455,35 @@ export default function App() {
   ]);
   const [activeToast, setActiveToast] = useState<NotificationItem | null>(null);
 
-  // Timer for match minute
+  // Reloj oficial del partido controlado desde administración (1 minuto real = 60s, sin cronómetro artificial)
   useEffect(() => {
+    const activeEvt = liveEvents.find((e) => e.id === activeEventId);
+    if (!activeEvt?.isClockRunning) return;
+    if (activeEvt.period === 'Descanso' || activeEvt.period === 'Finalizado') return;
+
     const timer = setInterval(() => {
-      setMatchMinute((prev) => (prev < 94 ? prev + 1 : 94));
-    }, 45000);
+      setLiveEvents((prev) =>
+        prev.map((ev) => {
+          if (ev.id === activeEventId && ev.isClockRunning) {
+            const nextMin = (ev.matchMinute || 0) + 1;
+            if (nextMin <= 130) {
+              const updated = { ...ev, matchMinute: nextMin };
+              try {
+                localStorage.setItem(
+                  'golbolivia_live_events',
+                  JSON.stringify(prev.map((p) => (p.id === ev.id ? updated : p)))
+                );
+              } catch {}
+              return updated;
+            }
+          }
+          return ev;
+        })
+      );
+    }, 60000);
+
     return () => clearInterval(timer);
-  }, []);
+  }, [activeEventId, liveEvents]);
 
   const triggerReaction = (emoji: string) => {
     presence.registerUserInteraction(`Reacción ${emoji}`);
@@ -529,37 +520,31 @@ export default function App() {
 
     // Synchronize current liveEvent in liveEvents array
     setLiveEvents((prev) => {
-      const updated = prev.map((ev) => {
-        if (ev.id !== activeEventId) return ev;
-        const provider = newSettings.customVideoUrl ? detectProviderFromUrl(newSettings.customVideoUrl) : ev.primaryProvider;
-        return {
-          ...ev,
-          title: newSettings.title || ev.title,
-          homeTeam: newSettings.homeClubId || ev.homeTeam,
-          awayTeam: newSettings.awayClubId || ev.awayTeam,
-          tournamentName: newSettings.tournamentName || ev.tournamentName,
-          stadiumName: newSettings.stadiumName || ev.stadiumName,
-          period: newSettings.period || ev.period,
-          primaryProvider: provider,
-          cloudflare: provider === 'cloudflare' && newSettings.customVideoUrl
-            ? { liveInputId: ev.cloudflare?.liveInputId || '', playbackUrl: newSettings.customVideoUrl }
-            : ev.cloudflare,
-          youtube: provider === 'youtube' && newSettings.customVideoUrl
-            ? { videoId: newSettings.customVideoUrl.replace(/^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)/, '') }
-            : ev.youtube,
-          kick: provider === 'kick' && newSettings.customVideoUrl
-            ? { channel: newSettings.customVideoUrl.replace(/^https?:\/\/(?:www\.)?kick\.com\//, '') }
-            : ev.kick,
-        };
-      });
+      const updated = prev.map((ev) =>
+        ev.id === activeEventId
+          ? {
+              ...ev,
+              title: newSettings.title || ev.title,
+              homeTeam: newSettings.homeClubId || ev.homeTeam,
+              awayTeam: newSettings.awayClubId || ev.awayTeam,
+              tournamentName: newSettings.tournamentName || ev.tournamentName,
+              stadiumName: newSettings.stadiumName || ev.stadiumName,
+              period: newSettings.period || ev.period,
+              customVideoUrl: newSettings.customVideoUrl || ev.customVideoUrl,
+              backupVideoUrl: newSettings.backupVideoUrl || ev.backupVideoUrl,
+              activeStreamSource: newSettings.activeStreamSource || ev.activeStreamSource,
+              autoFailoverEnabled: newSettings.autoFailoverEnabled ?? ev.autoFailoverEnabled,
+            }
+          : ev
+      );
       try {
         localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
       } catch {}
       return updated;
     });
 
-    // Push authoritative global update to dedicated backend endpoint & Firebase
-    apiClient.syncStreamConfig(newSettings).catch((err) => {
+    // Push authoritative match-specific update to dedicated backend endpoint & Firebase
+    apiClient.syncStreamConfig({ ...newSettings, activeEventId, eventId: activeEventId }).catch((err) => {
       console.error('Error al sincronizar señal global:', err);
     });
   };
@@ -618,14 +603,13 @@ export default function App() {
   if (isPreviewOnly) {
     return (
       <div className="w-full h-full min-h-screen bg-[#060911] flex items-center justify-center p-0 m-0 overflow-hidden select-none">
-        <StreamPlayer
+        <UniversalStreamPlayer
+          event={currentLiveEvent}
           isTheaterMode={false}
           setIsTheaterMode={() => {}}
           homeScore={homeScore}
           awayScore={awayScore}
           matchMinute={matchMinute}
-          streamSettings={streamSettings}
-          viewerCount={liveViewerCount}
         />
       </div>
     );
@@ -637,20 +621,51 @@ export default function App() {
       <SecretLoginPage
         streamSettings={streamSettings}
         onUpdateStreamSettings={handleUpdateStreamSettings}
-        homeScore={homeScore}
-        awayScore={awayScore}
-        matchMinute={matchMinute}
+        homeScore={currentHomeScore}
+        awayScore={currentAwayScore}
+        matchMinute={currentMatchMinute}
         activeEventId={activeEventId}
-        onSelectActiveEventId={(id) => setActiveEventId(id)}
+        liveEvents={liveEvents}
+        onSelectEvent={(id) => {
+          setActiveEventId(id);
+          const ev = liveEvents.find((e) => e.id === id);
+          if (ev) handleSelectMatchEvent(ev);
+        }}
+        isClockRunning={Boolean(currentLiveEvent.isClockRunning)}
+        onToggleMatchClock={(running) => {
+          setLiveEvents((prev) =>
+            prev.map((ev) =>
+              ev.id === activeEventId ? { ...ev, isClockRunning: running, clockUpdatedAt: Date.now() } : ev
+            )
+          );
+          apiClient.updateScoreboard({
+            activeEventId,
+            isClockRunning: running,
+            homeScore: currentHomeScore,
+            awayScore: currentAwayScore,
+            matchMinute: currentMatchMinute,
+          }).catch(() => {});
+        }}
+        onUpdatePeriod={(p) => {
+          setLiveEvents((prev) =>
+            prev.map((ev) =>
+              ev.id === activeEventId ? { ...ev, period: p as any } : ev
+            )
+          );
+          setStreamSettings((prev) => ({ ...prev, period: p as any }));
+          apiClient.updateScoreboard({
+            activeEventId,
+            period: p,
+            homeScore: currentHomeScore,
+            awayScore: currentAwayScore,
+            matchMinute: currentMatchMinute,
+          }).catch(() => {});
+        }}
         onUpdateScore={(h, a) => {
           const safeH = Math.max(0, Math.min(50, Math.round(h)));
           const safeA = Math.max(0, Math.min(50, Math.round(a)));
           setHomeScore(safeH);
           setAwayScore(safeA);
-          try {
-            const sb = { homeScore: safeH, awayScore: safeA, matchMinute, period: streamSettings.period, updatedAt: Date.now() };
-            localStorage.setItem('golbolivia_scoreboard', JSON.stringify(sb));
-          } catch {}
           setLiveEvents((prev) => {
             const updated = prev.map((ev) =>
               ev.id === activeEventId ? { ...ev, homeScore: safeH, awayScore: safeA } : ev
@@ -665,10 +680,6 @@ export default function App() {
         onUpdateMinute={(m) => {
           const safeM = Math.max(0, Math.min(130, Math.round(m)));
           setMatchMinute(safeM);
-          try {
-            const sb = { homeScore, awayScore, matchMinute: safeM, period: streamSettings.period, updatedAt: Date.now() };
-            localStorage.setItem('golbolivia_scoreboard', JSON.stringify(sb));
-          } catch {}
           setLiveEvents((prev) => {
             const updated = prev.map((ev) =>
               ev.id === activeEventId ? { ...ev, matchMinute: safeM } : ev
@@ -733,18 +744,25 @@ export default function App() {
         viewerCount={presence.totalOnSite}
         activeCount={presence.activeInteracting}
         totalCount={presence.totalOnSite}
-        homeScore={homeScore}
-        awayScore={awayScore}
-        matchMinute={matchMinute}
+        homeScore={currentHomeScore}
+        awayScore={currentAwayScore}
+        matchMinute={currentMatchMinute}
         homeClub={currentHomeClub}
         awayClub={currentAwayClub}
-        period={streamSettings.period}
+        period={currentPeriod}
       />
 
       {/* MAIN VIEWPORT BODY */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-5 md:p-6 pb-24 md:pb-8">
         {activeTab === 'stream' && (
           <div className="space-y-4 sm:space-y-5">
+            {/* Paso 12: Portada detecta los partidos en vivo (Bolívar vs The Strongest / Blooming vs Oriente) */}
+            <LiveEventsShowcase
+              events={liveEvents}
+              activeEventId={activeEventId}
+              onSelectEvent={handleSelectMatchEvent}
+            />
+
             {/* Split Grid for Stream & Chat */}
             <div
               className={`grid gap-5 ${
@@ -761,42 +779,47 @@ export default function App() {
                     : 'lg:col-span-8'
                 } w-full`}
               >
-                {/* Clean Multi-Match Selector (Only if multiple live matches exist) */}
-                {liveEvents.length > 1 && (
-                  <div className="mb-2.5 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap hidden sm:inline">
-                      Partidos:
-                    </span>
-                    {liveEvents.map((evt) => {
-                      const isSelected = evt.id === activeEventId;
-                      return (
-                        <button
-                          key={evt.id}
-                          onClick={() => handleSelectMatchEvent(evt)}
-                          className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-slate-800 text-white border-emerald-500/80 shadow-md ring-1 ring-emerald-500/40 font-bold'
-                              : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-850'
-                          }`}
-                        >
-                          <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                          <span>{evt.title}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                {/* Multi-Match Live Event Selector (Paso 10: partido-001, partido-002) */}
+                <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap hidden sm:inline">
+                    Partidos en vivo:
+                  </span>
+                  {liveEvents.map((evt) => {
+                    const isSelected = evt.id === activeEventId;
+                    const providerEmoji = evt.primaryProvider === 'cloudflare' ? '⚡' : (evt.primaryProvider === 'youtube' ? '🔴' : '🟢');
+                    return (
+                      <button
+                        key={evt.id}
+                        onClick={() => handleSelectMatchEvent(evt)}
+                        className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-slate-800 text-white border-emerald-500/80 shadow-md ring-1 ring-emerald-500/40 font-bold'
+                            : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-850'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                        <span>{evt.title}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-300">
+                          {providerEmoji} {evt.primaryProvider.toUpperCase()}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-                <StreamPlayer
+                <UniversalStreamPlayer
+                  event={currentLiveEvent}
                   isTheaterMode={isTheaterMode}
                   setIsTheaterMode={setIsTheaterMode}
-                  openObsModal={() => {}}
-                  triggerReaction={triggerReaction}
-                  homeScore={homeScore}
-                  awayScore={awayScore}
-                  matchMinute={matchMinute}
-                  streamSettings={streamSettings}
+                  homeScore={currentHomeScore}
+                  awayScore={currentAwayScore}
+                  matchMinute={currentMatchMinute}
                   viewerCount={liveViewerCount}
+                  onProviderChange={(newProv) => {
+                    setLiveEvents((prev) =>
+                      prev.map((e) => (e.id === currentLiveEvent.id ? { ...e, primaryProvider: newProv } : e))
+                    );
+                  }}
                 />
 
                 {/* Mobile View Toggle Buttons: Chat or Stats below the video player */}
@@ -830,14 +853,14 @@ export default function App() {
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                         <span>EN VIVO</span>
                       </span>
-                      <span className="font-semibold text-white">{streamSettings.tournamentName}</span>
+                      <span className="font-semibold text-white">{currentLiveEvent.tournamentName || streamSettings.tournamentName}</span>
                       <span className="text-slate-500 hidden sm:inline">·</span>
-                      <span className="text-slate-400 font-mono text-[11px] hidden sm:inline">HD</span>
+                      <span className="text-slate-400 font-mono text-[11px] hidden sm:inline">1080p60 HLS HD</span>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        {streamSettings.period || '2T'} · {matchMinute}&apos;
+                        {currentPeriod} · {currentMatchMinute}&apos;
                       </span>
                       <button
                         onClick={() => setActiveTab('stats')}
@@ -851,7 +874,7 @@ export default function App() {
 
                   {/* Main Match Title */}
                   <h1 className="font-display font-black text-lg sm:text-xl md:text-2xl text-white tracking-tight">
-                    {streamSettings.title}
+                    {currentLiveEvent.title || streamSettings.title}
                   </h1>
 
                   {/* Live Scoreboard Hero Display */}
@@ -877,10 +900,10 @@ export default function App() {
                     {/* Central Score */}
                     <div className="flex flex-col items-center justify-center px-3 sm:px-6">
                       <div className="font-mono text-2xl sm:text-4xl font-black text-emerald-400 tracking-wider tabular-nums bg-black/60 px-3 sm:px-4 py-1 rounded-xl border border-slate-700 shadow-inner">
-                        {homeScore} <span className="text-slate-500 font-light">-</span> {awayScore}
+                        {currentHomeScore} <span className="text-slate-500 font-light">-</span> {currentAwayScore}
                       </div>
                       <span className="text-[10px] text-amber-400 font-mono font-bold mt-1 uppercase tracking-wider">
-                        {streamSettings.period || '2T'} ({matchMinute}&apos;)
+                        {currentPeriod} ({currentMatchMinute}&apos;)
                       </span>
                     </div>
 
@@ -972,10 +995,18 @@ export default function App() {
             {/* Embedded Live Stats Section underneath for easy browsing */}
             <div className="pt-2 sm:pt-4">
               <MatchStats
-                homeScore={homeScore}
-                awayScore={awayScore}
-                matchMinute={matchMinute}
-                streamSettings={streamSettings}
+                homeScore={currentHomeScore}
+                awayScore={currentAwayScore}
+                matchMinute={currentMatchMinute}
+                streamSettings={{
+                  ...streamSettings,
+                  title: currentLiveEvent.title || streamSettings.title,
+                  homeClubId: currentLiveEvent.homeTeam || streamSettings.homeClubId,
+                  awayClubId: currentLiveEvent.awayTeam || streamSettings.awayClubId,
+                  tournamentName: currentLiveEvent.tournamentName || streamSettings.tournamentName,
+                  stadiumName: currentLiveEvent.stadiumName || streamSettings.stadiumName,
+                  period: (currentLiveEvent.period || streamSettings.period) as any,
+                }}
                 events={events}
               />
             </div>
@@ -985,10 +1016,18 @@ export default function App() {
         {/* TAB 2: DETAILED MATCH STATS */}
         {activeTab === 'stats' && (
           <MatchStats
-            homeScore={homeScore}
-            awayScore={awayScore}
-            matchMinute={matchMinute}
-            streamSettings={streamSettings}
+            homeScore={currentHomeScore}
+            awayScore={currentAwayScore}
+            matchMinute={currentMatchMinute}
+            streamSettings={{
+              ...streamSettings,
+              title: currentLiveEvent.title || streamSettings.title,
+              homeClubId: currentLiveEvent.homeTeam || streamSettings.homeClubId,
+              awayClubId: currentLiveEvent.awayTeam || streamSettings.awayClubId,
+              tournamentName: currentLiveEvent.tournamentName || streamSettings.tournamentName,
+              stadiumName: currentLiveEvent.stadiumName || streamSettings.stadiumName,
+              period: (currentLiveEvent.period || streamSettings.period) as any,
+            }}
             events={events}
           />
         )}

@@ -31,7 +31,10 @@ export const CloudflarePlayer: React.FC<CloudflarePlayerProps> = ({
   const [isBuffering, setIsBuffering] = useState(false);
   const [failoverCountdown, setFailoverCountdown] = useState<number | null>(null);
 
-  const playbackUrl = event.cloudflare?.playbackUrl || '';
+  const playbackUrl =
+    (event.activeStreamSource === 'backup' && event.backupVideoUrl)
+      ? event.backupVideoUrl
+      : (event.customVideoUrl || event.cloudflare?.playbackUrl || '');
   const liveInputId = event.cloudflare?.liveInputId || '';
 
   // Auto failover timer (Paso 14: Cloudflare -> failover automático -> YouTube)

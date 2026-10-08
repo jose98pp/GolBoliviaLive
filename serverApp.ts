@@ -838,30 +838,43 @@ app.post(
     if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
 
     // Keep active liveEvent in sync with streamSettings
+    const targetEventId = body.eventId || body.activeEventId || 'partido-001';
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
-      const activeEvt = state.liveEvents.find((e) => e.id === body.activeEventId) || state.liveEvents[0];
-      if (activeEvt) {
-        if (state.streamSettings.title) activeEvt.title = state.streamSettings.title;
-        if (state.streamSettings.homeClubId) activeEvt.homeTeam = state.streamSettings.homeClubId;
-        if (state.streamSettings.awayClubId) activeEvt.awayTeam = state.streamSettings.awayClubId;
-        if (state.streamSettings.tournamentName) activeEvt.tournamentName = state.streamSettings.tournamentName;
-        if (state.streamSettings.stadiumName) activeEvt.stadiumName = state.streamSettings.stadiumName;
-        if (state.streamSettings.period) activeEvt.period = state.streamSettings.period;
+      const targetEvt = state.liveEvents.find((e) => e.id === targetEventId) || state.liveEvents[0];
+      if (targetEvt) {
+        if (state.streamSettings.title) targetEvt.title = state.streamSettings.title;
+        if (state.streamSettings.homeClubId) targetEvt.homeTeam = state.streamSettings.homeClubId;
+        if (state.streamSettings.awayClubId) targetEvt.awayTeam = state.streamSettings.awayClubId;
+        if (state.streamSettings.tournamentName) targetEvt.tournamentName = state.streamSettings.tournamentName;
+        if (state.streamSettings.stadiumName) targetEvt.stadiumName = state.streamSettings.stadiumName;
+        if (state.streamSettings.period) targetEvt.period = state.streamSettings.period;
+        if (body.customVideoUrl) {
+          targetEvt.customVideoUrl = body.customVideoUrl;
+          if (targetEvt.cloudflare) targetEvt.cloudflare.playbackUrl = body.customVideoUrl;
+        }
+        if (body.backupVideoUrl) targetEvt.backupVideoUrl = body.backupVideoUrl;
+        if (body.backupChannelName) targetEvt.backupChannelName = body.backupChannelName;
+        if (body.activeStreamSource) targetEvt.activeStreamSource = body.activeStreamSource;
+        if (typeof body.autoFailoverEnabled === 'boolean') targetEvt.autoFailoverEnabled = body.autoFailoverEnabled;
       }
     }
 
     persistState();
 
-    const payload = getPublicStreamPayload();
+    const payload = {
+      ...getPublicStreamPayload(),
+      eventId: targetEventId,
+    };
     broadcastSseEvent('STREAM_CONFIG_UPDATED', payload);
     broadcastSseEvent('STREAM_UPDATED', payload);
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
 
     res.json({
       success: true,
-      message: 'Configuración de señales m3u8 sincronizada globalmente para todos los usuarios.',
+      message: 'Configuración de señales sincronizada por partido con éxito.',
       config: payload,
       streamSettings: payload,
+      eventId: targetEventId,
     });
   }
 );
@@ -934,7 +947,7 @@ app.post(
       state.liveEvents.push(safeEvent);
     }
 
-    // Mirror to current streamSettings if primary or matching
+    // Update primary streamSettings only if this event is explicitly the primary one
     if (existingIndex === 0 || state.streamSettings.title === safeEvent.title || state.liveEvents.length === 1) {
       state.streamSettings.title = safeEvent.title;
       state.streamSettings.homeClubId = safeEvent.homeTeam;
@@ -945,47 +958,20 @@ app.post(
       if (safeEvent.homeScore !== undefined) state.scoreboard.homeScore = safeEvent.homeScore;
       if (safeEvent.awayScore !== undefined) state.scoreboard.awayScore = safeEvent.awayScore;
       if (safeEvent.matchMinute !== undefined) state.scoreboard.matchMinute = safeEvent.matchMinute;
-
-      // Resolve stream URL according to primaryProvider and fallbacks
-      let effectivePlaybackUrl = '';
-      if (safeEvent.primaryProvider === 'kick' && safeEvent.kick?.channel) {
-        const ch = safeEvent.kick.channel.trim().replace(/^https?:\/\/(?:www\.)?kick\.com\//, '');
-        effectivePlaybackUrl = `https://kick.com/${ch}`;
-      } else if (safeEvent.primaryProvider === 'youtube' && safeEvent.youtube?.videoId) {
-        const vid = safeEvent.youtube.videoId.trim().replace(/^https?:\/\/(?:www\.)?youtube\.com\/watch\?v=/, '');
-        effectivePlaybackUrl = `https://www.youtube.com/watch?v=${vid}`;
-      } else if (safeEvent.primaryProvider === 'cloudflare' && safeEvent.cloudflare?.playbackUrl) {
-        effectivePlaybackUrl = safeEvent.cloudflare.playbackUrl.trim();
-      }
-
-      if (!effectivePlaybackUrl) {
-        for (const fb of safeEvent.fallbackOrder || []) {
-          if (fb === 'kick' && safeEvent.kick?.channel) {
-            const ch = safeEvent.kick.channel.trim().replace(/^https?:\/\/(?:www\.)?kick\.com\//, '');
-            effectivePlaybackUrl = `https://kick.com/${ch}`;
-            break;
-          }
-          if (fb === 'youtube' && safeEvent.youtube?.videoId) {
-            const vid = safeEvent.youtube.videoId.trim().replace(/^https?:\/\/(?:www\.)?youtube\.com\/watch\?v=/, '');
-            effectivePlaybackUrl = `https://www.youtube.com/watch?v=${vid}`;
-            break;
-          }
-          if (fb === 'cloudflare' && safeEvent.cloudflare?.playbackUrl) {
-            effectivePlaybackUrl = safeEvent.cloudflare.playbackUrl.trim();
-            break;
-          }
-        }
-      }
-
-      if (effectivePlaybackUrl) {
-        state.streamSettings.customVideoUrl = effectivePlaybackUrl;
-      }
-
-      broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
-      broadcastSseEvent('SCOREBOARD_UPDATED', state.scoreboard);
     }
 
     persistState();
+
+    broadcastSseEvent('STREAM_CONFIG_UPDATED', { eventId: safeEvent.id, ...safeEvent });
+    broadcastSseEvent('SCOREBOARD_UPDATED', {
+      eventId: safeEvent.id,
+      homeScore: safeEvent.homeScore,
+      awayScore: safeEvent.awayScore,
+      matchMinute: safeEvent.matchMinute,
+      period: safeEvent.period,
+      isClockRunning: safeEvent.isClockRunning,
+      updatedAt: Date.now(),
+    });
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
 
     res.json({
@@ -1013,7 +999,7 @@ app.delete(
 
 // 7. Scoreboard API (Admin, Transmisor, or Editor required to update)
 app.get(['/api/scoreboard', '/scoreboard'], (_req: Request, res: Response) => {
-  res.json({ scoreboard: state.scoreboard });
+  res.json({ scoreboard: state.scoreboard, events: state.liveEvents });
 });
 
 app.post(
@@ -1021,32 +1007,55 @@ app.post(
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
   (req: Request, res: Response) => {
-    const { homeScore, awayScore, matchMinute, period } = req.body;
-    if (homeScore !== undefined) state.scoreboard.homeScore = Math.max(0, Math.min(50, Math.round(Number(homeScore) || 0)));
-    if (awayScore !== undefined) state.scoreboard.awayScore = Math.max(0, Math.min(50, Math.round(Number(awayScore) || 0)));
-    if (matchMinute !== undefined) state.scoreboard.matchMinute = Math.max(0, Math.min(130, Math.round(Number(matchMinute) || 0)));
+    const { homeScore, awayScore, matchMinute, period, isClockRunning } = req.body;
+    const targetEventId = req.body.activeEventId || req.body.eventId || 'partido-001';
+
+    let activeEvt = state.liveEvents.find((e) => e.id === targetEventId);
+    if (!activeEvt && state.liveEvents.length > 0) {
+      activeEvt = state.liveEvents[0];
+    }
+
+    const safeHome = homeScore !== undefined ? Math.max(0, Math.min(50, Math.round(Number(homeScore) || 0))) : undefined;
+    const safeAway = awayScore !== undefined ? Math.max(0, Math.min(50, Math.round(Number(awayScore) || 0))) : undefined;
+    const safeMin = matchMinute !== undefined ? Math.max(0, Math.min(130, Math.round(Number(matchMinute) || 0))) : undefined;
+
+    if (activeEvt) {
+      if (safeHome !== undefined) activeEvt.homeScore = safeHome;
+      if (safeAway !== undefined) activeEvt.awayScore = safeAway;
+      if (safeMin !== undefined) activeEvt.matchMinute = safeMin;
+      if (period !== undefined && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado'].includes(period)) {
+        activeEvt.period = period;
+      }
+      if (typeof isClockRunning === 'boolean') {
+        activeEvt.isClockRunning = isClockRunning;
+        activeEvt.clockUpdatedAt = Date.now();
+      }
+    }
+
+    if (safeHome !== undefined) state.scoreboard.homeScore = safeHome;
+    if (safeAway !== undefined) state.scoreboard.awayScore = safeAway;
+    if (safeMin !== undefined) state.scoreboard.matchMinute = safeMin;
     if (period !== undefined && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado'].includes(period)) {
       state.scoreboard.period = period;
       state.streamSettings.period = period as any;
     }
     state.scoreboard.updatedAt = Date.now();
 
-    // Sync score to active liveEvent as well
-    if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
-      const activeEvt = state.liveEvents.find((e) => e.id === req.body.activeEventId) || state.liveEvents[0];
-      if (activeEvt) {
-        if (homeScore !== undefined) activeEvt.homeScore = state.scoreboard.homeScore;
-        if (awayScore !== undefined) activeEvt.awayScore = state.scoreboard.awayScore;
-        if (matchMinute !== undefined) activeEvt.matchMinute = state.scoreboard.matchMinute;
-        if (period !== undefined) activeEvt.period = state.scoreboard.period as any;
-      }
-    }
-
     persistState();
 
-    broadcastSseEvent('SCOREBOARD_UPDATED', state.scoreboard);
+    const scorePayload = {
+      eventId: activeEvt ? activeEvt.id : targetEventId,
+      homeScore: activeEvt?.homeScore ?? state.scoreboard.homeScore,
+      awayScore: activeEvt?.awayScore ?? state.scoreboard.awayScore,
+      matchMinute: activeEvt?.matchMinute ?? state.scoreboard.matchMinute,
+      period: activeEvt?.period ?? state.scoreboard.period,
+      isClockRunning: activeEvt?.isClockRunning ?? false,
+      updatedAt: Date.now(),
+    };
+
+    broadcastSseEvent('SCOREBOARD_UPDATED', scorePayload);
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
-    res.json({ success: true, scoreboard: state.scoreboard, liveEvents: state.liveEvents });
+    res.json({ success: true, scoreboard: scorePayload, liveEvents: state.liveEvents });
   }
 );
 
@@ -1265,10 +1274,10 @@ app.get(['/api/version', '/version'], (_req: Request, res: Response) => {
   });
 });
 
-// Universal 404 Handler for unmatched API routes
-app.all('/api/*', (req: Request, res: Response) => {
+// Universal 404 Handler for unmatched routes
+app.all('*', (req: Request, res: Response) => {
   res.status(404).json({
-    error: `Ruta de API no encontrada: ${req.method} ${req.originalUrl || req.url}`,
+    error: `Ruta no encontrada: ${req.method} ${req.originalUrl || req.url}`,
     availableEndpoints: [
       'GET /api/live',
       'GET /api/streams',
