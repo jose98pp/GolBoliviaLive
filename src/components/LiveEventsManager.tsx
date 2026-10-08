@@ -3,7 +3,7 @@ import { LiveEvent, StreamProvider } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
-import { DEFAULT_LIVE_EVENTS, sanitizeClubId, validateScore, validateMinute, CLUB_ID_REGEX } from '../services/firebase';
+import { sanitizeClubId, validateScore, validateMinute, CLUB_ID_REGEX } from '../services/firebase';
 import {
   Zap,
   Tv,
@@ -110,13 +110,25 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
         const map = new Map<string, LiveEvent>();
         // 1. Preserve all existing local matches (including newly created ones)
         prev.forEach((e) => map.set(e.id, e));
-        // 2. Merge incoming authoritative matches
+        // 2. Merge incoming authoritative matches rejecting outdated data (Regla 3)
         incoming.forEach((e) => {
           // If the match is currently being edited by user, protect local edits
           if (isDirtyRef.current && formDataRef.current && formDataRef.current.id === e.id) {
             map.set(e.id, formDataRef.current);
           } else {
-            map.set(e.id, e);
+            const current = map.get(e.id);
+            if (current) {
+              const curVer = current.version || 0;
+              const incVer = e.version || 0;
+              const curUp = current.updatedAt || 0;
+              const incUp = e.updatedAt || 0;
+              // Rechazar datos antiguos
+              if (incVer > curVer || (incVer === curVer && incUp >= curUp) || (incVer === 0 && curVer === 0 && incUp >= curUp)) {
+                map.set(e.id, { ...current, ...e });
+              }
+            } else {
+              map.set(e.id, e);
+            }
           }
         });
         const merged = Array.from(map.values());
@@ -191,32 +203,29 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
       matchMinute: 0,
     };
 
-    // 1. Immediately add to local events & select it
-    const updated = [...events, newEv];
-    setEvents(updated);
-    setSelectedId(newId);
-    setFormData(newEv);
-    isDirtyRef.current = false;
-    prevSelectedIdRef.current = newId;
-
-    // 2. Persist to localStorage immediately
+    setIsSaving(true);
+    setErrorMessage(null);
+    setSaveSuccessMessage(null);
     try {
-      localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
-    } catch {}
+      const confirmed = await apiClient.saveLiveEvent(newEv);
+      const updated = [...events, confirmed];
+      setEvents(updated);
+      setSelectedId(newId);
+      setFormData(confirmed);
+      isDirtyRef.current = false;
+      prevSelectedIdRef.current = newId;
 
-    // 3. Immediately notify parent (SecretLoginPage and App) of the newly created match
-    if (onEventSelected) {
-      onEventSelected(newEv);
-    }
+      if (onEventSelected) {
+        onEventSelected(confirmed);
+      }
 
-    setSaveSuccessMessage(`¡Partido "${newEv.title}" creado con éxito! Puedes configurar la señal y detalles.`);
-    setTimeout(() => setSaveSuccessMessage(null), 4000);
-
-    // 4. Save to backend and Firebase in background so it permanently exists
-    try {
-      await apiClient.saveLiveEvent(newEv);
-    } catch (err) {
-      console.warn('Error al persistir nuevo evento en backend:', err);
+      setSaveSuccessMessage(`¡Partido "${confirmed.title}" creado y confirmado con éxito (v${confirmed.version || 1})!`);
+      setTimeout(() => setSaveSuccessMessage(null), 4000);
+    } catch (err: any) {
+      setSaveSuccessMessage(null);
+      setErrorMessage('Error al crear el partido: ' + (err.message || 'No autorizado o error de guardado'));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -227,10 +236,21 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
     }
     if (!confirm(`¿Estás seguro de eliminar el partido "${formData.title}"?`)) return;
 
-    await apiClient.deleteLiveEvent(id);
-    const remaining = events.filter((e) => e.id !== id);
-    setEvents(remaining);
-    setSelectedId(remaining[0].id);
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      await apiClient.deleteLiveEvent(id);
+      const remaining = events.filter((e) => e.id !== id);
+      setEvents(remaining);
+      setSelectedId(remaining[0].id);
+      setSaveSuccessMessage('Partido eliminado con éxito.');
+      setTimeout(() => setSaveSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setSaveSuccessMessage(null);
+      setErrorMessage('Error al eliminar partido: ' + (err.message || 'No autorizado'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -299,25 +319,27 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
         matchMinute: minuteVal,
       };
 
-      await apiClient.saveLiveEvent(sanitized);
+      const savedEvt = await apiClient.saveLiveEvent(sanitized);
 
       isDirtyRef.current = false;
       setEvents((prev) => {
-        const idx = prev.findIndex((ev) => ev.id === sanitized.id);
+        const idx = prev.findIndex((ev) => ev.id === savedEvt.id);
         const updated = idx >= 0
-          ? prev.map((ev) => (ev.id === sanitized.id ? sanitized : ev))
-          : [...prev, sanitized];
+          ? prev.map((ev) => (ev.id === savedEvt.id ? savedEvt : ev))
+          : [...prev, savedEvt];
         try {
           localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
         } catch {}
         return updated;
       });
+      setFormData(savedEvt);
 
-      setSaveSuccessMessage(`¡Partido "${sanitized.title}" guardado y sincronizado con éxito!`);
-      if (onEventSelected) onEventSelected(sanitized);
+      setSaveSuccessMessage(`¡Partido "${savedEvt.title}" guardado y confirmado con éxito (v${savedEvt.version || 1})!`);
+      if (onEventSelected) onEventSelected(savedEvt);
 
       setTimeout(() => setSaveSuccessMessage(null), 4000);
     } catch (err: any) {
+      setSaveSuccessMessage(null);
       setErrorMessage('Error al guardar partido: ' + (err.message || 'Error desconocido'));
     } finally {
       setIsSaving(false);
@@ -785,6 +807,14 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Error message visible banner */}
+        {errorMessage && (
+          <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-2 animate-fadeIn">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="font-semibold">{errorMessage}</span>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">

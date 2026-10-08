@@ -587,10 +587,29 @@ export async function saveLiveEventToFirebase(event: LiveEvent, operator?: strin
   try {
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      const d = snap.data();
-      nextVersion = (d.version || 0) + 1;
+      const existing = snap.data();
+      const existingVersion = existing?.version || 0;
+      const existingUpdatedAt = existing?.updatedAt || 0;
+
+      // Regla 3 & 4: Utilizar versiones o marcas de actualización para rechazar datos antiguos
+      // No permitir que el backend sobrescriba Firebase con un estado de memoria desactualizado
+      if (event.version !== undefined && event.version < existingVersion) {
+        throw new Error(
+          `Conflicto de versión en Firebase: El partido ya cuenta con versión v${existingVersion}, superior a la versión v${event.version} recibida. Actualización rechazada.`
+        );
+      }
+      if (event.updatedAt !== undefined && event.updatedAt < existingUpdatedAt) {
+        throw new Error(
+          `Conflicto de marca temporal en Firebase: El registro en Firestore (${new Date(existingUpdatedAt).toISOString()}) es más reciente que el recibido (${new Date(event.updatedAt).toISOString()}). Guardado rechazado.`
+        );
+      }
+      nextVersion = Math.max(existingVersion, event.version || 0) + 1;
     }
-  } catch {}
+  } catch (err: any) {
+    if (err.message && (err.message.includes('Conflicto de versión') || err.message.includes('Conflicto de marca temporal'))) {
+      throw err;
+    }
+  }
 
   const now = Date.now();
   // Guarantee no secret keys ever get stored or transmitted here
@@ -655,9 +674,20 @@ export async function saveMatchScoreboardFirebase(
   try {
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      nextVersion = (snap.data()?.version || 0) + 1;
+      const existing = snap.data();
+      const existingVersion = existing?.version || 0;
+      if (data.version !== undefined && data.version < existingVersion) {
+        throw new Error(
+          `Marcador desactualizado: La versión actual en Firestore (v${existingVersion}) es superior a la versión enviada (v${data.version}). Guardado rechazado.`
+        );
+      }
+      nextVersion = Math.max(existingVersion, data.version || 0) + 1;
     }
-  } catch {}
+  } catch (err: any) {
+    if (err.message && err.message.includes('Marcador desactualizado')) {
+      throw err;
+    }
+  }
 
   const now = Date.now();
   const sanitized: any = {
@@ -707,6 +737,8 @@ export function subscribeLiveEventsFirebase(
           const list: LiveEvent[] = [];
           snap.forEach((d) => list.push(d.data() as LiveEvent));
           callback(list);
+        } else {
+          callback([]);
         }
       },
       (err) => {

@@ -315,34 +315,6 @@ function validateMinute(minute, defaultValue = 0) {
   }
   return Math.max(0, Math.min(130, Math.round(minute)));
 }
-async function saveStreamSettingsToFirebase(settings, operator) {
-  const ref = doc(db, "config", "stream_settings");
-  let nextVersion = (settings.version || 0) + 1;
-  try {
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      nextVersion = (snap.data()?.version || 0) + 1;
-    }
-  } catch {
-  }
-  const now = Date.now();
-  const payload = {
-    ...settings,
-    version: nextVersion,
-    updatedAt: now,
-    updatedAtIso: new Date(now).toISOString(),
-    updatedBy: operator || "admin"
-  };
-  if (settings.homeClubId) payload.homeClubId = sanitizeClubId(settings.homeClubId);
-  if (settings.awayClubId) payload.awayClubId = sanitizeClubId(settings.awayClubId);
-  if (settings.title) payload.title = settings.title.trim().slice(0, 120);
-  if (settings.tournamentName) payload.tournamentName = settings.tournamentName.trim().slice(0, 80);
-  if (settings.stadiumName) payload.stadiumName = settings.stadiumName.trim().slice(0, 80);
-  if (settings.altitudeMeters !== void 0) {
-    payload.altitudeMeters = Math.max(0, Math.min(6e3, Number(settings.altitudeMeters) || 0));
-  }
-  await setDoc(ref, payload, { merge: true });
-}
 async function getStreamSettingsFromFirebase() {
   try {
     const ref = doc(db, "config", "stream_settings");
@@ -354,37 +326,6 @@ async function getStreamSettingsFromFirebase() {
     console.warn("[Firebase] Error al leer configuraci\xF3n de transmisi\xF3n:", err);
   }
   return null;
-}
-async function saveScoreboardToFirebase(data, operator) {
-  const ref = doc(db, "match", "scoreboard");
-  let nextVersion = 1;
-  try {
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      nextVersion = (snap.data()?.version || 0) + 1;
-    }
-  } catch {
-  }
-  const now = Date.now();
-  const sanitized = {
-    version: nextVersion,
-    updatedAt: now,
-    updatedAtIso: new Date(now).toISOString(),
-    updatedBy: operator || "admin"
-  };
-  if (data.homeScore !== void 0) {
-    sanitized.homeScore = validateScore(data.homeScore);
-  }
-  if (data.awayScore !== void 0) {
-    sanitized.awayScore = validateScore(data.awayScore);
-  }
-  if (data.matchMinute !== void 0) {
-    sanitized.matchMinute = validateMinute(data.matchMinute);
-  }
-  if (data.period && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(data.period)) {
-    sanitized.period = data.period;
-  }
-  await setDoc(ref, sanitized, { merge: true });
 }
 async function getClubsFromFirebase() {
   try {
@@ -398,70 +339,6 @@ async function getClubsFromFirebase() {
   }
   return null;
 }
-var DEFAULT_LIVE_EVENTS = [
-  {
-    id: "partido-001",
-    title: "Bol\xEDvar vs The Strongest",
-    homeTeam: "bolivar",
-    awayTeam: "strongest",
-    isLive: true,
-    primaryProvider: "cloudflare",
-    cloudflare: {
-      liveInputId: "fc815c43232145e69e7e59cba627d3fa",
-      playbackUrl: "https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8"
-    },
-    youtube: {
-      videoId: "jfKfPfyJRdk"
-    },
-    kick: {
-      channel: "golbolivia"
-    },
-    fallbackOrder: ["cloudflare", "youtube", "kick"],
-    tournamentName: "Liga Tigo Divisi\xF3n Profesional - Torneo Clausura",
-    stadiumName: "Estadio Ol\xEDmpico Hernando Siles - La Paz",
-    period: "2T",
-    homeScore: 2,
-    awayScore: 1,
-    matchMinute: 78,
-    customVideoUrl: "https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8",
-    backupVideoUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    backupChannelName: "GolBolivia Se\xF1al 1 HD",
-    activeStreamSource: "obs",
-    autoFailoverEnabled: true,
-    isClockRunning: false
-  },
-  {
-    id: "partido-002",
-    title: "Blooming vs Oriente Petrolero",
-    homeTeam: "blooming",
-    awayTeam: "oriente",
-    isLive: true,
-    primaryProvider: "youtube",
-    cloudflare: {
-      liveInputId: "cb471284920412841920",
-      playbackUrl: "https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8"
-    },
-    youtube: {
-      videoId: "5qap5aO4i9A"
-    },
-    kick: {
-      channel: "golbolivia_senal2"
-    },
-    fallbackOrder: ["youtube", "kick", "cloudflare"],
-    tournamentName: "Cl\xE1sico Cruce\xF1o - Fecha 22",
-    stadiumName: "Estadio Ram\xF3n Tahuichi Aguilera - Santa Cruz",
-    period: "1T",
-    homeScore: 1,
-    awayScore: 1,
-    matchMinute: 38,
-    customVideoUrl: "https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8",
-    backupVideoUrl: "https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8",
-    backupChannelName: "GolBolivia Se\xF1al 2 HD",
-    activeStreamSource: "obs",
-    autoFailoverEnabled: true,
-    isClockRunning: false
-  }
-];
 async function saveLiveEventToFirebase(event, operator) {
   const safeId = sanitizeClubId(event.id);
   if (!safeId) {
@@ -481,10 +358,25 @@ async function saveLiveEventToFirebase(event, operator) {
   try {
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      const d = snap.data();
-      nextVersion = (d.version || 0) + 1;
+      const existing = snap.data();
+      const existingVersion = existing?.version || 0;
+      const existingUpdatedAt = existing?.updatedAt || 0;
+      if (event.version !== void 0 && event.version < existingVersion) {
+        throw new Error(
+          `Conflicto de versi\xF3n en Firebase: El partido ya cuenta con versi\xF3n v${existingVersion}, superior a la versi\xF3n v${event.version} recibida. Actualizaci\xF3n rechazada.`
+        );
+      }
+      if (event.updatedAt !== void 0 && event.updatedAt < existingUpdatedAt) {
+        throw new Error(
+          `Conflicto de marca temporal en Firebase: El registro en Firestore (${new Date(existingUpdatedAt).toISOString()}) es m\xE1s reciente que el recibido (${new Date(event.updatedAt).toISOString()}). Guardado rechazado.`
+        );
+      }
+      nextVersion = Math.max(existingVersion, event.version || 0) + 1;
     }
-  } catch {
+  } catch (err) {
+    if (err.message && (err.message.includes("Conflicto de versi\xF3n") || err.message.includes("Conflicto de marca temporal"))) {
+      throw err;
+    }
   }
   const now = Date.now();
   const safePayload = {
@@ -524,6 +416,50 @@ async function saveLiveEventToFirebase(event, operator) {
     updatedBy: operator || "admin"
   };
   await setDoc(ref, safePayload, { merge: true });
+  return { success: true, version: nextVersion, updatedAt: now };
+}
+async function saveMatchScoreboardFirebase(eventId, data, operator) {
+  const safeId = sanitizeClubId(eventId);
+  if (!safeId) {
+    throw new Error("Identificador de partido inv\xE1lido para marcador.");
+  }
+  const ref = doc(db, "liveEvents", safeId);
+  let nextVersion = (data.version || 0) + 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const existing = snap.data();
+      const existingVersion = existing?.version || 0;
+      if (data.version !== void 0 && data.version < existingVersion) {
+        throw new Error(
+          `Marcador desactualizado: La versi\xF3n actual en Firestore (v${existingVersion}) es superior a la versi\xF3n enviada (v${data.version}). Guardado rechazado.`
+        );
+      }
+      nextVersion = Math.max(existingVersion, data.version || 0) + 1;
+    }
+  } catch (err) {
+    if (err.message && err.message.includes("Marcador desactualizado")) {
+      throw err;
+    }
+  }
+  const now = Date.now();
+  const sanitized = {
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || "admin"
+  };
+  if (data.homeScore !== void 0) sanitized.homeScore = validateScore(data.homeScore);
+  if (data.awayScore !== void 0) sanitized.awayScore = validateScore(data.awayScore);
+  if (data.matchMinute !== void 0) sanitized.matchMinute = validateMinute(data.matchMinute);
+  if (data.period && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(data.period)) {
+    sanitized.period = data.period;
+  }
+  if (typeof data.isClockRunning === "boolean") {
+    sanitized.isClockRunning = data.isClockRunning;
+    sanitized.clockUpdatedAt = now;
+  }
+  await setDoc(ref, sanitized, { merge: true });
   return { success: true, version: nextVersion, updatedAt: now };
 }
 async function getLiveEventsFromFirebase() {
@@ -726,34 +662,34 @@ function requireRoles(allowedRoles) {
 }
 var state = {
   clubs: { ...BOLIVIAN_CLUBS },
-  liveEvents: [...DEFAULT_LIVE_EVENTS],
+  liveEvents: [],
   streamSettings: {
-    title: "Bol\xEDvar vs The Strongest - Cl\xE1sico Pace\xF1o N\xB0 234",
+    title: "",
     tournamentName: "Liga Tigo Divisi\xF3n Profesional - Torneo Clausura",
     homeClubId: "bolivar",
     awayClubId: "strongest",
     stadiumName: "Estadio Hernando Siles - La Paz",
     altitudeMeters: 3637,
-    period: "2T",
-    isLive: true,
+    period: "1T",
+    isLive: false,
     rtmpServer: "rtmp://localhost:1935/live",
     streamKey: "bolivia",
-    customVideoUrl: process.env.STREAM_URL || process.env.DEFAULT_CUSTOM_VIDEO_URL || "https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8",
+    customVideoUrl: process.env.STREAM_URL || process.env.DEFAULT_CUSTOM_VIDEO_URL || "",
     chatMode: "all",
     officialAnnouncement: "Transmisi\xF3n Oficial en HD para toda Bolivia por GolBolivia TV.",
     broadcastMode: "obs_custom",
     overlayScoreboardVisible: true,
     lowLatencyMode: true,
-    backupVideoUrl: process.env.BACKUP_STREAM_URL || process.env.DEFAULT_BACKUP_VIDEO_URL || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    backupVideoUrl: process.env.BACKUP_STREAM_URL || process.env.DEFAULT_BACKUP_VIDEO_URL || "",
     backupChannelName: "GolBolivia 24/7 Se\xF1al Alternativa HD",
     activeStreamSource: "obs",
     autoFailoverEnabled: true
   },
   scoreboard: {
-    homeScore: 2,
-    awayScore: 1,
-    matchMinute: 78,
-    period: "2T",
+    homeScore: 0,
+    awayScore: 0,
+    matchMinute: 0,
+    period: "1T",
     updatedAt: Date.now()
   },
   matchStats: {
@@ -869,9 +805,12 @@ function loadPersistedState() {
   getLiveEventsFromFirebase().then((fbEvents) => {
     if (Array.isArray(fbEvents) && fbEvents.length > 0) {
       state.liveEvents = fbEvents;
-      console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase: ${fbEvents.length} partidos`);
+      console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase (fuente \xFAnica): ${fbEvents.length} partidos`);
+    } else {
+      console.log("[GolBolivia Backend] Ning\xFAn partido encontrado en Firebase Firestore. Esperando configuraci\xF3n de producci\xF3n.");
     }
-  }).catch(() => {
+  }).catch((err) => {
+    console.warn("[GolBolivia Backend] Error conectando con Firebase en inicio:", err);
   });
 }
 function persistState() {
@@ -887,19 +826,9 @@ function persistState() {
       updatedAt: Date.now()
     };
     fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), "utf-8");
-    console.log("[GolBolivia Backend] Configuraci\xF3n de transmisi\xF3n persistida en disco.");
+    console.log("[GolBolivia Backend] Configuraci\xF3n de transmisi\xF3n respaldada en disco local.");
   } catch (err) {
     console.error("[GolBolivia Backend] Error al guardar estado en disco:", err);
-  }
-  saveStreamSettingsToFirebase(state.streamSettings).catch(() => {
-  });
-  saveScoreboardToFirebase(state.scoreboard).catch(() => {
-  });
-  if (Array.isArray(state.liveEvents)) {
-    state.liveEvents.forEach((ev) => {
-      saveLiveEventToFirebase(ev).catch(() => {
-      });
-    });
   }
 }
 loadPersistedState();
@@ -1328,6 +1257,25 @@ app2.post(
       updatedAtIso: new Date(now).toISOString(),
       updatedBy: operator
     };
+    if (existingEvent && raw.version !== void 0 && raw.version < (existingEvent.version || 0)) {
+      res.status(409).json({
+        error: `Conflicto de versiones: El partido ya fue actualizado a la versi\xF3n v${existingEvent.version}. Tu versi\xF3n enviada es v${raw.version}.`,
+        code: "VERSION_CONFLICT"
+      });
+      return;
+    }
+    try {
+      const fbResult = await saveLiveEventToFirebase(safeEvent, operator);
+      safeEvent.version = fbResult.version;
+      safeEvent.updatedAt = fbResult.updatedAt;
+    } catch (fbErr) {
+      console.warn("[GolBolivia Server] Error persistiendo evento en Firestore:", fbErr);
+      res.status(409).json({
+        error: fbErr.message || "Error al persistir evento en Firebase Firestore.",
+        code: "FIRESTORE_WRITE_ERROR"
+      });
+      return;
+    }
     if (existingIndex >= 0) {
       state.liveEvents[existingIndex] = safeEvent;
     } else {
@@ -1345,11 +1293,6 @@ app2.post(
       if (safeEvent.matchMinute !== void 0) state.scoreboard.matchMinute = safeEvent.matchMinute;
     }
     persistState();
-    try {
-      await saveLiveEventToFirebase(safeEvent, operator);
-    } catch (fbErr) {
-      console.warn("[GolBolivia Server] Advertencia al guardar evento en Firestore:", fbErr);
-    }
     broadcastSseEvent("STREAM_CONFIG_UPDATED", { eventId: safeEvent.id, ...safeEvent });
     broadcastSseEvent("SCOREBOARD_UPDATED", {
       eventId: safeEvent.id,
@@ -1359,7 +1302,7 @@ app2.post(
       period: safeEvent.period,
       isClockRunning: safeEvent.isClockRunning,
       version: safeEvent.version,
-      updatedAt: now
+      updatedAt: safeEvent.updatedAt
     });
     broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
     res.json({
@@ -1376,12 +1319,16 @@ app2.delete(
   ["/api/live-events/:id", "/live-events/:id"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR"]),
-  (req, res) => {
+  async (req, res) => {
     const id = req.params.id;
+    try {
+      await deleteLiveEventFromFirebase(id);
+    } catch (fbErr) {
+      res.status(500).json({ error: fbErr.message || "Error al eliminar partido en Firestore" });
+      return;
+    }
     state.liveEvents = state.liveEvents.filter((e) => e.id !== id);
     persistState();
-    deleteLiveEventFromFirebase(id).catch(() => {
-    });
     broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
     res.json({ success: true, message: "Partido eliminado.", events: state.liveEvents });
   }
@@ -1393,16 +1340,48 @@ app2.post(
   ["/api/scoreboard", "/scoreboard"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
-  (req, res) => {
+  async (req, res) => {
     const { homeScore, awayScore, matchMinute, period, isClockRunning } = req.body;
     const targetEventId = req.body.activeEventId || req.body.eventId || "partido-001";
     let activeEvt = state.liveEvents.find((e) => e.id === targetEventId);
     if (!activeEvt && state.liveEvents.length > 0) {
       activeEvt = state.liveEvents[0];
     }
+    if (activeEvt && req.body.version !== void 0 && req.body.version < (activeEvt.version || 0)) {
+      res.status(409).json({
+        error: `Marcador desactualizado: El partido ya cuenta con la versi\xF3n v${activeEvt.version}, superior a la enviada v${req.body.version}.`,
+        code: "VERSION_CONFLICT"
+      });
+      return;
+    }
     const safeHome = homeScore !== void 0 ? Math.max(0, Math.min(50, Math.round(Number(homeScore) || 0))) : void 0;
     const safeAway = awayScore !== void 0 ? Math.max(0, Math.min(50, Math.round(Number(awayScore) || 0))) : void 0;
     const safeMin = matchMinute !== void 0 ? Math.max(0, Math.min(130, Math.round(Number(matchMinute) || 0))) : void 0;
+    const scorePayload = {
+      eventId: activeEvt ? activeEvt.id : targetEventId,
+      homeScore: safeHome !== void 0 ? safeHome : activeEvt?.homeScore ?? state.scoreboard.homeScore,
+      awayScore: safeAway !== void 0 ? safeAway : activeEvt?.awayScore ?? state.scoreboard.awayScore,
+      matchMinute: safeMin !== void 0 ? safeMin : activeEvt?.matchMinute ?? state.scoreboard.matchMinute,
+      period: period || (activeEvt?.period ?? state.scoreboard.period),
+      isClockRunning: typeof isClockRunning === "boolean" ? isClockRunning : activeEvt?.isClockRunning ?? false,
+      version: activeEvt?.version,
+      updatedAt: Date.now()
+    };
+    try {
+      const fbRes = await saveMatchScoreboardFirebase(scorePayload.eventId, scorePayload, req.user?.username);
+      scorePayload.version = fbRes.version;
+      scorePayload.updatedAt = fbRes.updatedAt;
+      if (activeEvt) {
+        activeEvt.version = fbRes.version;
+        activeEvt.updatedAt = fbRes.updatedAt;
+      }
+    } catch (fbErr) {
+      res.status(409).json({
+        error: fbErr.message || "Error al persistir marcador en Firestore.",
+        code: "FIRESTORE_SCORE_ERROR"
+      });
+      return;
+    }
     if (activeEvt) {
       if (safeHome !== void 0) activeEvt.homeScore = safeHome;
       if (safeAway !== void 0) activeEvt.awayScore = safeAway;
@@ -1412,7 +1391,7 @@ app2.post(
       }
       if (typeof isClockRunning === "boolean") {
         activeEvt.isClockRunning = isClockRunning;
-        activeEvt.clockUpdatedAt = Date.now();
+        activeEvt.clockUpdatedAt = scorePayload.updatedAt;
       }
     }
     if (safeHome !== void 0) state.scoreboard.homeScore = safeHome;
@@ -1422,17 +1401,8 @@ app2.post(
       state.scoreboard.period = period;
       state.streamSettings.period = period;
     }
-    state.scoreboard.updatedAt = Date.now();
+    state.scoreboard.updatedAt = scorePayload.updatedAt;
     persistState();
-    const scorePayload = {
-      eventId: activeEvt ? activeEvt.id : targetEventId,
-      homeScore: activeEvt?.homeScore ?? state.scoreboard.homeScore,
-      awayScore: activeEvt?.awayScore ?? state.scoreboard.awayScore,
-      matchMinute: activeEvt?.matchMinute ?? state.scoreboard.matchMinute,
-      period: activeEvt?.period ?? state.scoreboard.period,
-      isClockRunning: activeEvt?.isClockRunning ?? false,
-      updatedAt: Date.now()
-    };
     broadcastSseEvent("SCOREBOARD_UPDATED", scorePayload);
     broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
     res.json({ success: true, scoreboard: scorePayload, liveEvents: state.liveEvents });

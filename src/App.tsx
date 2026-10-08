@@ -31,7 +31,6 @@ import {
   subscribeMatchEventsFirebase,
   subscribeStreamSettingsFirebase,
   getStreamSettingsFromFirebase,
-  DEFAULT_LIVE_EVENTS,
 } from './services/firebase';
 
 export default function App() {
@@ -232,18 +231,46 @@ export default function App() {
       }
     });
 
+    // Helper para Regla 3: Rechazar datos antiguos usando versión o marca de actualización
+    const mergeConfirmedEvents = (prevList: LiveEvent[], incomingList: LiveEvent[]): LiveEvent[] => {
+      const result = [...prevList];
+      for (const inc of incomingList) {
+        const idx = result.findIndex((e) => e.id === inc.id);
+        if (idx >= 0) {
+          const current = result[idx];
+          const curVer = current.version || 0;
+          const incVer = inc.version || 0;
+          const curUp = current.updatedAt || 0;
+          const incUp = inc.updatedAt || 0;
+          // Regla 3: rechazar datos antiguos
+          if (incVer > curVer || (incVer === curVer && incUp >= curUp) || (incVer === 0 && curVer === 0 && incUp >= curUp)) {
+            result[idx] = { ...current, ...inc };
+          }
+        } else {
+          result.push(inc);
+        }
+      }
+      return result;
+    };
+
     // 3. Subscribe to Real-Time Server-Sent Events (SSE) strictly matching each event to its match
     const unsubscribeEvents = apiClient.subscribeLiveEvents((type, data) => {
       if (type === 'INITIAL_STATE') {
         if (Array.isArray(data.liveEvents) && data.liveEvents.length > 0) {
-          setLiveEvents(data.liveEvents);
+          setLiveEvents((prev) => mergeConfirmedEvents(prev, data.liveEvents));
         }
         if (data.events) setEvents(data.events);
       } else if (type === 'STREAM_UPDATED' || type === 'STREAM_CONFIG_UPDATED') {
         const targetId = data.eventId;
         if (targetId) {
           setLiveEvents((prev) =>
-            prev.map((ev) => (ev.id === targetId ? { ...ev, ...data } : ev))
+            prev.map((ev) => {
+              if (ev.id !== targetId) return ev;
+              const curVer = ev.version || 0;
+              const incVer = data.version || 0;
+              if (incVer > 0 && incVer < curVer) return ev;
+              return { ...ev, ...data };
+            })
           );
         }
         if (!targetId || targetId === activeEventIdRef.current) {
@@ -252,18 +279,27 @@ export default function App() {
       } else if (type === 'SCOREBOARD_UPDATED') {
         const targetId = data.eventId || activeEventIdRef.current;
         setLiveEvents((prev) =>
-          prev.map((ev) =>
-            ev.id === targetId
-              ? {
-                  ...ev,
-                  ...(data.homeScore !== undefined && { homeScore: data.homeScore }),
-                  ...(data.awayScore !== undefined && { awayScore: data.awayScore }),
-                  ...(data.matchMinute !== undefined && { matchMinute: data.matchMinute }),
-                  ...(data.period !== undefined && { period: data.period }),
-                  ...(data.isClockRunning !== undefined && { isClockRunning: data.isClockRunning }),
-                }
-              : ev
-          )
+          prev.map((ev) => {
+            if (ev.id !== targetId) return ev;
+            // Regla 3: Rechazar datos antiguos
+            const curVer = ev.version || 0;
+            const incVer = data.version || 0;
+            const curUp = ev.updatedAt || 0;
+            const incUp = data.updatedAt || 0;
+            if (incVer > 0 && incVer < curVer) return ev;
+            if (incUp > 0 && incUp < curUp) return ev;
+
+            return {
+              ...ev,
+              ...(data.homeScore !== undefined && { homeScore: data.homeScore }),
+              ...(data.awayScore !== undefined && { awayScore: data.awayScore }),
+              ...(data.matchMinute !== undefined && { matchMinute: data.matchMinute }),
+              ...(data.period !== undefined && { period: data.period }),
+              ...(data.isClockRunning !== undefined && { isClockRunning: data.isClockRunning }),
+              ...(data.version !== undefined && { version: data.version }),
+              ...(data.updatedAt !== undefined && { updatedAt: data.updatedAt }),
+            };
+          })
         );
         if (targetId === activeEventIdRef.current) {
           if (data.homeScore !== undefined) setHomeScore(data.homeScore);
@@ -272,10 +308,13 @@ export default function App() {
         }
       } else if (type === 'LIVE_EVENTS_UPDATED') {
         if (Array.isArray(data) && data.length > 0) {
-          setLiveEvents(data);
-          try {
-            localStorage.setItem('golbolivia_live_events', JSON.stringify(data));
-          } catch {}
+          setLiveEvents((prev) => {
+            const merged = mergeConfirmedEvents(prev, data);
+            try {
+              localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
         }
       } else if (type === 'MATCH_EVENT_ADDED') {
         setEvents((prev) => [data, ...prev]);
@@ -286,13 +325,16 @@ export default function App() {
       }
     });
 
-    // 4. Real-time Firebase Firestore Push Listeners: Listen to liveEvents collection (Authoritative Cloud State)
+    // 4. Real-time Firebase Firestore Push Listeners: Listen to liveEvents collection (Fuente única de datos reales por partido)
     const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((fbEvents) => {
       if (fbEvents && fbEvents.length > 0) {
-        setLiveEvents(fbEvents);
-        try {
-          localStorage.setItem('golbolivia_live_events', JSON.stringify(fbEvents));
-        } catch {}
+        setLiveEvents((prev) => {
+          const merged = mergeConfirmedEvents(prev, fbEvents);
+          try {
+            localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
 
         const activeEvt = fbEvents.find((e) => e.id === activeEventIdRef.current);
         if (activeEvt) {
@@ -628,8 +670,9 @@ export default function App() {
           const ev = liveEvents.find((e) => e.id === id);
           if (ev) handleSelectMatchEvent(ev);
         }}
-        isClockRunning={Boolean(currentLiveEvent.isClockRunning)}
+        isClockRunning={Boolean(currentLiveEvent?.isClockRunning)}
         onToggleMatchClock={(running) => {
+          const prevRunning = Boolean(currentLiveEvent?.isClockRunning);
           setLiveEvents((prev) =>
             prev.map((ev) =>
               ev.id === activeEventId ? { ...ev, isClockRunning: running, clockUpdatedAt: Date.now() } : ev
@@ -641,9 +684,34 @@ export default function App() {
             homeScore: currentHomeScore,
             awayScore: currentAwayScore,
             matchMinute: currentMatchMinute,
-          }).catch(() => {});
+          }).then(() => {
+            setActiveToast({
+              id: `clock-ok-${Date.now()}`,
+              title: '✅ Guardado confirmado',
+              body: running ? 'Cronómetro iniciado y sincronizado' : 'Cronómetro detenido y sincronizado',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              type: 'exclusive',
+              read: false,
+            });
+          }).catch((err: any) => {
+            // Revertir estado si el guardado falló (Regla 2: no confirmar guardados fallidos)
+            setLiveEvents((prev) =>
+              prev.map((ev) =>
+                ev.id === activeEventId ? { ...ev, isClockRunning: prevRunning } : ev
+              )
+            );
+            setActiveToast({
+              id: `clock-err-${Date.now()}`,
+              title: '❌ Error al guardar cronómetro',
+              body: err.message || 'No autorizado o error al guardar estado del cronómetro',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              type: 'exclusive',
+              read: false,
+            });
+          });
         }}
         onUpdatePeriod={(p) => {
+          const prevPeriod = currentLiveEvent?.period || streamSettings.period || '1T';
           setLiveEvents((prev) =>
             prev.map((ev) =>
               ev.id === activeEventId ? { ...ev, period: p as any } : ev
@@ -666,6 +734,13 @@ export default function App() {
               read: false,
             });
           }).catch((err: any) => {
+            // Revertir estado si falló
+            setLiveEvents((prev) =>
+              prev.map((ev) =>
+                ev.id === activeEventId ? { ...ev, period: prevPeriod as any } : ev
+              )
+            );
+            setStreamSettings((prev) => ({ ...prev, period: prevPeriod as any }));
             setActiveToast({
               id: `period-err-${Date.now()}`,
               title: '❌ Error al guardar',
@@ -679,19 +754,27 @@ export default function App() {
         onUpdateScore={(h, a) => {
           const safeH = Math.max(0, Math.min(50, Math.round(h)));
           const safeA = Math.max(0, Math.min(50, Math.round(a)));
+          const prevH = currentHomeScore;
+          const prevA = currentAwayScore;
           setHomeScore(safeH);
           setAwayScore(safeA);
-          setLiveEvents((prev) => {
-            const updated = prev.map((ev) =>
+          setLiveEvents((prev) =>
+            prev.map((ev) =>
               ev.id === activeEventId ? { ...ev, homeScore: safeH, awayScore: safeA } : ev
-            );
-            try {
-              localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
-            } catch {}
-            return updated;
-          });
+            )
+          );
           apiClient.updateScoreboard({ homeScore: safeH, awayScore: safeA, activeEventId })
             .then(() => {
+              // Actualizar copia local de lectura únicamente tras confirmación oficial
+              try {
+                const current = JSON.parse(localStorage.getItem('golbolivia_live_events') || '[]');
+                const idx = current.findIndex((ev: any) => ev.id === activeEventId);
+                if (idx >= 0) {
+                  current[idx].homeScore = safeH;
+                  current[idx].awayScore = safeA;
+                  localStorage.setItem('golbolivia_live_events', JSON.stringify(current));
+                }
+              } catch {}
               setActiveToast({
                 id: `score-ok-${Date.now()}`,
                 title: '✅ Guardado confirmado',
@@ -702,6 +785,14 @@ export default function App() {
               });
             })
             .catch((err: any) => {
+              // Revertir en fallo: no confirmar guardados fallidos
+              setHomeScore(prevH);
+              setAwayScore(prevA);
+              setLiveEvents((prev) =>
+                prev.map((ev) =>
+                  ev.id === activeEventId ? { ...ev, homeScore: prevH, awayScore: prevA } : ev
+                )
+              );
               setActiveToast({
                 id: `score-err-${Date.now()}`,
                 title: '❌ Error al guardar marcador',
@@ -714,18 +805,23 @@ export default function App() {
         }}
         onUpdateMinute={(m) => {
           const safeM = Math.max(0, Math.min(130, Math.round(m)));
+          const prevM = currentMatchMinute;
           setMatchMinute(safeM);
-          setLiveEvents((prev) => {
-            const updated = prev.map((ev) =>
+          setLiveEvents((prev) =>
+            prev.map((ev) =>
               ev.id === activeEventId ? { ...ev, matchMinute: safeM } : ev
-            );
-            try {
-              localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
-            } catch {}
-            return updated;
-          });
+            )
+          );
           apiClient.updateScoreboard({ matchMinute: safeM, activeEventId })
             .then(() => {
+              try {
+                const current = JSON.parse(localStorage.getItem('golbolivia_live_events') || '[]');
+                const idx = current.findIndex((ev: any) => ev.id === activeEventId);
+                if (idx >= 0) {
+                  current[idx].matchMinute = safeM;
+                  localStorage.setItem('golbolivia_live_events', JSON.stringify(current));
+                }
+              } catch {}
               setActiveToast({
                 id: `min-ok-${Date.now()}`,
                 title: '✅ Guardado confirmado',
@@ -736,6 +832,13 @@ export default function App() {
               });
             })
             .catch((err: any) => {
+              // Revertir en fallo: no confirmar guardados fallidos
+              setMatchMinute(prevM);
+              setLiveEvents((prev) =>
+                prev.map((ev) =>
+                  ev.id === activeEventId ? { ...ev, matchMinute: prevM } : ev
+                )
+              );
               setActiveToast({
                 id: `min-err-${Date.now()}`,
                 title: '❌ Error al guardar minuto',

@@ -10,11 +10,11 @@ import {
   saveStreamSettingsToFirebase,
   getStreamSettingsFromFirebase,
   saveScoreboardToFirebase,
+  saveMatchScoreboardFirebase,
   getClubsFromFirebase,
   getLiveEventsFromFirebase,
   saveLiveEventToFirebase,
   deleteLiveEventFromFirebase,
-  DEFAULT_LIVE_EVENTS,
 } from './src/services/firebase';
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
@@ -309,34 +309,34 @@ interface AppState {
 
 const state: AppState = {
   clubs: { ...BOLIVIAN_CLUBS },
-  liveEvents: [...DEFAULT_LIVE_EVENTS],
+  liveEvents: [],
   streamSettings: {
-    title: 'Bolívar vs The Strongest - Clásico Paceño N° 234',
+    title: '',
     tournamentName: 'Liga Tigo División Profesional - Torneo Clausura',
     homeClubId: 'bolivar',
     awayClubId: 'strongest',
     stadiumName: 'Estadio Hernando Siles - La Paz',
     altitudeMeters: 3637,
-    period: '2T',
-    isLive: true,
+    period: '1T',
+    isLive: false,
     rtmpServer: 'rtmp://localhost:1935/live',
     streamKey: 'bolivia',
-    customVideoUrl: process.env.STREAM_URL || process.env.DEFAULT_CUSTOM_VIDEO_URL || 'https://stuffed-january-bulk-self.trycloudflare.com/live/partido/index.m3u8',
+    customVideoUrl: process.env.STREAM_URL || process.env.DEFAULT_CUSTOM_VIDEO_URL || '',
     chatMode: 'all',
     officialAnnouncement: 'Transmisión Oficial en HD para toda Bolivia por GolBolivia TV.',
     broadcastMode: 'obs_custom',
     overlayScoreboardVisible: true,
     lowLatencyMode: true,
-    backupVideoUrl: process.env.BACKUP_STREAM_URL || process.env.DEFAULT_BACKUP_VIDEO_URL || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    backupVideoUrl: process.env.BACKUP_STREAM_URL || process.env.DEFAULT_BACKUP_VIDEO_URL || '',
     backupChannelName: 'GolBolivia 24/7 Señal Alternativa HD',
     activeStreamSource: 'obs',
     autoFailoverEnabled: true,
   },
   scoreboard: {
-    homeScore: 2,
-    awayScore: 1,
-    matchMinute: 78,
-    period: '2T',
+    homeScore: 0,
+    awayScore: 0,
+    matchMinute: 0,
+    period: '1T',
     updatedAt: Date.now(),
   },
   matchStats: {
@@ -461,9 +461,13 @@ function loadPersistedState(): void {
   getLiveEventsFromFirebase().then((fbEvents) => {
     if (Array.isArray(fbEvents) && fbEvents.length > 0) {
       state.liveEvents = fbEvents;
-      console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase: ${fbEvents.length} partidos`);
+      console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase (fuente única): ${fbEvents.length} partidos`);
+    } else {
+      console.log('[GolBolivia Backend] Ningún partido encontrado en Firebase Firestore. Esperando configuración de producción.');
     }
-  }).catch(() => {});
+  }).catch((err) => {
+    console.warn('[GolBolivia Backend] Error conectando con Firebase en inicio:', err);
+  });
 }
 
 function persistState(): void {
@@ -479,19 +483,13 @@ function persistState(): void {
       updatedAt: Date.now(),
     };
     fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
-    console.log('[GolBolivia Backend] Configuración de transmisión persistida en disco.');
+    console.log('[GolBolivia Backend] Configuración de transmisión respaldada en disco local.');
   } catch (err) {
     console.error('[GolBolivia Backend] Error al guardar estado en disco:', err);
   }
 
-  // Guardar en la nube (Firebase Firestore)
-  saveStreamSettingsToFirebase(state.streamSettings).catch(() => {});
-  saveScoreboardToFirebase(state.scoreboard).catch(() => {});
-  if (Array.isArray(state.liveEvents)) {
-    state.liveEvents.forEach((ev) => {
-      saveLiveEventToFirebase(ev).catch(() => {});
-    });
-  }
+  // Regla 4: No permitir que el backend sobrescriba Firebase con un estado de memoria desactualizado.
+  // Las modificaciones a Firebase se realizan exclusivamente con validación de versión en endpoints autenticados.
 }
 
 // Cargar estado persistido al arrancar
@@ -984,6 +982,29 @@ app.post(
       updatedBy: operator,
     };
 
+    // Regla 3: Verificar versiones para rechazar datos antiguos
+    if (existingEvent && raw.version !== undefined && raw.version < (existingEvent.version || 0)) {
+      res.status(409).json({
+        error: `Conflicto de versiones: El partido ya fue actualizado a la versión v${existingEvent.version}. Tu versión enviada es v${raw.version}.`,
+        code: 'VERSION_CONFLICT',
+      });
+      return;
+    }
+
+    // Regla 4: Persistir primero a Cloud Firestore (Fuente única de datos reales por partido)
+    try {
+      const fbResult = await saveLiveEventToFirebase(safeEvent, operator);
+      safeEvent.version = fbResult.version;
+      safeEvent.updatedAt = fbResult.updatedAt;
+    } catch (fbErr: any) {
+      console.warn('[GolBolivia Server] Error persistiendo evento en Firestore:', fbErr);
+      res.status(409).json({
+        error: fbErr.message || 'Error al persistir evento en Firebase Firestore.',
+        code: 'FIRESTORE_WRITE_ERROR',
+      });
+      return;
+    }
+
     if (existingIndex >= 0) {
       state.liveEvents[existingIndex] = safeEvent;
     } else {
@@ -1005,13 +1026,6 @@ app.post(
 
     persistState();
 
-    // Persist to Cloud Firestore with version & update timestamp
-    try {
-      await saveLiveEventToFirebase(safeEvent, operator);
-    } catch (fbErr) {
-      console.warn('[GolBolivia Server] Advertencia al guardar evento en Firestore:', fbErr);
-    }
-
     broadcastSseEvent('STREAM_CONFIG_UPDATED', { eventId: safeEvent.id, ...safeEvent });
     broadcastSseEvent('SCOREBOARD_UPDATED', {
       eventId: safeEvent.id,
@@ -1021,7 +1035,7 @@ app.post(
       period: safeEvent.period,
       isClockRunning: safeEvent.isClockRunning,
       version: safeEvent.version,
-      updatedAt: now,
+      updatedAt: safeEvent.updatedAt,
     });
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
 
@@ -1040,11 +1054,16 @@ app.delete(
   ['/api/live-events/:id', '/live-events/:id'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR']),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const id = req.params.id;
+    try {
+      await deleteLiveEventFromFirebase(id);
+    } catch (fbErr: any) {
+      res.status(500).json({ error: fbErr.message || 'Error al eliminar partido en Firestore' });
+      return;
+    }
     state.liveEvents = state.liveEvents.filter((e) => e.id !== id);
     persistState();
-    deleteLiveEventFromFirebase(id).catch(() => {});
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
     res.json({ success: true, message: 'Partido eliminado.', events: state.liveEvents });
   }
@@ -1059,7 +1078,7 @@ app.post(
   ['/api/scoreboard', '/scoreboard'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const { homeScore, awayScore, matchMinute, period, isClockRunning } = req.body;
     const targetEventId = req.body.activeEventId || req.body.eventId || 'partido-001';
 
@@ -1068,9 +1087,46 @@ app.post(
       activeEvt = state.liveEvents[0];
     }
 
+    // Regla 3: Rechazar actualizaciones de versión desactualizada
+    if (activeEvt && req.body.version !== undefined && req.body.version < (activeEvt.version || 0)) {
+      res.status(409).json({
+        error: `Marcador desactualizado: El partido ya cuenta con la versión v${activeEvt.version}, superior a la enviada v${req.body.version}.`,
+        code: 'VERSION_CONFLICT',
+      });
+      return;
+    }
+
     const safeHome = homeScore !== undefined ? Math.max(0, Math.min(50, Math.round(Number(homeScore) || 0))) : undefined;
     const safeAway = awayScore !== undefined ? Math.max(0, Math.min(50, Math.round(Number(awayScore) || 0))) : undefined;
     const safeMin = matchMinute !== undefined ? Math.max(0, Math.min(130, Math.round(Number(matchMinute) || 0))) : undefined;
+
+    const scorePayload: any = {
+      eventId: activeEvt ? activeEvt.id : targetEventId,
+      homeScore: safeHome !== undefined ? safeHome : (activeEvt?.homeScore ?? state.scoreboard.homeScore),
+      awayScore: safeAway !== undefined ? safeAway : (activeEvt?.awayScore ?? state.scoreboard.awayScore),
+      matchMinute: safeMin !== undefined ? safeMin : (activeEvt?.matchMinute ?? state.scoreboard.matchMinute),
+      period: period || (activeEvt?.period ?? state.scoreboard.period),
+      isClockRunning: typeof isClockRunning === 'boolean' ? isClockRunning : (activeEvt?.isClockRunning ?? false),
+      version: activeEvt?.version,
+      updatedAt: Date.now(),
+    };
+
+    // Regla 4: Persistir a Cloud Firestore primero (Fuente única)
+    try {
+      const fbRes = await saveMatchScoreboardFirebase(scorePayload.eventId, scorePayload, (req as any).user?.username);
+      scorePayload.version = fbRes.version;
+      scorePayload.updatedAt = fbRes.updatedAt;
+      if (activeEvt) {
+        activeEvt.version = fbRes.version;
+        activeEvt.updatedAt = fbRes.updatedAt;
+      }
+    } catch (fbErr: any) {
+      res.status(409).json({
+        error: fbErr.message || 'Error al persistir marcador en Firestore.',
+        code: 'FIRESTORE_SCORE_ERROR',
+      });
+      return;
+    }
 
     if (activeEvt) {
       if (safeHome !== undefined) activeEvt.homeScore = safeHome;
@@ -1081,7 +1137,7 @@ app.post(
       }
       if (typeof isClockRunning === 'boolean') {
         activeEvt.isClockRunning = isClockRunning;
-        activeEvt.clockUpdatedAt = Date.now();
+        activeEvt.clockUpdatedAt = scorePayload.updatedAt;
       }
     }
 
@@ -1092,19 +1148,9 @@ app.post(
       state.scoreboard.period = period;
       state.streamSettings.period = period as any;
     }
-    state.scoreboard.updatedAt = Date.now();
+    state.scoreboard.updatedAt = scorePayload.updatedAt;
 
     persistState();
-
-    const scorePayload = {
-      eventId: activeEvt ? activeEvt.id : targetEventId,
-      homeScore: activeEvt?.homeScore ?? state.scoreboard.homeScore,
-      awayScore: activeEvt?.awayScore ?? state.scoreboard.awayScore,
-      matchMinute: activeEvt?.matchMinute ?? state.scoreboard.matchMinute,
-      period: activeEvt?.period ?? state.scoreboard.period,
-      isClockRunning: activeEvt?.isClockRunning ?? false,
-      updatedAt: Date.now(),
-    };
 
     broadcastSseEvent('SCOREBOARD_UPDATED', scorePayload);
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);

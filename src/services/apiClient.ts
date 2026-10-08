@@ -24,7 +24,6 @@ import {
   getLiveEventsFromFirebase,
   subscribeLiveEventsFirebase,
   deleteLiveEventFromFirebase,
-  DEFAULT_LIVE_EVENTS,
   FIREBASE_PROJECT_ID,
 } from './firebase';
 
@@ -124,13 +123,14 @@ class GolBoliviaApiClient {
 
     const result = await res.json();
 
-    // 2. Mirror to match-specific Firebase Firestore with version & timestamp
-    await saveMatchScoreboardFirebase(targetEventId, data).catch((err) => {
-      console.warn('[ApiClient] Advertencia al sincronizar marcador en Firestore:', err);
-    });
+    // 2. Mirror to match-specific Firebase Firestore with version & timestamp (Fuente única)
+    const fbRes = await saveMatchScoreboardFirebase(targetEventId, data);
+    if (fbRes) {
+      result.scoreboard = { ...result.scoreboard, version: fbRes.version, updatedAt: fbRes.updatedAt };
+    }
     await saveScoreboardToFirebase(data).catch(() => {});
 
-    // 3. Keep read-only local storage copy
+    // 3. Keep read-only local storage copy only upon confirmed save
     try {
       const raw = localStorage.getItem('golbolivia_scoreboard');
       const existing = raw ? JSON.parse(raw) : {};
@@ -752,15 +752,11 @@ class GolBoliviaApiClient {
     const resData = await res.json();
     const confirmedEvent: LiveEvent = resData.event || event;
 
-    // 2. Save to Firebase Firestore with version & update timestamp
-    try {
-      const fbResult = await saveLiveEventToFirebase(confirmedEvent);
-      if (fbResult) {
-        confirmedEvent.version = fbResult.version;
-        confirmedEvent.updatedAt = fbResult.updatedAt;
-      }
-    } catch (err: any) {
-      console.warn('[ApiClient] Advertencia al sincronizar en Firestore:', err);
+    // 2. Save to Firebase Firestore with version & update timestamp (Fuente única de verdad)
+    const fbResult = await saveLiveEventToFirebase(confirmedEvent);
+    if (fbResult) {
+      confirmedEvent.version = fbResult.version;
+      confirmedEvent.updatedAt = fbResult.updatedAt;
     }
 
     // 3. Keep read-only local storage copy upon confirmed save
