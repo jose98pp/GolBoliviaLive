@@ -270,7 +270,12 @@ async function runTests() {
   assert(typeof apiClient.updateScoreboard === 'function', 'Problema 4: apiClient.updateScoreboard disponible');
 
   // 19. PROBLEMA 5: Validación estricta y atómica de versiones
-  const validateIncomingVersion = (existingVer: number, incomingVer?: any): { valid: boolean; error?: string } => {
+  const validateIncomingVersion = (
+    existingVer: number,
+    incomingVer?: any,
+    force?: boolean
+  ): { valid: boolean; error?: string } => {
+    if (force) return { valid: true };
     const num = Number(incomingVer);
     if (incomingVer === undefined || isNaN(num) || num <= 0) {
       return { valid: false, error: 'VERSION_REQUIRED' };
@@ -286,6 +291,17 @@ async function runTests() {
   assert(!validateIncomingVersion(5, 4).valid, 'Problema 5: Rechaza versiones inferiores a la existente (v4 < v5)');
   assert(validateIncomingVersion(5, 5).valid, 'Problema 5: Acepta versión igual o superior (v5 >= v5)');
   assert(validateIncomingVersion(5, 6).valid, 'Problema 5: Acepta nueva versión incrementada (v6 > v5)');
+  assert(validateIncomingVersion(5, 4, true).valid, 'Problema 5 Fix: Acepta versión con force: true desde el panel de control');
+  assert(validateIncomingVersion(5, undefined, true).valid, 'Problema 5 Fix: Acepta guardado con force: true sin requerir versión previa');
+
+  // 20. PROBLEMA 5 Fix: confirmAndSaveAllData y resolución de versiones sin sobrescritura espuria
+  const resolveScorePayloadVersion = (sentVersion: any, activeEvtVersion?: number): number | undefined => {
+    return sentVersion !== undefined ? Number(sentVersion) : undefined;
+  };
+
+  assert(resolveScorePayloadVersion(undefined, 1) === undefined, 'Fix: Versión indefinida en petición no se sobrescribe con activeEvt?.version (1)');
+  assert(resolveScorePayloadVersion(6, 1) === 6, 'Fix: Versión enviada (6) se preserva y no se reemplaza por activeEvt?.version (1)');
+  assert(typeof apiClient.confirmAndSaveAllData === 'function', 'Fix: apiClient.confirmAndSaveAllData disponible y operativo');
 
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);

@@ -270,6 +270,7 @@ interface AppState {
     awayScore: number;
     matchMinute: number;
     period: string;
+    version?: number;
     updatedAt: number;
   };
   matchStats: {
@@ -1091,7 +1092,7 @@ app.post(
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
   async (req: Request, res: Response) => {
-    const { homeScore, awayScore, matchMinute, period, isClockRunning } = req.body;
+    const { homeScore, awayScore, matchMinute, period, isClockRunning, force } = req.body;
     const targetEventId = req.body.activeEventId || req.body.eventId || 'partido-001';
 
     let activeEvt = state.liveEvents.find((e) => e.id === targetEventId);
@@ -1099,11 +1100,12 @@ app.post(
       activeEvt = state.liveEvents[0];
     }
 
+    const isForce = Boolean(force);
+    const sentVersion = req.body.version !== undefined ? Number(req.body.version) : undefined;
+
     // Regla 3 & Problema 5: Exigir versión válida y rechazar actualizaciones desactualizadas
-    if (activeEvt) {
-      if (req.body.version !== undefined) {
-        const sentVersion = Number(req.body.version);
-        const curVer = typeof activeEvt.version === 'number' ? activeEvt.version : 1;
+    if (activeEvt && !isForce) {
+      if (sentVersion !== undefined) {
         if (isNaN(sentVersion) || sentVersion <= 0) {
           res.status(400).json({
             error: 'La versión enviada debe ser un número válido mayor a 0.',
@@ -1111,7 +1113,8 @@ app.post(
           });
           return;
         }
-        if (sentVersion < curVer) {
+        const curVer = typeof activeEvt.version === 'number' ? activeEvt.version : 0;
+        if (curVer > 0 && sentVersion < curVer) {
           res.status(409).json({
             error: `Marcador desactualizado: El partido ya cuenta con la versión v${curVer}, superior a la enviada v${sentVersion}.`,
             code: 'VERSION_CONFLICT',
@@ -1132,7 +1135,8 @@ app.post(
       matchMinute: safeMin !== undefined ? safeMin : (activeEvt?.matchMinute ?? state.scoreboard.matchMinute),
       period: period || (activeEvt?.period ?? state.scoreboard.period),
       isClockRunning: typeof isClockRunning === 'boolean' ? isClockRunning : (activeEvt?.isClockRunning ?? false),
-      version: activeEvt?.version,
+      version: sentVersion,
+      force: isForce,
       updatedAt: Date.now(),
     };
 
@@ -1145,6 +1149,7 @@ app.post(
         activeEvt.version = fbRes.version;
         activeEvt.updatedAt = fbRes.updatedAt;
       }
+      state.scoreboard.version = fbRes.version;
     } catch (fbErr: any) {
       res.status(409).json({
         error: fbErr.message || 'Error al persistir marcador en Firestore.',

@@ -107,6 +107,7 @@ class GolBoliviaApiClient {
     activeEventId?: string;
     eventId?: string;
     version?: number;
+    force?: boolean;
   }): Promise<{ success: boolean; scoreboard: any }> {
     const targetEventId = data.activeEventId || data.eventId || 'partido-001';
 
@@ -337,7 +338,7 @@ class GolBoliviaApiClient {
     // 2. Save scoreboard to Firebase and backend
     if (params.scoreboard) {
       await saveScoreboardToFirebase(params.scoreboard).catch(() => {});
-      await this.updateScoreboard(params.scoreboard).catch(() => {});
+      await this.updateScoreboard({ ...params.scoreboard, force: true }).catch(() => {});
     }
 
     // 3. Register persistent audit confirmation log in Firebase Firestore

@@ -431,7 +431,8 @@ async function saveMatchScoreboardFirebase(eventId, data, operator) {
     if (snap.exists()) {
       const existing = snap.data();
       const existingVersion = typeof existing?.version === "number" ? existing.version : 0;
-      if (typeof data.version === "number" && data.version > 0 && data.version < existingVersion) {
+      const isForce = Boolean(data.force);
+      if (!isForce && typeof data.version === "number" && data.version > 0 && data.version < existingVersion) {
         throw new Error(
           `Marcador desactualizado: La versi\xF3n actual en Firestore (v${existingVersion}) es superior a la versi\xF3n enviada (v${data.version}). Guardado rechazado.`
         );
@@ -1352,16 +1353,16 @@ app2.post(
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
   async (req, res) => {
-    const { homeScore, awayScore, matchMinute, period, isClockRunning } = req.body;
+    const { homeScore, awayScore, matchMinute, period, isClockRunning, force } = req.body;
     const targetEventId = req.body.activeEventId || req.body.eventId || "partido-001";
     let activeEvt = state.liveEvents.find((e) => e.id === targetEventId);
     if (!activeEvt && state.liveEvents.length > 0) {
       activeEvt = state.liveEvents[0];
     }
-    if (activeEvt) {
-      if (req.body.version !== void 0) {
-        const sentVersion = Number(req.body.version);
-        const curVer = typeof activeEvt.version === "number" ? activeEvt.version : 1;
+    const isForce = Boolean(force);
+    const sentVersion = req.body.version !== void 0 ? Number(req.body.version) : void 0;
+    if (activeEvt && !isForce) {
+      if (sentVersion !== void 0) {
         if (isNaN(sentVersion) || sentVersion <= 0) {
           res.status(400).json({
             error: "La versi\xF3n enviada debe ser un n\xFAmero v\xE1lido mayor a 0.",
@@ -1369,7 +1370,8 @@ app2.post(
           });
           return;
         }
-        if (sentVersion < curVer) {
+        const curVer = typeof activeEvt.version === "number" ? activeEvt.version : 0;
+        if (curVer > 0 && sentVersion < curVer) {
           res.status(409).json({
             error: `Marcador desactualizado: El partido ya cuenta con la versi\xF3n v${curVer}, superior a la enviada v${sentVersion}.`,
             code: "VERSION_CONFLICT"
@@ -1388,7 +1390,8 @@ app2.post(
       matchMinute: safeMin !== void 0 ? safeMin : activeEvt?.matchMinute ?? state.scoreboard.matchMinute,
       period: period || (activeEvt?.period ?? state.scoreboard.period),
       isClockRunning: typeof isClockRunning === "boolean" ? isClockRunning : activeEvt?.isClockRunning ?? false,
-      version: activeEvt?.version,
+      version: sentVersion,
+      force: isForce,
       updatedAt: Date.now()
     };
     try {
@@ -1399,6 +1402,7 @@ app2.post(
         activeEvt.version = fbRes.version;
         activeEvt.updatedAt = fbRes.updatedAt;
       }
+      state.scoreboard.version = fbRes.version;
     } catch (fbErr) {
       res.status(409).json({
         error: fbErr.message || "Error al persistir marcador en Firestore.",

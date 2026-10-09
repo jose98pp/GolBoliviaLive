@@ -660,6 +660,7 @@ export async function saveMatchScoreboardFirebase(
     period?: string;
     isClockRunning?: boolean;
     version?: number;
+    force?: boolean;
   },
   operator?: string
 ): Promise<{ success: boolean; version: number; updatedAt: number }> {
@@ -676,7 +677,8 @@ export async function saveMatchScoreboardFirebase(
     if (snap.exists()) {
       const existing = snap.data();
       const existingVersion = typeof existing?.version === 'number' ? existing.version : 0;
-      if (typeof data.version === 'number' && data.version > 0 && data.version < existingVersion) {
+      const isForce = Boolean(data.force);
+      if (!isForce && typeof data.version === 'number' && data.version > 0 && data.version < existingVersion) {
         throw new Error(
           `Marcador desactualizado: La versión actual en Firestore (v${existingVersion}) es superior a la versión enviada (v${data.version}). Guardado rechazado.`
         );

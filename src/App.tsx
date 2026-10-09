@@ -629,7 +629,15 @@ export default function App() {
             homeScore: currentHomeScore,
             awayScore: currentAwayScore,
             matchMinute: currentMatchMinute,
-          }).then(() => {
+            version: currentLiveEvent?.version ? currentLiveEvent.version + 1 : undefined,
+          }).then((res) => {
+            if (res.scoreboard?.version) {
+              setLiveEvents((prev) =>
+                prev.map((ev) =>
+                  ev.id === activeEventId ? { ...ev, version: res.scoreboard.version } : ev
+                )
+              );
+            }
             setActiveToast({
               id: `clock-ok-${Date.now()}`,
               title: '✅ Guardado confirmado',
@@ -669,7 +677,15 @@ export default function App() {
             homeScore: currentHomeScore,
             awayScore: currentAwayScore,
             matchMinute: currentMatchMinute,
-          }).then(() => {
+            version: currentLiveEvent?.version ? currentLiveEvent.version + 1 : undefined,
+          }).then((res) => {
+            if (res.scoreboard?.version) {
+              setLiveEvents((prev) =>
+                prev.map((ev) =>
+                  ev.id === activeEventId ? { ...ev, version: res.scoreboard.version } : ev
+                )
+              );
+            }
             setActiveToast({
               id: `period-ok-${Date.now()}`,
               title: '✅ Guardado confirmado',
