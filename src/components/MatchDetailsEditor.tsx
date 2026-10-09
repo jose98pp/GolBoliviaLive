@@ -202,6 +202,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           awayTeam: payload.awayClubId || targetEvt.awayTeam,
           tournamentName: payload.tournamentName || targetEvt.tournamentName,
           stadiumName: payload.stadiumName || targetEvt.stadiumName,
+          version: typeof targetEvt.version === 'number' ? targetEvt.version : undefined,
+          force: true,
         };
         await apiClient.saveLiveEvent(updatedEvt);
       }

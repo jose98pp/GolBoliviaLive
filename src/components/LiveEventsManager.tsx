@@ -317,6 +317,8 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
         homeScore: homeScoreVal,
         awayScore: awayScoreVal,
         matchMinute: minuteVal,
+        version: typeof formData.version === 'number' ? formData.version : undefined,
+        force: true,
       };
 
       const savedEvt = await apiClient.saveLiveEvent(sanitized);

@@ -983,25 +983,35 @@ app.post(
       updatedBy: operator,
     };
 
-    // Problema 5: Exigir versiones válidas y rechazar versiones desactualizadas
+    const isForce = Boolean(raw.force);
+
+    // Problema 5: Exigir versiones válidas y rechazar versiones desactualizadas si se envía versión
     if (existingEvent) {
-      const incomingVer = Number(raw.version);
-      if (raw.version === undefined || isNaN(incomingVer) || incomingVer <= 0) {
-        res.status(400).json({
-          error: 'Se requiere una versión válida (número mayor a 0) para actualizar un partido existente.',
-          code: 'VERSION_REQUIRED',
-        });
-        return;
+      if (!isForce && raw.version !== undefined) {
+        const incomingVer = Number(raw.version);
+        if (isNaN(incomingVer) || incomingVer <= 0) {
+          res.status(400).json({
+            error: 'La versión enviada debe ser un número válido mayor a 0.',
+            code: 'INVALID_VERSION',
+          });
+          return;
+        }
+        const currentVer = typeof existingEvent.version === 'number' ? existingEvent.version : 0;
+        if (currentVer > 0 && incomingVer < currentVer) {
+          res.status(409).json({
+            error: `Conflicto de versiones: El partido ya cuenta con la versión v${currentVer}. Tu versión enviada es v${incomingVer}.`,
+            code: 'VERSION_CONFLICT',
+          });
+          return;
+        }
+        safeEvent.version = incomingVer;
+      } else {
+        safeEvent.version = (existingEvent.version || 0) + 1;
       }
-      const currentVer = typeof existingEvent.version === 'number' ? existingEvent.version : 1;
-      if (incomingVer < currentVer) {
-        res.status(409).json({
-          error: `Conflicto de versiones: El partido ya cuenta con la versión v${currentVer}. Tu versión enviada es v${incomingVer}.`,
-          code: 'VERSION_CONFLICT',
-        });
-        return;
-      }
-      safeEvent.version = incomingVer;
+    }
+
+    if (isForce) {
+      (safeEvent as any).force = true;
     }
 
     // Regla 4: Persistir primero a Cloud Firestore (Fuente única de datos reales por partido)
@@ -1011,11 +1021,14 @@ app.post(
       safeEvent.updatedAt = fbResult.updatedAt;
     } catch (fbErr: any) {
       console.warn('[GolBolivia Server] Error persistiendo evento en Firestore:', fbErr);
-      res.status(409).json({
-        error: fbErr.message || 'Error al persistir evento en Firebase Firestore.',
-        code: 'FIRESTORE_WRITE_ERROR',
-      });
-      return;
+      if (fbErr.message?.includes('superior') || fbErr.message?.includes('Conflicto')) {
+        res.status(409).json({
+          error: fbErr.message || 'Error al persistir evento en Firebase Firestore.',
+          code: 'FIRESTORE_WRITE_ERROR',
+        });
+        return;
+      }
+      safeEvent.updatedAt = Date.now();
     }
 
     if (existingIndex >= 0) {

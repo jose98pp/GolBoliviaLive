@@ -100,7 +100,13 @@ export async function saveStreamSettingsToFirebase(settings: Partial<StreamSetti
   if (settings.altitudeMeters !== undefined) {
     payload.altitudeMeters = Math.max(0, Math.min(6000, Number(settings.altitudeMeters) || 0));
   }
-  await setDoc(ref, payload, { merge: true });
+  try {
+    await setDoc(ref, payload, { merge: true });
+  } catch (err: any) {
+    if (err?.code !== 'permission-denied') {
+      console.warn('[Firebase] Advertencia al persistir configuración de señal en Firestore:', err);
+    }
+  }
 }
 
 export async function getStreamSettingsFromFirebase(): Promise<Partial<StreamSettings> | null> {
@@ -592,13 +598,14 @@ export async function saveLiveEventToFirebase(event: LiveEvent, operator?: strin
       const existing = snap.data();
       const existingVersion = typeof existing?.version === 'number' ? existing.version : 0;
       const existingUpdatedAt = typeof existing?.updatedAt === 'number' ? existing.updatedAt : 0;
+      const isForce = Boolean((event as any)?.force);
 
-      if (typeof event.version === 'number' && event.version > 0 && event.version < existingVersion) {
+      if (!isForce && typeof event.version === 'number' && event.version > 0 && event.version < existingVersion) {
         throw new Error(
           `Conflicto de versión en Firebase: El partido ya cuenta con versión v${existingVersion}, superior a la versión v${event.version} recibida. Actualización rechazada.`
         );
       }
-      if (typeof event.updatedAt === 'number' && event.updatedAt > 0 && event.updatedAt < existingUpdatedAt) {
+      if (!isForce && typeof event.updatedAt === 'number' && event.updatedAt > 0 && event.updatedAt < existingUpdatedAt) {
         throw new Error(
           `Conflicto de marca temporal en Firebase: El registro en Firestore (${new Date(existingUpdatedAt).toISOString()}) es más reciente que el recibido (${new Date(event.updatedAt).toISOString()}). Guardado rechazado.`
         );

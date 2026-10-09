@@ -21,15 +21,15 @@ export default defineConfig(() => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           runtimeCaching: [
             {
-              urlPattern: ({ url }) =>
-                url.pathname.startsWith('/api') ||
-                url.pathname.startsWith('/live') ||
-                url.pathname.startsWith('/scoreboard') ||
-                url.pathname.startsWith('/streams') ||
-                url.pathname.startsWith('/matches') ||
-                url.pathname.startsWith('/chat') ||
-                url.pathname.includes('.m3u8') ||
-                url.pathname.includes('.ts'),
+              urlPattern: ({ url, sameOrigin }) =>
+                sameOrigin && (
+                  url.pathname.startsWith('/api') ||
+                  url.pathname.startsWith('/live') ||
+                  url.pathname.startsWith('/scoreboard') ||
+                  url.pathname.startsWith('/streams') ||
+                  url.pathname.startsWith('/matches') ||
+                  url.pathname.startsWith('/chat')
+                ),
               handler: 'NetworkOnly',
             },
             {

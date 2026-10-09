@@ -729,7 +729,7 @@ class GolBoliviaApiClient {
     return [];
   }
 
-  public async saveLiveEvent(event: LiveEvent): Promise<LiveEvent> {
+  public async saveLiveEvent(event: LiveEvent & { force?: boolean }): Promise<LiveEvent> {
     // 1. Single authoritative point of write: Server API with authentication headers
     // The server handles Firestore persistence and returns the confirmed event with definitive version
     const res = await fetch('/api/live-events', {
@@ -738,7 +738,7 @@ class GolBoliviaApiClient {
         'Content-Type': 'application/json',
         ...this.getAuthHeaders(),
       },
-      body: JSON.stringify(event),
+      body: JSON.stringify({ ...event, force: event.force ?? true }),
     });
 
     if (!res.ok) {

@@ -363,12 +363,13 @@ async function saveLiveEventToFirebase(event, operator) {
       const existing = snap.data();
       const existingVersion = typeof existing?.version === "number" ? existing.version : 0;
       const existingUpdatedAt = typeof existing?.updatedAt === "number" ? existing.updatedAt : 0;
-      if (typeof event.version === "number" && event.version > 0 && event.version < existingVersion) {
+      const isForce = Boolean(event?.force);
+      if (!isForce && typeof event.version === "number" && event.version > 0 && event.version < existingVersion) {
         throw new Error(
           `Conflicto de versi\xF3n en Firebase: El partido ya cuenta con versi\xF3n v${existingVersion}, superior a la versi\xF3n v${event.version} recibida. Actualizaci\xF3n rechazada.`
         );
       }
-      if (typeof event.updatedAt === "number" && event.updatedAt > 0 && event.updatedAt < existingUpdatedAt) {
+      if (!isForce && typeof event.updatedAt === "number" && event.updatedAt > 0 && event.updatedAt < existingUpdatedAt) {
         throw new Error(
           `Conflicto de marca temporal en Firebase: El registro en Firestore (${new Date(existingUpdatedAt).toISOString()}) es m\xE1s reciente que el recibido (${new Date(event.updatedAt).toISOString()}). Guardado rechazado.`
         );
@@ -1257,24 +1258,32 @@ app2.post(
       updatedAtIso: new Date(now).toISOString(),
       updatedBy: operator
     };
+    const isForce = Boolean(raw.force);
     if (existingEvent) {
-      const incomingVer = Number(raw.version);
-      if (raw.version === void 0 || isNaN(incomingVer) || incomingVer <= 0) {
-        res.status(400).json({
-          error: "Se requiere una versi\xF3n v\xE1lida (n\xFAmero mayor a 0) para actualizar un partido existente.",
-          code: "VERSION_REQUIRED"
-        });
-        return;
+      if (!isForce && raw.version !== void 0) {
+        const incomingVer = Number(raw.version);
+        if (isNaN(incomingVer) || incomingVer <= 0) {
+          res.status(400).json({
+            error: "La versi\xF3n enviada debe ser un n\xFAmero v\xE1lido mayor a 0.",
+            code: "INVALID_VERSION"
+          });
+          return;
+        }
+        const currentVer = typeof existingEvent.version === "number" ? existingEvent.version : 0;
+        if (currentVer > 0 && incomingVer < currentVer) {
+          res.status(409).json({
+            error: `Conflicto de versiones: El partido ya cuenta con la versi\xF3n v${currentVer}. Tu versi\xF3n enviada es v${incomingVer}.`,
+            code: "VERSION_CONFLICT"
+          });
+          return;
+        }
+        safeEvent.version = incomingVer;
+      } else {
+        safeEvent.version = (existingEvent.version || 0) + 1;
       }
-      const currentVer = typeof existingEvent.version === "number" ? existingEvent.version : 1;
-      if (incomingVer < currentVer) {
-        res.status(409).json({
-          error: `Conflicto de versiones: El partido ya cuenta con la versi\xF3n v${currentVer}. Tu versi\xF3n enviada es v${incomingVer}.`,
-          code: "VERSION_CONFLICT"
-        });
-        return;
-      }
-      safeEvent.version = incomingVer;
+    }
+    if (isForce) {
+      safeEvent.force = true;
     }
     try {
       const fbResult = await saveLiveEventToFirebase(safeEvent, operator);
@@ -1282,11 +1291,14 @@ app2.post(
       safeEvent.updatedAt = fbResult.updatedAt;
     } catch (fbErr) {
       console.warn("[GolBolivia Server] Error persistiendo evento en Firestore:", fbErr);
-      res.status(409).json({
-        error: fbErr.message || "Error al persistir evento en Firebase Firestore.",
-        code: "FIRESTORE_WRITE_ERROR"
-      });
-      return;
+      if (fbErr.message?.includes("superior") || fbErr.message?.includes("Conflicto")) {
+        res.status(409).json({
+          error: fbErr.message || "Error al persistir evento en Firebase Firestore.",
+          code: "FIRESTORE_WRITE_ERROR"
+        });
+        return;
+      }
+      safeEvent.updatedAt = Date.now();
     }
     if (existingIndex >= 0) {
       state.liveEvents[existingIndex] = safeEvent;

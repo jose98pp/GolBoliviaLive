@@ -218,6 +218,7 @@ export interface LiveEvent {
   updatedAt?: number;
   updatedAtIso?: string;
   updatedBy?: string;
+  force?: boolean;
 }
 
 

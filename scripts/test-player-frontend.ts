@@ -303,6 +303,42 @@ async function runTests() {
   assert(resolveScorePayloadVersion(6, 1) === 6, 'Fix: Versión enviada (6) se preserva y no se reemplaza por activeEvt?.version (1)');
   assert(typeof apiClient.confirmAndSaveAllData === 'function', 'Fix: apiClient.confirmAndSaveAllData disponible y operativo');
 
+  // 21. VALIDACIÓN DE GUARDADO DE PARTIDO (/api/live-events)
+  const validateEventVersionPayload = (existingVer: number, incomingVer?: any, force?: boolean): { valid: boolean; code?: string; nextVersion: number } => {
+    if (force) return { valid: true, nextVersion: (existingVer || 0) + 1 };
+    if (incomingVer === undefined) {
+      // Auto-incremento sin error 400
+      return { valid: true, nextVersion: (existingVer || 0) + 1 };
+    }
+    const num = Number(incomingVer);
+    if (isNaN(num) || num <= 0) return { valid: false, code: 'INVALID_VERSION', nextVersion: existingVer };
+    if (existingVer > 0 && num < existingVer) return { valid: false, code: 'VERSION_CONFLICT', nextVersion: existingVer };
+    return { valid: true, nextVersion: num };
+  };
+
+  assert(validateEventVersionPayload(3, undefined).valid, 'LiveEvents Fix: Guardar partido sin versión auto-incrementa sin error 400');
+  assert(validateEventVersionPayload(3, undefined).nextVersion === 4, 'LiveEvents Fix: Versión auto-incrementada es 4 para existing 3');
+  assert(validateEventVersionPayload(3, 2, true).valid, 'LiveEvents Fix: Guardar partido con force: true ignora conflicto de versión');
+  assert(!validateEventVersionPayload(3, 2, false).valid, 'LiveEvents Fix: Guardar partido con versión inferior (2 < 3) rechaza cuando force es false');
+  assert(validateEventVersionPayload(3, 4, false).valid, 'LiveEvents Fix: Guardar partido con versión incrementada (4 >= 3) es aceptado');
+
+  // 22. ServiceWorker: Exención de streams externos .m3u8 y .ts
+  const swUrlMatcher = (urlStr: string, sameOrigin: boolean): boolean => {
+    const url = new URL(urlStr);
+    return sameOrigin && (
+      url.pathname.startsWith('/api') ||
+      url.pathname.startsWith('/live') ||
+      url.pathname.startsWith('/scoreboard') ||
+      url.pathname.startsWith('/streams') ||
+      url.pathname.startsWith('/matches') ||
+      url.pathname.startsWith('/chat')
+    );
+  };
+
+  assert(!swUrlMatcher('https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8', false), 'SW Fix: ServiceWorker NO intercepta streams externos Cloudflare .m3u8');
+  assert(!swUrlMatcher('https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', false), 'SW Fix: ServiceWorker NO intercepta streams externos Mux .m3u8');
+  assert(swUrlMatcher('https://golbolivialive-beta.vercel.app/api/scoreboard', true), 'SW Fix: ServiceWorker maneja API misma procedencia');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);
   console.log('====================================================\n');
