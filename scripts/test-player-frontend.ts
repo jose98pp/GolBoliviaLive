@@ -1,6 +1,12 @@
 import React from 'react';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { BOLIVIAN_CLUBS } from '../src/data/bolivianFootballData';
 import { StreamSettings, LiveEvent } from '../src/types/football';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 console.log('====================================================');
 console.log('🧪 PRUEBAS DE FRONTEND: REPRODUCTOR, CONTROLES Y EVENTOS LIMPIOS');
@@ -338,6 +344,45 @@ async function runTests() {
   assert(!swUrlMatcher('https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8', false), 'SW Fix: ServiceWorker NO intercepta streams externos Cloudflare .m3u8');
   assert(!swUrlMatcher('https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', false), 'SW Fix: ServiceWorker NO intercepta streams externos Mux .m3u8');
   assert(swUrlMatcher('https://golbolivialive-beta.vercel.app/api/scoreboard', true), 'SW Fix: ServiceWorker maneja API misma procedencia');
+
+  // 23. RELOJ DEL MARCADOR: MODO AUTOMÁTICO
+  const simulateAutoClock = (
+    currentMin: number,
+    isLive: boolean,
+    period: string,
+    isClockRunning?: boolean
+  ): { nextMin: number; running: boolean } => {
+    const isClockActive = isClockRunning ?? (isLive && period !== 'Descanso' && period !== 'Finalizado');
+    if (!isClockActive || period === 'Descanso' || period === 'Finalizado') {
+      return { nextMin: currentMin, running: false };
+    }
+    return { nextMin: Math.min(130, currentMin + 1), running: true };
+  };
+
+  assert(simulateAutoClock(10, true, '1T', undefined).running, 'Auto Clock: Activo por defecto durante 1T en vivo');
+  assert(simulateAutoClock(10, true, '1T', undefined).nextMin === 11, 'Auto Clock: Avanza minuto de 10 a 11');
+  assert(!simulateAutoClock(45, true, 'Descanso', undefined).running, 'Auto Clock: Se pausa automáticamente en Descanso');
+  assert(simulateAutoClock(45, true, 'Descanso', undefined).nextMin === 45, 'Auto Clock: No avanza minuto en Descanso');
+  assert(!simulateAutoClock(90, true, 'Finalizado', undefined).running, 'Auto Clock: Se pausa automáticamente al Finalizar');
+  assert(!simulateAutoClock(20, true, '1T', false).running, 'Auto Clock: Pausado cuando isClockRunning es false explícito');
+
+  // 24. MARCADOR LIMPIO: Quitar la ruta del partido del marcador
+  const showcaseSource = await fs.promises.readFile(
+    path.join(__dirname, '../src/components/LiveEventsShowcase.tsx'),
+    'utf-8'
+  );
+  assert(!showcaseSource.includes('/live/{slug}'), 'Marcador Limpio: LiveEventsShowcase ya NO muestra la ruta /live/{slug}');
+  assert(!showcaseSource.includes('getMatchSlug'), 'Marcador Limpio: LiveEventsShowcase no tiene dependencia de slug URL');
+
+  // 25. APÓYAME: Componentes de Modal y Panel Admin de QR
+  const { DonationQrModal } = await import('../src/components/DonationQrModal');
+  const { DonationQrAdminCard } = await import('../src/components/DonationQrAdminCard');
+  assert(typeof DonationQrModal === 'function', 'Apóyame: DonationQrModal exportado como componente React');
+  assert(typeof DonationQrAdminCard === 'function', 'Apóyame: DonationQrAdminCard exportado como componente React');
+
+  // 26. APÓYAME: Métodos de API de Donaciones
+  assert(typeof apiClient.getDonationQr === 'function', 'Apóyame: apiClient.getDonationQr disponible');
+  assert(typeof apiClient.saveDonationQr === 'function', 'Apóyame: apiClient.saveDonationQr disponible');
 
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);

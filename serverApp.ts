@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { BOLIVIAN_CLUBS } from './src/data/bolivianFootballData';
-import type { Club, LiveEvent } from './src/types/football';
+import type { Club, LiveEvent, DonationQrInfo } from './src/types/football';
 import {
   saveStreamSettingsToFirebase,
   getStreamSettingsFromFirebase,
@@ -264,6 +264,7 @@ interface AppState {
     backupChannelName: string;
     activeStreamSource: 'obs' | 'backup' | 'simulation';
     autoFailoverEnabled: boolean;
+    donationQr?: DonationQrInfo;
   };
   scoreboard: {
     homeScore: number;
@@ -332,6 +333,13 @@ const state: AppState = {
     backupChannelName: 'GolBolivia 24/7 Señal Alternativa HD',
     activeStreamSource: 'obs',
     autoFailoverEnabled: true,
+    donationQr: {
+      imageUrl: '',
+      bankName: 'Cualquier Banco de Bolivia (QR Simple / BNB / Unión / BCP)',
+      accountHolder: 'GolBolivia Live Streaming',
+      instructions: 'Escanea el código QR desde tu aplicación bancaria móvil para apoyar la transmisión en vivo.',
+      updatedAt: Date.now(),
+    },
   },
   scoreboard: {
     homeScore: 0,
@@ -627,6 +635,7 @@ function getPublicStreamPayload() {
     activeStreamSource: state.streamSettings.activeStreamSource,
     autoFailoverEnabled: state.streamSettings.autoFailoverEnabled,
     isLive: state.streamSettings.isLive,
+    donationQr: state.streamSettings.donationQr,
   };
 }
 
@@ -738,9 +747,56 @@ app.post(
       ...req.body,
     };
     persistState();
-    // Broadcast sanitized public data only
     broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
     res.json({ success: true, streamSettings: getPublicStreamPayload() });
+  }
+);
+
+// 6.2 Donation QR Code API (Public GET, Protected POST for ADMIN/TRANSMISOR/EDITOR)
+app.get(['/api/donation-qr', '/donation-qr'], (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    donationQr: state.streamSettings.donationQr || {
+      imageUrl: '',
+      bankName: 'Cualquier Banco de Bolivia (QR Simple / BNB / Unión / BCP)',
+      accountHolder: 'GolBolivia Live Streaming',
+      instructions: 'Escanea el código QR desde tu aplicación bancaria móvil para apoyar la transmisión en vivo.',
+      updatedAt: Date.now(),
+    },
+  });
+});
+
+app.post(
+  ['/api/donation-qr', '/donation-qr'],
+  authenticate,
+  requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
+  (req: Request, res: Response) => {
+    const { imageUrl, bankName, accountHolder, instructions } = req.body;
+    const current = state.streamSettings.donationQr || {
+      bankName: 'Cualquier Banco de Bolivia (QR Simple / BNB / Unión / BCP)',
+      accountHolder: 'GolBolivia Live Streaming',
+      instructions: 'Escanea el código QR desde tu aplicación bancaria móvil para apoyar la transmisión en vivo.',
+    };
+
+    const updatedQr: DonationQrInfo = {
+      imageUrl: typeof imageUrl === 'string' ? imageUrl.trim() : current.imageUrl || '',
+      bankName: typeof bankName === 'string' ? bankName.trim().slice(0, 100) : current.bankName,
+      accountHolder: typeof accountHolder === 'string' ? accountHolder.trim().slice(0, 100) : current.accountHolder,
+      instructions: typeof instructions === 'string' ? instructions.trim().slice(0, 300) : current.instructions,
+      updatedAt: Date.now(),
+    };
+
+    state.streamSettings.donationQr = updatedQr;
+    persistState();
+
+    broadcastSseEvent('DONATION_QR_UPDATED', updatedQr);
+    broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
+
+    res.json({
+      success: true,
+      message: 'Código QR de apoyo y donaciones guardado con éxito.',
+      donationQr: updatedQr,
+    });
   }
 );
 
@@ -1389,6 +1445,42 @@ app.delete(
     res.json({ success: true, message: `Equipo ${id} eliminado correctamente.`, clubs: state.clubs });
   }
 );
+
+// ==========================================
+// 10.5 AUTOMATIC MATCH CLOCK TICKER (60s tick)
+// ==========================================
+if (!process.env.VERCEL) {
+  setInterval(() => {
+    let anyUpdated = false;
+    for (const evt of state.liveEvents) {
+      if (evt.isLive && evt.isClockRunning && evt.period !== 'Descanso' && evt.period !== 'Finalizado') {
+        const currentMin = typeof evt.matchMinute === 'number' ? evt.matchMinute : 0;
+        if (currentMin < 130) {
+          evt.matchMinute = currentMin + 1;
+          evt.clockUpdatedAt = Date.now();
+          anyUpdated = true;
+        }
+      }
+    }
+    if (anyUpdated) {
+      persistState();
+      broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
+      const active = state.liveEvents[0];
+      if (active) {
+        state.scoreboard.matchMinute = active.matchMinute || 0;
+        broadcastSseEvent('SCOREBOARD_UPDATED', {
+          eventId: active.id,
+          homeScore: active.homeScore ?? state.scoreboard.homeScore,
+          awayScore: active.awayScore ?? state.scoreboard.awayScore,
+          matchMinute: active.matchMinute,
+          period: active.period,
+          isClockRunning: active.isClockRunning,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+  }, 60000);
+}
 
 // 11. Health & Build SHA / Version Endpoint
 const APP_VERSION = '1.4.3';

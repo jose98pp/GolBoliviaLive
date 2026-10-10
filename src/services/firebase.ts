@@ -616,6 +616,22 @@ export async function saveLiveEventToFirebase(event: LiveEvent, operator?: strin
       nextVersion = typeof event.version === 'number' && event.version > 0 ? event.version : 1;
     }
 
+function cleanForFirestore<T extends Record<string, any>>(obj: T): T {
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      const nested = cleanForFirestore(value);
+      if (Object.keys(nested).length > 0) {
+        result[key] = nested;
+      }
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
     const safePayload: LiveEvent = {
       id: safeId,
       title: cleanTitle,
@@ -623,15 +639,15 @@ export async function saveLiveEventToFirebase(event: LiveEvent, operator?: strin
       awayTeam: away === home ? `${away}_alt` : away,
       isLive: Boolean(event.isLive),
       primaryProvider: event.primaryProvider,
-      cloudflare: event.cloudflare ? {
-        liveInputId: event.cloudflare.liveInputId,
-        playbackUrl: event.cloudflare.playbackUrl,
+      cloudflare: (event.cloudflare && (event.cloudflare.liveInputId || event.cloudflare.playbackUrl)) ? {
+        liveInputId: event.cloudflare.liveInputId || '',
+        playbackUrl: event.cloudflare.playbackUrl || '',
       } : undefined,
-      youtube: event.youtube ? {
-        videoId: event.youtube.videoId,
+      youtube: (event.youtube && event.youtube.videoId) ? {
+        videoId: event.youtube.videoId || '',
       } : undefined,
-      kick: event.kick ? {
-        channel: event.kick.channel,
+      kick: (event.kick && event.kick.channel) ? {
+        channel: event.kick.channel || '',
       } : undefined,
       fallbackOrder: event.fallbackOrder,
       tournamentName: event.tournamentName ? event.tournamentName.trim().slice(0, 80) : undefined,
@@ -653,7 +669,7 @@ export async function saveLiveEventToFirebase(event: LiveEvent, operator?: strin
       updatedBy: operator || 'admin',
     };
 
-    transaction.set(ref, safePayload, { merge: true });
+    transaction.set(ref, cleanForFirestore(safePayload), { merge: true });
     return { success: true, version: nextVersion, updatedAt: now };
   });
 }

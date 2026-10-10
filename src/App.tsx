@@ -14,10 +14,11 @@ import { PushNotificationModal } from './components/PushNotificationModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { ToastNotification } from './components/ToastNotification';
 import { FloatingReactions, FloatingItem } from './components/FloatingReactions';
-import { NotificationItem, StreamSettings, MatchEvent, LivePoll, ChatMessage, LiveEvent, StreamProvider } from './types/football';
+import { NotificationItem, StreamSettings, MatchEvent, LivePoll, ChatMessage, LiveEvent, StreamProvider, DonationQrInfo } from './types/football';
 import { BOLIVIAN_CLUBS, INITIAL_EVENTS, INITIAL_POLL } from './data/bolivianFootballData';
 import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin } from 'lucide-react';
 import { SecretLoginPage } from './components/SecretLoginPage';
+import { DonationQrModal } from './components/DonationQrModal';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { SocialFollowBanner } from './components/SocialFollowBanner';
 import { LiveAudienceModal } from './components/LiveAudienceModal';
@@ -133,6 +134,8 @@ export default function App() {
   });
   const [activeEventId, setActiveEventId] = useState<string>('partido-001');
   const activeEventIdRef = useRef(activeEventId);
+  const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
+  const [donationQrInfo, setDonationQrInfo] = useState<DonationQrInfo | undefined>(undefined);
   useEffect(() => {
     activeEventIdRef.current = activeEventId;
   }, [activeEventId]);
@@ -165,10 +168,20 @@ export default function App() {
         if (data.events && data.events.length > 0) {
           setEvents(data.events);
         }
+        if (data.stream?.donationQr) {
+          setDonationQrInfo(data.stream.donationQr);
+        } else if (data.streamSettings?.donationQr) {
+          setDonationQrInfo(data.streamSettings.donationQr);
+        }
       })
       .catch(() => {
         // Fallback gracefully if offline
       });
+
+    // 1.1 Cargar datos del QR de donación
+    apiClient.getDonationQr().then((qr) => {
+      if (qr) setDonationQrInfo(qr);
+    });
 
     // 2. Dedicated Match-Scoped Stream & Failover Synchronization Subscriber
     const unsubscribeStream = apiClient.subscribeStreamSync((newConfig) => {
@@ -232,6 +245,13 @@ export default function App() {
           setLiveEvents((prev) => mergeConfirmedEvents(prev, data.liveEvents));
         }
         if (data.events) setEvents(data.events);
+        if (data.stream?.donationQr) {
+          setDonationQrInfo(data.stream.donationQr);
+        } else if (data.streamSettings?.donationQr) {
+          setDonationQrInfo(data.streamSettings.donationQr);
+        }
+      } else if (type === 'DONATION_QR_UPDATED') {
+        if (data) setDonationQrInfo(data);
       } else if (type === 'STREAM_UPDATED' || type === 'STREAM_CONFIG_UPDATED') {
         const targetId = data.eventId;
         // Problema 3: Exigir eventId para configuraciones específicas de un partido
@@ -439,26 +459,30 @@ export default function App() {
   ]);
   const [activeToast, setActiveToast] = useState<NotificationItem | null>(null);
 
-  // Reloj oficial del partido controlado desde administración (1 minuto real = 60s, sin cronómetro artificial)
+  // Reloj oficial del partido (modo automático: avanza 1 minuto cada 60s si está en juego)
   useEffect(() => {
     const activeEvt = liveEvents.find((e) => e.id === activeEventId);
-    if (!activeEvt?.isClockRunning) return;
-    if (activeEvt.period === 'Descanso' || activeEvt.period === 'Finalizado') return;
+    const isClockActive = activeEvt?.isClockRunning ?? (activeEvt?.isLive && activeEvt.period !== 'Descanso' && activeEvt.period !== 'Finalizado');
+    if (!isClockActive) return;
+    if (activeEvt?.period === 'Descanso' || activeEvt?.period === 'Finalizado') return;
 
     const timer = setInterval(() => {
       setLiveEvents((prev) =>
         prev.map((ev) => {
-          if (ev.id === activeEventId && ev.isClockRunning) {
-            const nextMin = (ev.matchMinute || 0) + 1;
-            if (nextMin <= 130) {
-              const updated = { ...ev, matchMinute: nextMin };
-              try {
-                localStorage.setItem(
-                  'golbolivia_live_events',
-                  JSON.stringify(prev.map((p) => (p.id === ev.id ? updated : p)))
-                );
-              } catch {}
-              return updated;
+          if (ev.id === activeEventId) {
+            const running = ev.isClockRunning ?? (ev.isLive && ev.period !== 'Descanso' && ev.period !== 'Finalizado');
+            if (running) {
+              const nextMin = (ev.matchMinute || 0) + 1;
+              if (nextMin <= 130) {
+                const updated = { ...ev, matchMinute: nextMin };
+                try {
+                  localStorage.setItem(
+                    'golbolivia_live_events',
+                    JSON.stringify(prev.map((p) => (p.id === ev.id ? updated : p)))
+                  );
+                } catch {}
+                return updated;
+              }
             }
           }
           return ev;
@@ -845,6 +869,7 @@ export default function App() {
         openObsModal={() => {}}
         openPushModal={() => setIsPushModalOpen(true)}
         openAudienceModal={() => setIsAudienceModalOpen(true)}
+        openDonationModal={() => setIsDonationModalOpen(true)}
         unreadNotificationsCount={unreadCount}
         isStreamingLive={isStreamingLive}
         isVipMember={isVipMember}
@@ -1166,6 +1191,13 @@ export default function App() {
         isOpen={isAudienceModalOpen}
         onClose={() => setIsAudienceModalOpen(false)}
         presenceStats={presence}
+      />
+
+      {/* DONATION & SUPPORT QR MODAL */}
+      <DonationQrModal
+        isOpen={isDonationModalOpen}
+        onClose={() => setIsDonationModalOpen(false)}
+        donationQr={donationQrInfo || streamSettings.donationQr}
       />
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}

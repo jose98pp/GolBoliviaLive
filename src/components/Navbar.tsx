@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Radio, Bell, Tv, ShieldCheck, Menu, X, Users, Eye, Sparkles, ChevronRight, Activity, Zap, RefreshCw } from 'lucide-react';
+import { Radio, Bell, Tv, ShieldCheck, Menu, X, Users, Eye, Sparkles, ChevronRight, Activity, Zap, RefreshCw, Heart } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { SocialFollowBanner } from './SocialFollowBanner';
 import { Club } from '../types/football';
@@ -10,6 +10,7 @@ interface NavbarProps {
   openObsModal: () => void;
   openPushModal: () => void;
   openAudienceModal: () => void;
+  openDonationModal?: () => void;
   unreadNotificationsCount: number;
   isStreamingLive: boolean;
   isVipMember: boolean;
@@ -31,6 +32,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   openObsModal,
   openPushModal,
   openAudienceModal,
+  openDonationModal = () => {},
   unreadNotificationsCount,
   isStreamingLive,
   isVipMember,
@@ -184,6 +186,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>{displayTotal >= 1000 ? `${(displayTotal / 1000).toFixed(1)}k` : displayTotal}</span>
           </button>
 
+          {/* Botón Apóyame (Donaciones con QR) */}
+          <button
+            onClick={openDonationModal}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-500/20 via-amber-500/20 to-rose-500/20 hover:from-rose-500/30 hover:to-amber-500/30 border border-rose-500/40 hover:border-amber-400 text-rose-300 hover:text-white text-xs font-bold transition-all shadow-md shadow-rose-950/30 cursor-pointer active:scale-95"
+            title="Apoya la transmisión independiente de GolBolivia (Donar vía QR)"
+          >
+            <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-rose-500 text-rose-400 animate-pulse" />
+            <span className="font-display font-black tracking-wide">Apóyame</span>
+          </button>
+
           {/* PWA Install Button (Desktop & Tablet) */}
           <div className="hidden sm:block">
             <PWAInstallButton variant="navbar" />
@@ -266,6 +278,29 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
           </div>
+
+          {/* 1.5 Botón Apóyame en Móvil */}
+          <button
+            onClick={() => {
+              setMobileMenuOpen(false);
+              openDonationModal();
+            }}
+            className="p-3 rounded-2xl bg-gradient-to-r from-rose-950/40 via-amber-950/30 to-rose-950/40 hover:from-rose-950/60 hover:to-amber-950/50 border border-rose-500/40 flex items-center justify-between transition-colors cursor-pointer text-left"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-rose-500/20 flex items-center justify-center text-rose-400">
+                <Heart className="w-4 h-4 fill-rose-500 text-rose-400 animate-pulse" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white flex items-center gap-1">
+                  <span>¡Apoyar la Transmisión!</span>
+                  <span className="px-1.5 py-0.2 rounded text-[9px] bg-rose-500/20 text-rose-300 font-bold">QR Simple</span>
+                </div>
+                <div className="text-[11px] text-slate-400">Descarga el código QR bancario para aportar</div>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-rose-400" />
+          </button>
 
           {/* 2. Essential Notifications Quick Card */}
           <button

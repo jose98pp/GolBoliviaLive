@@ -1,4 +1,4 @@
-import { StreamSettings, MatchEvent, ChatMessage, MatchStats, PublicStreamState, PrivateIngestCredentials, Club, LiveEvent, StreamProvider } from '../types/football';
+import { StreamSettings, MatchEvent, ChatMessage, MatchStats, PublicStreamState, PrivateIngestCredentials, Club, LiveEvent, StreamProvider, DonationQrInfo } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { authService, AuthUser, UserRole } from './auth';
 import {
@@ -217,6 +217,39 @@ class GolBoliviaApiClient {
     } catch {}
 
     return {};
+  }
+
+  // 6.2 Donation QR Code API
+  async getDonationQr(): Promise<DonationQrInfo | null> {
+    try {
+      const res = await fetch('/api/donation-qr');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.donationQr) return json.donationQr;
+      }
+    } catch {}
+    try {
+      const raw = localStorage.getItem('golbolivia_donation_qr');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  }
+
+  async saveDonationQr(data: DonationQrInfo): Promise<{ success: boolean; donationQr?: DonationQrInfo }> {
+    const res = await fetch('/api/donation-qr', {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `Error HTTP ${res.status}` }));
+      throw new Error(err.error || 'Error al guardar el código QR de apoyo.');
+    }
+    const json = await res.json();
+    try {
+      localStorage.setItem('golbolivia_donation_qr', JSON.stringify(json.donationQr || data));
+    } catch {}
+    return json;
   }
 
   // 6.3 Dedicated Endpoint: Synchronize Stream & Backup M3U8 URLs Globally to Backend

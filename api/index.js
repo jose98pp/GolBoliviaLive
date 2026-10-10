@@ -379,6 +379,21 @@ async function saveLiveEventToFirebase(event, operator) {
     } else {
       nextVersion = typeof event.version === "number" && event.version > 0 ? event.version : 1;
     }
+    function cleanForFirestore(obj) {
+      const result = {};
+      for (const [key, value] of Object.entries(obj)) {
+        if (value === void 0) continue;
+        if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+          const nested = cleanForFirestore(value);
+          if (Object.keys(nested).length > 0) {
+            result[key] = nested;
+          }
+        } else {
+          result[key] = value;
+        }
+      }
+      return result;
+    }
     const safePayload = {
       id: safeId,
       title: cleanTitle,
@@ -386,15 +401,15 @@ async function saveLiveEventToFirebase(event, operator) {
       awayTeam: away === home ? `${away}_alt` : away,
       isLive: Boolean(event.isLive),
       primaryProvider: event.primaryProvider,
-      cloudflare: event.cloudflare ? {
-        liveInputId: event.cloudflare.liveInputId,
-        playbackUrl: event.cloudflare.playbackUrl
+      cloudflare: event.cloudflare && (event.cloudflare.liveInputId || event.cloudflare.playbackUrl) ? {
+        liveInputId: event.cloudflare.liveInputId || "",
+        playbackUrl: event.cloudflare.playbackUrl || ""
       } : void 0,
-      youtube: event.youtube ? {
-        videoId: event.youtube.videoId
+      youtube: event.youtube && event.youtube.videoId ? {
+        videoId: event.youtube.videoId || ""
       } : void 0,
-      kick: event.kick ? {
-        channel: event.kick.channel
+      kick: event.kick && event.kick.channel ? {
+        channel: event.kick.channel || ""
       } : void 0,
       fallbackOrder: event.fallbackOrder,
       tournamentName: event.tournamentName ? event.tournamentName.trim().slice(0, 80) : void 0,
@@ -415,7 +430,7 @@ async function saveLiveEventToFirebase(event, operator) {
       updatedAtIso: new Date(now).toISOString(),
       updatedBy: operator || "admin"
     };
-    transaction.set(ref, safePayload, { merge: true });
+    transaction.set(ref, cleanForFirestore(safePayload), { merge: true });
     return { success: true, version: nextVersion, updatedAt: now };
   });
 }
@@ -684,7 +699,14 @@ var state = {
     backupVideoUrl: process.env.BACKUP_STREAM_URL || process.env.DEFAULT_BACKUP_VIDEO_URL || "",
     backupChannelName: "GolBolivia 24/7 Se\xF1al Alternativa HD",
     activeStreamSource: "obs",
-    autoFailoverEnabled: true
+    autoFailoverEnabled: true,
+    donationQr: {
+      imageUrl: "",
+      bankName: "Cualquier Banco de Bolivia (QR Simple / BNB / Uni\xF3n / BCP)",
+      accountHolder: "GolBolivia Live Streaming",
+      instructions: "Escanea el c\xF3digo QR desde tu aplicaci\xF3n bancaria m\xF3vil para apoyar la transmisi\xF3n en vivo.",
+      updatedAt: Date.now()
+    }
   },
   scoreboard: {
     homeScore: 0,
@@ -943,7 +965,8 @@ function getPublicStreamPayload() {
     backupChannelName: state.streamSettings.backupChannelName,
     activeStreamSource: state.streamSettings.activeStreamSource,
     autoFailoverEnabled: state.streamSettings.autoFailoverEnabled,
-    isLive: state.streamSettings.isLive
+    isLive: state.streamSettings.isLive,
+    donationQr: state.streamSettings.donationQr
   };
 }
 app2.get(["/api/events", "/events"], (req, res) => {
@@ -1046,6 +1069,47 @@ app2.post(
     persistState();
     broadcastSseEvent("STREAM_UPDATED", getPublicStreamPayload());
     res.json({ success: true, streamSettings: getPublicStreamPayload() });
+  }
+);
+app2.get(["/api/donation-qr", "/donation-qr"], (_req, res) => {
+  res.json({
+    success: true,
+    donationQr: state.streamSettings.donationQr || {
+      imageUrl: "",
+      bankName: "Cualquier Banco de Bolivia (QR Simple / BNB / Uni\xF3n / BCP)",
+      accountHolder: "GolBolivia Live Streaming",
+      instructions: "Escanea el c\xF3digo QR desde tu aplicaci\xF3n bancaria m\xF3vil para apoyar la transmisi\xF3n en vivo.",
+      updatedAt: Date.now()
+    }
+  });
+});
+app2.post(
+  ["/api/donation-qr", "/donation-qr"],
+  authenticate,
+  requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
+  (req, res) => {
+    const { imageUrl, bankName, accountHolder, instructions } = req.body;
+    const current = state.streamSettings.donationQr || {
+      bankName: "Cualquier Banco de Bolivia (QR Simple / BNB / Uni\xF3n / BCP)",
+      accountHolder: "GolBolivia Live Streaming",
+      instructions: "Escanea el c\xF3digo QR desde tu aplicaci\xF3n bancaria m\xF3vil para apoyar la transmisi\xF3n en vivo."
+    };
+    const updatedQr = {
+      imageUrl: typeof imageUrl === "string" ? imageUrl.trim() : current.imageUrl || "",
+      bankName: typeof bankName === "string" ? bankName.trim().slice(0, 100) : current.bankName,
+      accountHolder: typeof accountHolder === "string" ? accountHolder.trim().slice(0, 100) : current.accountHolder,
+      instructions: typeof instructions === "string" ? instructions.trim().slice(0, 300) : current.instructions,
+      updatedAt: Date.now()
+    };
+    state.streamSettings.donationQr = updatedQr;
+    persistState();
+    broadcastSseEvent("DONATION_QR_UPDATED", updatedQr);
+    broadcastSseEvent("STREAM_UPDATED", getPublicStreamPayload());
+    res.json({
+      success: true,
+      message: "C\xF3digo QR de apoyo y donaciones guardado con \xE9xito.",
+      donationQr: updatedQr
+    });
   }
 );
 app2.post(
@@ -1613,6 +1677,38 @@ app2.delete(
     res.json({ success: true, message: `Equipo ${id} eliminado correctamente.`, clubs: state.clubs });
   }
 );
+if (!process.env.VERCEL) {
+  setInterval(() => {
+    let anyUpdated = false;
+    for (const evt of state.liveEvents) {
+      if (evt.isLive && evt.isClockRunning && evt.period !== "Descanso" && evt.period !== "Finalizado") {
+        const currentMin = typeof evt.matchMinute === "number" ? evt.matchMinute : 0;
+        if (currentMin < 130) {
+          evt.matchMinute = currentMin + 1;
+          evt.clockUpdatedAt = Date.now();
+          anyUpdated = true;
+        }
+      }
+    }
+    if (anyUpdated) {
+      persistState();
+      broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
+      const active = state.liveEvents[0];
+      if (active) {
+        state.scoreboard.matchMinute = active.matchMinute || 0;
+        broadcastSseEvent("SCOREBOARD_UPDATED", {
+          eventId: active.id,
+          homeScore: active.homeScore ?? state.scoreboard.homeScore,
+          awayScore: active.awayScore ?? state.scoreboard.awayScore,
+          matchMinute: active.matchMinute,
+          period: active.period,
+          isClockRunning: active.isClockRunning,
+          updatedAt: Date.now()
+        });
+      }
+    }
+  }, 6e4);
+}
 var APP_VERSION = "1.4.3";
 var DEPLOY_COMMIT_SHA = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || "df267ec";
 app2.get(["/api/health", "/health"], (_req, res) => {

@@ -2,7 +2,6 @@ import React from 'react';
 import { LiveEvent } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
-import { getMatchSlug } from '../utils/slug';
 import { Zap, Tv, Radio, Play, ChevronRight, Activity, Flame, Shield } from 'lucide-react';
 
 export interface LiveEventsShowcaseProps {
@@ -46,7 +45,6 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {displayMatches.map((event) => {
           const isSelected = event.id === activeEventId;
-          const slug = getMatchSlug(event);
           const homeClub = clubs[event.homeTeam] || BOLIVIAN_CLUBS[event.homeTeam];
           const awayClub = clubs[event.awayTeam] || BOLIVIAN_CLUBS[event.awayTeam];
 
@@ -146,8 +144,10 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
-                  <span>{event.tournamentName || 'Liga Boliviana'}</span>
-                  <span className="font-mono text-slate-500">/live/{slug}</span>
+                  <span className="font-medium text-slate-300">{event.tournamentName || 'Liga Boliviana'}</span>
+                  {event.stadiumName && (
+                    <span className="text-slate-500 truncate max-w-[200px]">📍 {event.stadiumName}</span>
+                  )}
                 </div>
               </div>
 

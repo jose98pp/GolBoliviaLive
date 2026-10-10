@@ -125,6 +125,7 @@ export interface PublicStreamState {
   backupChannelName?: string;
   activeStreamSource?: 'obs' | 'backup' | 'simulation';
   autoFailoverEnabled?: boolean;
+  donationQr?: DonationQrInfo;
 }
 
 export interface PrivateIngestCredentials {
@@ -161,6 +162,15 @@ export interface StreamSettings {
   updatedAt?: number;
   updatedAtIso?: string;
   updatedBy?: string;
+  donationQr?: DonationQrInfo;
+}
+
+export interface DonationQrInfo {
+  imageUrl?: string;
+  bankName?: string;
+  accountHolder?: string;
+  instructions?: string;
+  updatedAt?: number;
 }
 
 export interface VipTransaction {

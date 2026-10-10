@@ -47,6 +47,7 @@ import { RealPresenceStats } from '../hooks/useRealPresence';
 import { MatchDetailsEditor } from './MatchDetailsEditor';
 import { TeamsManager } from './TeamsManager';
 import { LiveEventsManager } from './LiveEventsManager';
+import { DonationQrAdminCard } from './DonationQrAdminCard';
 import { useClubs } from '../hooks/useClubs';
 import { verifyStreamLatency, LatencyTestResult } from '../services/latencyChecker';
 
@@ -1735,6 +1736,14 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* 6. GESTIÓN DEL CÓDIGO QR DE DONACIONES & APÓYAME */}
+                <DonationQrAdminCard
+                  initialQr={streamSettings.donationQr}
+                  onQrUpdated={(newQr) => {
+                    onUpdateStreamSettings({ donationQr: newQr });
+                  }}
+                />
               </div>
             </div>
           ) : activeTab === 'match' ? (
@@ -1812,27 +1821,27 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     <button
                       type="button"
                       onClick={() => onToggleMatchClock?.(!isClockRunning)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md ${
+                      className={`px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
                         isClockRunning
-                          ? 'bg-amber-500 hover:bg-amber-400 text-black border border-amber-300'
-                          : 'bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400'
+                          ? 'bg-amber-400 hover:bg-amber-300 text-black border border-amber-200'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-black border border-emerald-300'
                       }`}
                     >
-                      {isClockRunning ? '⏸ Pausar Reloj' : '▶ Iniciar Reloj Oficial'}
+                      {isClockRunning ? '⏸ Pausar Marcador Automático' : '▶ Iniciar Marcador Automático'}
                     </button>
                     <div>
                       <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span>Reloj del Partido:</span>
-                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded font-bold ${
+                        <span>Marcador en Directo:</span>
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded font-black ${
                           isClockRunning
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400'
+                            ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/40 animate-pulse'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700'
                         }`}>
-                          {isClockRunning ? '● EN JUEGO (1 min real)' : '○ PAUSADO / CONTROL MANUAL'}
+                          {isClockRunning ? '● MODO AUTOMÁTICO ACTIVO' : '○ MANUAL / PAUSADO'}
                         </span>
                       </div>
                       <span className="text-[10px] text-slate-400">
-                        Avanza 1 minuto real cada 60 segundos. Se detiene automáticamente en descansos o al finalizar.
+                        El tiempo del partido avanza automáticamente minuto a minuto para todos los espectadores en vivo.
                       </span>
                     </div>
                   </div>
