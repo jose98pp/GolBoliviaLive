@@ -384,6 +384,21 @@ async function runTests() {
   assert(typeof apiClient.getDonationQr === 'function', 'Apóyame: apiClient.getDonationQr disponible');
   assert(typeof apiClient.saveDonationQr === 'function', 'Apóyame: apiClient.saveDonationQr disponible');
 
+  // 27. FIX ERROR HTTP 413: Verificaciones de protección contra Payload Too Large
+  const serverSource = await fs.promises.readFile(
+    path.join(__dirname, '../serverApp.ts'),
+    'utf-8'
+  );
+  assert(serverSource.includes("express.json({ limit: '10mb' })"), 'Fix 413: serverApp.ts tiene límite de 10mb en express.json');
+  assert(serverSource.includes("express.urlencoded({ limit: '10mb'"), 'Fix 413: serverApp.ts tiene límite de 10mb en express.urlencoded');
+
+  const cardSource = await fs.promises.readFile(
+    path.join(__dirname, '../src/components/DonationQrAdminCard.tsx'),
+    'utf-8'
+  );
+  assert(cardSource.includes('optimizeQrImage'), 'Fix 413: DonationQrAdminCard cuenta con optimizador de imagen en cliente');
+  assert(cardSource.includes('maxDimension = 800'), 'Fix 413: DonationQrAdminCard escala imágenes a max 800px');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);
   console.log('====================================================\n');

@@ -25,6 +25,80 @@ import {
 } from '../services/firebase';
 import { DonationQrModal } from './DonationQrModal';
 
+/**
+ * Optimiza y redimensiona cualquier imagen (File o base64) a un tamaño óptimo
+ * para códigos QR (máximo 800x800px, JPEG 88%), reduciendo el peso de varios MB a solo ~40KB - 90KB.
+ * Previene el error HTTP 413 (Payload Too Large) y el límite de 1MB de Firestore.
+ */
+async function optimizeQrImage(
+  source: File | string,
+  maxDimension = 800,
+  quality = 0.88
+): Promise<{ dataUrl: string; sizeKb: number; width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const processImage = (src: string) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onerror = () => reject(new Error('No se pudo procesar la imagen del código QR.'));
+      img.onload = () => {
+        let width = img.naturalWidth || img.width || 800;
+        let height = img.naturalHeight || img.height || 800;
+
+        // Si ya es liviana y de tamaño razonable, no recomprimir
+        if (width <= maxDimension && height <= maxDimension && src.length < 120000) {
+          const approxKb = Math.round((src.length * 0.75) / 1024);
+          return resolve({ dataUrl: src, sizeKb: approxKb, width, height });
+        }
+
+        // Redimensionar proporcionalmente a maxDimension
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          const approxKb = Math.round((src.length * 0.75) / 1024);
+          return resolve({ dataUrl: src, sizeKb: approxKb, width, height });
+        }
+
+        // Fondo blanco nítido para máximo contraste de escaneo QR
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Convertir a JPEG optimizado
+        const optimizedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        const approxBytes = Math.round(optimizedDataUrl.length * 0.75);
+        const sizeKb = Math.round(approxBytes / 1024);
+
+        resolve({ dataUrl: optimizedDataUrl, sizeKb, width, height });
+      };
+      img.src = src;
+    };
+
+    if (typeof source === 'string') {
+      processImage(source);
+    } else {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo de imagen.'));
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        processImage(result);
+      };
+      reader.readAsDataURL(source);
+    }
+  });
+}
+
 interface DonationQrAdminCardProps {
   initialQr?: DonationQrInfo;
   onQrUpdated?: (qr: DonationQrInfo) => void;
@@ -96,7 +170,9 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
     }
   }, [initialQr]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [imageStats, setImageStats] = useState<{ sizeKb?: number; dimensions?: string } | null>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -108,35 +184,67 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
       return;
     }
 
-    if (file.size > 4 * 1024 * 1024) {
+    if (file.size > 15 * 1024 * 1024) {
       setStatusMsg({
         type: 'error',
-        text: 'La imagen excede el límite de 4MB. Por favor sube una imagen optimizada.',
+        text: 'La imagen excede el límite de 15MB. Por favor sube una imagen de menor tamaño.',
       });
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setImageUrl(result);
+    setStatusMsg({
+      type: 'ok',
+      text: '⚡ Optimizando código QR para guardado ultraliviano sin error 413...',
+    });
+
+    try {
+      const optimized = await optimizeQrImage(file, 800, 0.88);
+      setImageUrl(optimized.dataUrl);
+      setImageStats({ sizeKb: optimized.sizeKb, dimensions: `${optimized.width}x${optimized.height}` });
       isDirtyRef.current = true;
       setStatusMsg({
         type: 'ok',
-        text: 'Imagen cargada en vista previa. Presiona «GUARDAR CÓDIGO QR EN FIREBASE» para aplicar los cambios permanentemente.',
+        text: `✅ Imagen QR optimizada con éxito (${optimized.sizeKb} KB, ${optimized.width}x${optimized.height} px). Presiona «GUARDAR CÓDIGO QR EN FIREBASE» para aplicar los cambios sin error 413.`,
       });
-      setTimeout(() => setStatusMsg(null), 7000);
-    };
-    reader.readAsDataURL(file);
+      setTimeout(() => setStatusMsg(null), 8000);
+    } catch (err: any) {
+      console.warn('[DonationQR] Error optimizando canvas, usando carga estándar:', err);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        setImageUrl(result);
+        const approxKb = Math.round((result.length * 0.75) / 1024);
+        setImageStats({ sizeKb: approxKb });
+        isDirtyRef.current = true;
+        setStatusMsg({
+          type: 'ok',
+          text: 'Imagen cargada en vista previa. Presiona «GUARDAR CÓDIGO QR EN FIREBASE» para aplicar los cambios permanentemente.',
+        });
+        setTimeout(() => setStatusMsg(null), 7000);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     setStatusMsg(null);
     try {
-      const cleanImage = imageUrl.trim();
+      let cleanImage = imageUrl.trim();
       const cleanInstructions = instructions.trim();
       const now = Date.now();
+
+      // Si la imagen en base64 es mayor a 120KB, optimizarla antes de guardar para asegurar < 1MB en Firestore y Vercel
+      if (cleanImage.startsWith('data:image/') && cleanImage.length > 150000) {
+        try {
+          const optimized = await optimizeQrImage(cleanImage, 800, 0.88);
+          cleanImage = optimized.dataUrl;
+          setImageUrl(cleanImage);
+          setImageStats({ sizeKb: optimized.sizeKb, dimensions: `${optimized.width}x${optimized.height}` });
+        } catch {
+          // Continuar con la imagen actual si la re-optimización falla
+        }
+      }
 
       const payload: DonationQrInfo = {
         imageUrl: cleanImage,
@@ -166,7 +274,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
       console.error('[DonationQR] Error al guardar:', err);
       setStatusMsg({
         type: 'error',
-        text: `❌ Error al guardar en Firebase: ${err.message || 'Error de red o permisos.'}`,
+        text: `❌ Error al guardar: ${err.message || 'Error de red o permisos.'}`,
       });
     } finally {
       setIsSaving(false);
@@ -432,6 +540,13 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
                 <ShieldCheck className="w-3 h-3 text-black" />
                 <span>QR SIMPLE BOLIVIA</span>
               </div>
+              {imageStats?.sizeKb && (
+                <div className="mt-1.5 px-2 py-0.5 rounded-md bg-slate-900 border border-emerald-500/40 text-[9px] font-mono text-emerald-400 font-semibold flex items-center justify-center gap-1">
+                  <span>⚡ Peso: {imageStats.sizeKb} KB</span>
+                  {imageStats.dimensions && <span>({imageStats.dimensions})</span>}
+                  <span>• Ligero</span>
+                </div>
+              )}
             </div>
 
             <div className="mt-3.5 space-y-2 w-full max-w-[260px] mx-auto text-left">

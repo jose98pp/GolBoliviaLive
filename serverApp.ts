@@ -26,8 +26,9 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Parse JSON request bodies
-app.use(express.json());
+// Parse JSON and URL-encoded request bodies (soporta hasta 10MB para imágenes QR optimizadas y configuraciones)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Normalize rewritten URLs from Vercel Serverless Function
 app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -1549,6 +1550,21 @@ app.all('*', (req: Request, res: Response, next: NextFunction) => {
       ]
     });
     return;
+  }
+  next();
+});
+
+// Manejador global de errores (incluyendo 413 Payload Too Large)
+app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  if (err && (err.status === 413 || err.type === 'entity.too.large')) {
+    return res.status(413).json({
+      error: 'La imagen o el contenido enviado es demasiado grande (Límite 10MB). Por favor utiliza una imagen optimizada.',
+    });
+  }
+  if (err) {
+    return res.status(err.status || 500).json({
+      error: err.message || 'Error interno del servidor.',
+    });
   }
   next();
 });

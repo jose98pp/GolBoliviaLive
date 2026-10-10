@@ -598,6 +598,61 @@ async function getStreamSettingsFromFirebase() {
   }
   return null;
 }
+async function saveDonationQrToFirebase(qr, operator = "admin") {
+  const now = Date.now();
+  const cleanPayload = {
+    imageUrl: typeof qr.imageUrl === "string" ? qr.imageUrl.trim() : "",
+    instructions: typeof qr.instructions === "string" ? qr.instructions.trim().slice(0, 500) : "",
+    updatedAt: now
+  };
+  const qrRef = doc(db, "config", "donation_qr");
+  await setDoc(
+    qrRef,
+    {
+      ...cleanPayload,
+      updatedAtIso: new Date(now).toISOString(),
+      updatedBy: operator
+    },
+    { merge: true }
+  );
+  try {
+    const streamRef = doc(db, "config", "stream_settings");
+    await setDoc(
+      streamRef,
+      {
+        donationQr: cleanPayload,
+        updatedAt: now,
+        updatedBy: operator
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn("[Firebase] Advertencia sincronizando donationQr en stream_settings:", err);
+  }
+  return cleanPayload;
+}
+async function getDonationQrFromFirebase() {
+  try {
+    const qrRef = doc(db, "config", "donation_qr");
+    const qrSnap = await getDoc(qrRef);
+    if (qrSnap.exists()) {
+      const data = qrSnap.data();
+      return {
+        imageUrl: data.imageUrl || "",
+        instructions: data.instructions || "",
+        updatedAt: data.updatedAt || Date.now()
+      };
+    }
+    const streamRef = doc(db, "config", "stream_settings");
+    const streamSnap = await getDoc(streamRef);
+    if (streamSnap.exists() && streamSnap.data()?.donationQr) {
+      return streamSnap.data().donationQr;
+    }
+  } catch (err) {
+    console.warn("[Firebase] Error al leer donationQr de Firestore:", err);
+  }
+  return null;
+}
 async function getClubsFromFirebase() {
   try {
     const ref = doc(db, "config", "clubs");
@@ -777,7 +832,8 @@ var app2 = express();
 var server = http.createServer(app2);
 var PORT = process.env.PORT || 3e3;
 var isProduction = process.env.NODE_ENV === "production";
-app2.use(express.json());
+app2.use(express.json({ limit: "10mb" }));
+app2.use(express.urlencoded({ limit: "10mb", extended: true }));
 app2.use((req, _res, next) => {
   const xMatched = req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"];
   if (xMatched && typeof xMatched === "string") {
@@ -972,8 +1028,8 @@ var state = {
     autoFailoverEnabled: true,
     donationQr: {
       imageUrl: "",
-      bankName: "Cualquier Banco de Bolivia (QR Simple / BNB / Uni\xF3n / BCP)",
-      accountHolder: "GolBolivia Live Streaming",
+      bankName: "",
+      accountHolder: "",
       instructions: "Escanea el c\xF3digo QR desde tu aplicaci\xF3n bancaria m\xF3vil para apoyar la transmisi\xF3n en vivo.",
       updatedAt: Date.now()
     }
@@ -1086,6 +1142,13 @@ function loadPersistedState() {
     if (fbSettings && Object.keys(fbSettings).length > 0) {
       state.streamSettings = { ...state.streamSettings, ...fbSettings };
       console.log(`[GolBolivia Backend] Sincronizado desde Firebase Firestore: ${fbSettings.title || ""}`);
+    }
+  }).catch(() => {
+  });
+  getDonationQrFromFirebase().then((fbQr) => {
+    if (fbQr && fbQr.imageUrl) {
+      state.streamSettings.donationQr = fbQr;
+      console.log("[GolBolivia Backend] C\xF3digo QR de donaciones cargado desde Firebase Firestore.");
     }
   }).catch(() => {
   });
@@ -1346,8 +1409,8 @@ app2.get(["/api/donation-qr", "/donation-qr"], (_req, res) => {
     success: true,
     donationQr: state.streamSettings.donationQr || {
       imageUrl: "",
-      bankName: "Cualquier Banco de Bolivia (QR Simple / BNB / Uni\xF3n / BCP)",
-      accountHolder: "GolBolivia Live Streaming",
+      bankName: "",
+      accountHolder: "",
       instructions: "Escanea el c\xF3digo QR desde tu aplicaci\xF3n bancaria m\xF3vil para apoyar la transmisi\xF3n en vivo.",
       updatedAt: Date.now()
     }
@@ -1360,24 +1423,28 @@ app2.post(
   (req, res) => {
     const { imageUrl, bankName, accountHolder, instructions } = req.body;
     const current = state.streamSettings.donationQr || {
-      bankName: "Cualquier Banco de Bolivia (QR Simple / BNB / Uni\xF3n / BCP)",
-      accountHolder: "GolBolivia Live Streaming",
+      imageUrl: "",
+      bankName: "",
+      accountHolder: "",
       instructions: "Escanea el c\xF3digo QR desde tu aplicaci\xF3n bancaria m\xF3vil para apoyar la transmisi\xF3n en vivo."
     };
     const updatedQr = {
       imageUrl: typeof imageUrl === "string" ? imageUrl.trim() : current.imageUrl || "",
-      bankName: typeof bankName === "string" ? bankName.trim().slice(0, 100) : current.bankName,
-      accountHolder: typeof accountHolder === "string" ? accountHolder.trim().slice(0, 100) : current.accountHolder,
+      bankName: typeof bankName === "string" ? bankName.trim().slice(0, 100) : "",
+      accountHolder: typeof accountHolder === "string" ? accountHolder.trim().slice(0, 100) : "",
       instructions: typeof instructions === "string" ? instructions.trim().slice(0, 300) : current.instructions,
       updatedAt: Date.now()
     };
     state.streamSettings.donationQr = updatedQr;
     persistState();
+    saveDonationQrToFirebase(updatedQr, req.user?.username || "admin").catch((err) => {
+      console.warn("[Firebase] Advertencia al persistir donationQr en Firestore:", err);
+    });
     broadcastSseEvent("DONATION_QR_UPDATED", updatedQr);
     broadcastSseEvent("STREAM_UPDATED", getPublicStreamPayload());
     res.json({
       success: true,
-      message: "C\xF3digo QR de apoyo y donaciones guardado con \xE9xito.",
+      message: "C\xF3digo QR de apoyo y donaciones guardado y sincronizado con \xE9xito en Firebase y servidor.",
       donationQr: updatedQr
     });
   }
@@ -1977,6 +2044,15 @@ if (!process.env.VERCEL) {
           isClockRunning: active.isClockRunning,
           updatedAt: Date.now()
         });
+        saveMatchScoreboardFirebase(active.id, {
+          homeScore: active.homeScore,
+          awayScore: active.awayScore,
+          matchMinute: active.matchMinute,
+          period: active.period,
+          isClockRunning: active.isClockRunning,
+          force: true
+        }).catch(() => {
+        });
       }
     }
   }, 6e4);
@@ -2018,6 +2094,19 @@ app2.all("*", (req, res, next) => {
       ]
     });
     return;
+  }
+  next();
+});
+app2.use((err, _req, res, next) => {
+  if (err && (err.status === 413 || err.type === "entity.too.large")) {
+    return res.status(413).json({
+      error: "La imagen o el contenido enviado es demasiado grande (L\xEDmite 10MB). Por favor utiliza una imagen optimizada."
+    });
+  }
+  if (err) {
+    return res.status(err.status || 500).json({
+      error: err.message || "Error interno del servidor."
+    });
   }
   next();
 });

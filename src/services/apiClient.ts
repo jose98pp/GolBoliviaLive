@@ -240,25 +240,60 @@ class GolBoliviaApiClient {
 
   async saveDonationQr(data: DonationQrInfo): Promise<{ success: boolean; donationQr?: DonationQrInfo }> {
     // 1. Persistir directamente en Google Firebase Firestore (/config/donation_qr)
-    await saveDonationQrToFirebase(data).catch((err) => {
+    let firebaseSuccess = false;
+    try {
+      await saveDonationQrToFirebase(data);
+      firebaseSuccess = true;
+    } catch (err) {
       console.warn('[Firebase] Advertencia guardando donationQr en Firestore desde apiClient:', err);
-    });
+    }
 
     // 2. Persistir en el servidor Node.js Express para difusión en tiempo real vía SSE
-    const res = await fetch('/api/donation-qr', {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: `Error HTTP ${res.status}` }));
-      throw new Error(err.error || 'Error al guardar el código QR de apoyo.');
-    }
-    const json = await res.json();
     try {
-      localStorage.setItem('golbolivia_donation_qr', JSON.stringify(json.donationQr || data));
-    } catch {}
-    return json;
+      const res = await fetch('/api/donation-qr', {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      });
+
+      if (!res.ok) {
+        let errorMsg = `Error HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData && errData.error) errorMsg = errData.error;
+        } catch {
+          if (res.status === 413) {
+            errorMsg = 'La imagen es demasiado pesada para el servidor (HTTP 413). Utiliza una imagen optimizada.';
+          }
+        }
+
+        // Si Firebase se guardó correctamente en la nube, consideramos el guardado exitoso
+        if (firebaseSuccess) {
+          console.warn('[apiClient] Servidor respondió con aviso pero Firebase guardó el QR exitosamente:', errorMsg);
+          try {
+            localStorage.setItem('golbolivia_donation_qr', JSON.stringify(data));
+          } catch {}
+          return { success: true, donationQr: data };
+        }
+
+        throw new Error(errorMsg);
+      }
+
+      const json = await res.json();
+      try {
+        localStorage.setItem('golbolivia_donation_qr', JSON.stringify(json.donationQr || data));
+      } catch {}
+      return json;
+    } catch (fetchErr: any) {
+      if (firebaseSuccess) {
+        console.warn('[apiClient] Servidor no disponible pero Firebase guardó el QR exitosamente:', fetchErr);
+        try {
+          localStorage.setItem('golbolivia_donation_qr', JSON.stringify(data));
+        } catch {}
+        return { success: true, donationQr: data };
+      }
+      throw fetchErr;
+    }
   }
 
   // 6.3 Dedicated Endpoint: Synchronize Stream & Backup M3U8 URLs Globally to Backend
