@@ -34,7 +34,9 @@ import {
   Trophy,
   Save,
   Database,
-  Check
+  Check,
+  Heart,
+  QrCode
 } from 'lucide-react';
 import { AdminVipManagement } from './AdminVipManagement';
 import { MediaMtxGuideModal } from './MediaMtxGuideModal';
@@ -177,8 +179,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   // Dynamic clubs management from Firebase & Backend
   const { clubs, saveClub, deleteClub } = useClubs();
 
-  // Active section inside the private dashboard (Streamlined 5-tab console with zero duplicated options)
-  const [activeTab, setActiveTab] = useState<'stream' | 'match' | 'teams' | 'events_chat' | 'vip_analytics'>('stream');
+  // Active section inside the private dashboard (Streamlined tabs with dedicated QR Apóyame console)
+  const [activeTab, setActiveTab] = useState<'stream' | 'match' | 'teams' | 'events_chat' | 'vip_analytics' | 'qr_donations'>('stream');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
@@ -694,6 +696,18 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <Crown className="w-3.5 h-3.5 text-amber-400" />
               <span>VIP & Audiencia</span>
             </button>
+            <button
+              onClick={() => setActiveTab('qr_donations')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                activeTab === 'qr_donations'
+                  ? 'bg-rose-500 text-white shadow-md shadow-rose-950/40 font-bold'
+                  : 'text-rose-300 hover:text-white hover:bg-rose-950/40 border border-rose-500/20'
+              }`}
+              title="Cambiar imagen de código QR y opciones para el botón Apóyame"
+            >
+              <Heart className={`w-3.5 h-3.5 ${activeTab === 'qr_donations' ? 'fill-white text-white' : 'fill-rose-500 text-rose-400'}`} />
+              <span>QR Apóyame</span>
+            </button>
           </div>
 
           <div className="hidden lg:flex items-center gap-2">
@@ -744,6 +758,31 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           {activeTab === 'stream' ? (
             /* PESTAÑA 1: TRANSMISIÓN & SEÑALES M3U8 */
             <div className="space-y-6">
+              {/* ACCESO RÁPIDO: GESTIÓN DEL QR DEL BOTÓN APÓYAME */}
+              <div className="bg-gradient-to-r from-rose-950/40 via-[#0e1628] to-[#0a0f1d] border border-rose-500/30 rounded-2xl p-3.5 sm:p-4 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0 shadow">
+                    <Heart className="w-5 h-5 fill-rose-500 text-rose-400" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-white block">
+                      ¿Deseas cambiar el Código QR del botón «Apóyame»?
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Puedes subir tu imagen de QR directamente en la nueva pestaña «QR Apóyame» o al final de esta página (Sección 6).
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('qr_donations')}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-400 hover:to-amber-400 text-white font-black text-xs flex items-center justify-center gap-1.5 transition cursor-pointer self-start sm:self-auto shrink-0 shadow-md active:scale-95"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>Configurar QR Apóyame</span>
+                </button>
+              </div>
+
               {/* GESTIÓN MULTI-PARTIDO Y FUENTES UNIVERSALES (CLOUDFLARE · YOUTUBE · KICK) */}
               <LiveEventsManager
                 activeEventId={activeEventId}
@@ -2066,10 +2105,20 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               onClearChat={onClearChat}
               clubs={clubs}
             />
-          ) : (
+          ) : activeTab === 'vip_analytics' ? (
             /* PESTAÑA 5: SUSCRIPCIONES VIP & AUDIENCIA */
             <div className="space-y-6">
               <AdminVipManagement />
+            </div>
+          ) : (
+            /* PESTAÑA 6: GESTIÓN DEDICADA DEL CÓDIGO QR (BOTÓN APÓYAME) */
+            <div className="space-y-6">
+              <DonationQrAdminCard
+                initialQr={streamSettings.donationQr}
+                onQrUpdated={(newQr) => {
+                  onUpdateStreamSettings({ donationQr: newQr });
+                }}
+              />
             </div>
           )}
         </main>

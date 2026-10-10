@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QrCode, Upload, Download, CheckCircle2, AlertCircle, Sparkles, Building2, User, FileText, Image, RefreshCw, Heart } from 'lucide-react';
+import { QrCode, Upload, Download, CheckCircle2, AlertCircle, Sparkles, FileText, Image, RefreshCw, Heart, ShieldCheck, Lock } from 'lucide-react';
 import { DonationQrInfo } from '../types/football';
 import { apiClient } from '../services/apiClient';
 
@@ -13,12 +13,6 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
   onQrUpdated,
 }) => {
   const [imageUrl, setImageUrl] = useState<string>(initialQr?.imageUrl || '');
-  const [bankName, setBankName] = useState<string>(
-    initialQr?.bankName || 'Cualquier Banco de Bolivia (QR Simple / BNB / Unión / BCP)'
-  );
-  const [accountHolder, setAccountHolder] = useState<string>(
-    initialQr?.accountHolder || 'GolBolivia Live Streaming'
-  );
   const [instructions, setInstructions] = useState<string>(
     initialQr?.instructions || 'Escanea o descarga este código QR desde tu aplicación bancaria móvil para realizar tu aporte.'
   );
@@ -30,8 +24,6 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
   useEffect(() => {
     if (initialQr) {
       if (initialQr.imageUrl !== undefined) setImageUrl(initialQr.imageUrl);
-      if (initialQr.bankName) setBankName(initialQr.bankName);
-      if (initialQr.accountHolder) setAccountHolder(initialQr.accountHolder);
       if (initialQr.instructions) setInstructions(initialQr.instructions);
     }
   }, [initialQr]);
@@ -54,7 +46,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
     reader.onload = () => {
       const result = reader.result as string;
       setImageUrl(result);
-      setStatusMsg({ type: 'ok', text: 'Imagen cargada en vista previa. Recuerda presionar «GUARDAR CÓDIGO QR».' });
+      setStatusMsg({ type: 'ok', text: 'Imagen cargada en vista previa. Recuerda presionar «GUARDAR CÓDIGO QR».'});
       setTimeout(() => setStatusMsg(null), 5000);
     };
     reader.readAsDataURL(file);
@@ -66,14 +58,12 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
     try {
       const payload: DonationQrInfo = {
         imageUrl: imageUrl.trim(),
-        bankName: bankName.trim(),
-        accountHolder: accountHolder.trim(),
         instructions: instructions.trim(),
         updatedAt: Date.now(),
       };
 
       const res = await apiClient.saveDonationQr(payload);
-      setStatusMsg({ type: 'ok', text: '✅ Código QR y datos de donación guardados y sincronizados con éxito para todos los hinchas.' });
+      setStatusMsg({ type: 'ok', text: '✅ Código QR guardado y sincronizado con éxito para el botón «Apóyame».' });
       onQrUpdated?.(res.donationQr || payload);
       setTimeout(() => setStatusMsg(null), 6000);
     } catch (err: any) {
@@ -94,7 +84,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
   };
 
   return (
-    <div className="bg-[#0a0f1d] border border-amber-500/30 rounded-2xl p-4 sm:p-5 shadow-xl relative overflow-hidden">
+    <div id="seccion-qr-apoyame" className="bg-[#0a0f1d] border border-amber-500/30 rounded-2xl p-4 sm:p-5 shadow-xl relative overflow-hidden">
       {/* Glow ambient background */}
       <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -107,14 +97,14 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-bold text-white font-display uppercase tracking-wide">
-                Apóyame · Gestión del Código QR de Donaciones
+                Configuración del Código QR (Botón «Apóyame»)
               </h3>
               <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                PÚBLICO
+                EN VIVO
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Sube el código QR bancario que los hinchas verán y descargarán al presionar el botón «Apóyame».
+              Aquí cambias la imagen del código QR que los hinchas descargan al presionar el botón «Apóyame».
             </p>
           </div>
         </div>
@@ -130,6 +120,14 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
             <span>Descargar QR</span>
           </button>
         )}
+      </div>
+
+      {/* Notice about hidden Bank & Titular */}
+      <div className="mt-3 p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center gap-2 text-xs text-emerald-300">
+        <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+        <span>
+          <strong>Privacidad activa:</strong> El nombre de banco y el titular han sido retirados. El hincha ve únicamente el código QR limpio y las instrucciones.
+        </span>
       </div>
 
       {/* Status banner */}
@@ -153,12 +151,12 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
       {/* Form & Preview Grid */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mt-4">
         {/* Left Column: Form Fields */}
-        <div className="md:col-span-7 space-y-3.5">
+        <div className="md:col-span-7 space-y-4">
           {/* File Upload Trigger */}
           <div>
             <label className="block text-xs font-bold text-white mb-1.5 flex items-center gap-1.5">
               <Upload className="w-3.5 h-3.5 text-amber-400" />
-              <span>Subir Archivo de Imagen QR:</span>
+              <span>Subir Nueva Imagen de QR:</span>
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -172,68 +170,38 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-1 py-2.5 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-dashed border-amber-500/50 hover:border-amber-400 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
+                className="flex-1 py-3 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-dashed border-amber-500/50 hover:border-amber-400 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <Image className="w-4 h-4 text-amber-400" />
-                <span>{imageUrl ? 'Cambiar Imagen de QR' : 'Seleccionar Imagen desde Dispositivo (PNG / JPG / SVG)'}</span>
+                <span>{imageUrl ? 'Subir Otra Imagen de QR' : 'Seleccionar Imagen de QR (PNG / JPG / SVG)'}</span>
               </button>
               {imageUrl && (
                 <button
                   type="button"
                   onClick={() => setImageUrl('')}
-                  className="px-3 py-2.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold cursor-pointer transition"
+                  className="px-3.5 py-3 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold cursor-pointer transition"
                   title="Eliminar QR actual"
                 >
-                  Limpiar
+                  Quitar
                 </button>
               )}
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">
-              Formatos recomendados: PNG o JPG cuadrado (mínimo 300x300 px). Máx. 3 MB.
+            <span className="text-[10px] text-slate-400 mt-1 block">
+              Formatos recomendados: PNG o JPG cuadrado. Máx. 3 MB.
             </span>
           </div>
 
           {/* Direct URL input (optional alternative) */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
-              O pegar URL directa de la imagen:
+              O pegar enlace directo (URL web) de la imagen:
             </label>
             <input
               type="text"
-              value={imageUrl.startsWith('data:') ? '(Imagen en Base64 cargada)' : imageUrl}
+              value={imageUrl.startsWith('data:') ? '(Imagen cargada desde archivo)' : imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://.../mi-qr-donaciones.png"
+              placeholder="https://.../mi-qr-apoyo.png"
               className="w-full bg-slate-900 border border-slate-750 focus:border-amber-500 rounded-xl p-2.5 text-white font-mono text-xs focus:outline-none"
-            />
-          </div>
-
-          {/* Bank / Wallet Name */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Banco / Billetera / Plataforma:</span>
-            </label>
-            <input
-              type="text"
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              placeholder="Ej: Banco Nacional de Bolivia (BNB) / Banco Unión / QR Simple"
-              className="w-full bg-slate-900 border border-slate-750 focus:border-emerald-500 rounded-xl p-2.5 text-white font-medium text-xs focus:outline-none"
-            />
-          </div>
-
-          {/* Account Holder */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-sky-400" />
-              <span>Titular de la Cuenta o Nombre de Receptor:</span>
-            </label>
-            <input
-              type="text"
-              value={accountHolder}
-              onChange={(e) => setAccountHolder(e.target.value)}
-              placeholder="Ej: GolBolivia Live Transmisiones"
-              className="w-full bg-slate-900 border border-slate-750 focus:border-sky-500 rounded-xl p-2.5 text-white font-medium text-xs focus:outline-none"
             />
           </div>
 
@@ -247,8 +215,8 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
               rows={2}
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Instrucciones para transferir desde aplicaciones móviles..."
-              className="w-full bg-slate-900 border border-slate-750 focus:border-amber-500 rounded-xl p-2 text-white font-medium text-xs focus:outline-none resize-none"
+              placeholder="Escanea o descarga este código QR desde tu aplicación bancaria móvil para realizar tu aporte..."
+              className="w-full bg-slate-900 border border-slate-750 focus:border-amber-500 rounded-xl p-2.5 text-white font-medium text-xs focus:outline-none resize-none"
             />
           </div>
 
@@ -267,7 +235,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
             ) : (
               <>
                 <CheckCircle2 className="w-4 h-4 text-black" />
-                <span>GUARDAR CÓDIGO QR DE DONACIONES</span>
+                <span>GUARDAR CÓDIGO QR DE APÓYAME</span>
               </>
             )}
           </button>
@@ -277,35 +245,36 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
         <div className="md:col-span-5 bg-[#050811] rounded-2xl p-4 border border-slate-800 flex flex-col items-center justify-center text-center">
           <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-1">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Vista Previa del Hincha</span>
+            <span>Vista Previa del Modal de Apoyo</span>
           </span>
 
-          <div className="p-2.5 bg-white rounded-xl shadow-lg border-2 border-amber-400/30 max-w-[190px]">
+          <div className="p-2.5 bg-white rounded-xl shadow-lg border-2 border-amber-400/30 max-w-[200px] relative">
             {imageUrl ? (
               <img
                 src={imageUrl}
                 alt="Vista previa del QR"
-                className="w-40 h-40 object-contain rounded-lg"
+                className="w-44 h-44 object-contain rounded-lg"
               />
             ) : (
-              <div className="w-40 h-40 bg-slate-100 rounded-lg flex flex-col items-center justify-center text-slate-400 p-2">
+              <div className="w-44 h-44 bg-slate-100 rounded-lg flex flex-col items-center justify-center text-slate-400 p-2">
                 <QrCode className="w-12 h-12 text-slate-300 mb-1" />
-                <span className="text-[10px] text-slate-500 font-bold">Sin QR subido</span>
+                <span className="text-[10px] text-slate-600 font-bold">Sin QR subido</span>
                 <span className="text-[9px] text-slate-400">Sube una imagen para verla aquí</span>
               </div>
             )}
+            <div className="mt-1 px-2 py-0.5 rounded-full bg-emerald-600 text-black font-black text-[8px] tracking-wider uppercase shadow-sm inline-flex items-center gap-0.5">
+              <ShieldCheck className="w-2.5 h-2.5 text-black" />
+              <span>QR SIMPLE BOLIVIA</span>
+            </div>
           </div>
 
-          <div className="mt-3 space-y-1 w-full max-w-[220px]">
-            <span className="text-xs font-bold text-white block truncate">
-              {accountHolder || 'Titular no especificado'}
-            </span>
-            <span className="text-[10px] text-amber-400 font-mono block truncate">
-              {bankName || 'Banco no especificado'}
-            </span>
-            <p className="text-[9px] text-slate-500 italic line-clamp-2">
+          <div className="mt-3 space-y-1.5 w-full max-w-[240px]">
+            <div className="px-2 py-1 rounded bg-slate-900 border border-slate-800 text-[10px] text-slate-400 italic">
               {instructions}
-            </p>
+            </div>
+            <span className="text-[9px] text-emerald-400/80 font-mono block">
+              ✓ Banco y Titular ocultados
+            </span>
           </div>
         </div>
       </div>

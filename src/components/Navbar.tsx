@@ -120,23 +120,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-red-400 text-[11px]">viendo en vivo</span>
           </button>
 
-          {/* Marcador en Vivo Compacto en Header (Desktop) - Clic para Iniciar/Pausar Avance Automático */}
+          {/* Marcador en Vivo Compacto en Header (Desktop) - Marcador en tiempo real */}
           {homeClub && awayClub && (
-            <button
-              type="button"
-              onClick={onToggleMatchClock}
-              className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-full text-xs shadow-md transition-all cursor-pointer select-none active:scale-95 ${
+            <div
+              className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-full text-xs shadow-md select-none ${
                 isClockRunning
-                  ? 'bg-emerald-950/80 border border-emerald-500/70 hover:bg-emerald-900/80 ring-1 ring-emerald-500/40 text-emerald-200'
-                  : 'bg-slate-900/90 border border-slate-700/80 hover:border-slate-600 text-slate-300'
+                  ? 'bg-emerald-950/80 border border-emerald-500/70 ring-1 ring-emerald-500/40 text-emerald-200'
+                  : 'bg-slate-900/90 border border-slate-700/80 text-slate-300'
               }`}
-              title={
-                isClockRunning
-                  ? `Reloj automático activo: ${matchMinute}' (${String(matchSeconds).padStart(2, '0')}") - Clic para pausar`
-                  : 'Clic para iniciar minutos automáticamente sin ajustar manual'
-              }
             >
-              <span className={`w-2 h-2 rounded-full ${isClockRunning ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+              <span className={`w-2 h-2 rounded-full ${isClockRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
               <div className="flex items-center gap-1 font-bold text-slate-200">
                 <span>{homeClub.badgeEmoji}</span>
                 <span className="truncate max-w-[80px]">{homeClub.shortName}</span>
@@ -156,7 +149,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 )}
               </span>
-            </button>
+            </div>
           )}
         </div>
 

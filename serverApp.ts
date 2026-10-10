@@ -335,8 +335,8 @@ const state: AppState = {
     autoFailoverEnabled: true,
     donationQr: {
       imageUrl: '',
-      bankName: 'Cualquier Banco de Bolivia (QR Simple / BNB / Unión / BCP)',
-      accountHolder: 'GolBolivia Live Streaming',
+      bankName: '',
+      accountHolder: '',
       instructions: 'Escanea el código QR desde tu aplicación bancaria móvil para apoyar la transmisión en vivo.',
       updatedAt: Date.now(),
     },
@@ -758,8 +758,8 @@ app.get(['/api/donation-qr', '/donation-qr'], (_req: Request, res: Response) => 
     success: true,
     donationQr: state.streamSettings.donationQr || {
       imageUrl: '',
-      bankName: 'Cualquier Banco de Bolivia (QR Simple / BNB / Unión / BCP)',
-      accountHolder: 'GolBolivia Live Streaming',
+      bankName: '',
+      accountHolder: '',
       instructions: 'Escanea el código QR desde tu aplicación bancaria móvil para apoyar la transmisión en vivo.',
       updatedAt: Date.now(),
     },
@@ -773,15 +773,16 @@ app.post(
   (req: Request, res: Response) => {
     const { imageUrl, bankName, accountHolder, instructions } = req.body;
     const current = state.streamSettings.donationQr || {
-      bankName: 'Cualquier Banco de Bolivia (QR Simple / BNB / Unión / BCP)',
-      accountHolder: 'GolBolivia Live Streaming',
+      imageUrl: '',
+      bankName: '',
+      accountHolder: '',
       instructions: 'Escanea el código QR desde tu aplicación bancaria móvil para apoyar la transmisión en vivo.',
     };
 
     const updatedQr: DonationQrInfo = {
       imageUrl: typeof imageUrl === 'string' ? imageUrl.trim() : current.imageUrl || '',
-      bankName: typeof bankName === 'string' ? bankName.trim().slice(0, 100) : current.bankName,
-      accountHolder: typeof accountHolder === 'string' ? accountHolder.trim().slice(0, 100) : current.accountHolder,
+      bankName: typeof bankName === 'string' ? bankName.trim().slice(0, 100) : '',
+      accountHolder: typeof accountHolder === 'string' ? accountHolder.trim().slice(0, 100) : '',
       instructions: typeof instructions === 'string' ? instructions.trim().slice(0, 300) : current.instructions,
       updatedAt: Date.now(),
     };
@@ -1479,6 +1480,14 @@ if (!process.env.VERCEL) {
           isClockRunning: active.isClockRunning,
           updatedAt: Date.now(),
         });
+        saveMatchScoreboardFirebase(active.id, {
+          homeScore: active.homeScore,
+          awayScore: active.awayScore,
+          matchMinute: active.matchMinute,
+          period: active.period,
+          isClockRunning: active.isClockRunning,
+          force: true,
+        }).catch(() => {});
       }
     }
   }, 60000);

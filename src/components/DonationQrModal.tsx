@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Heart, Download, X, QrCode, Check, Copy, ShieldCheck, Sparkles, Building2, User } from 'lucide-react';
+import { Heart, Download, X, QrCode, Check, Copy, ShieldCheck, Sparkles } from 'lucide-react';
 import { DonationQrInfo } from '../types/football';
 
 interface DonationQrModalProps {
@@ -21,8 +21,6 @@ export const DonationQrModal: React.FC<DonationQrModalProps> = ({
   if (!isOpen) return null;
 
   const qrImageUrl = donationQr?.imageUrl?.trim() || DEFAULT_DEMO_QR;
-  const bankName = donationQr?.bankName?.trim() || 'Cualquier Banco de Bolivia (QR Simple / BNB / Unión / BCP)';
-  const accountHolder = donationQr?.accountHolder?.trim() || 'GolBolivia Live Streaming';
   const instructions = donationQr?.instructions?.trim() || 'Escanea o descarga este código QR desde tu app bancaria móvil de Bolivia para transferir tu aporte.';
 
   const handleDownload = () => {
@@ -39,8 +37,7 @@ export const DonationQrModal: React.FC<DonationQrModalProps> = ({
   };
 
   const handleCopyDetails = () => {
-    const textToCopy = `Titular: ${accountHolder}\nBanco/Método: ${bankName}\n${instructions}`;
-    navigator.clipboard?.writeText(textToCopy).then(() => {
+    navigator.clipboard?.writeText(instructions).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
     });
@@ -104,26 +101,14 @@ export const DonationQrModal: React.FC<DonationQrModalProps> = ({
           </button>
         </div>
 
-        {/* Details & Instructions */}
+        {/* Instructions only - Banco y Titular removidos */}
         <div className="mt-3.5 space-y-2 text-xs">
-          <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1.5">
-            <div className="flex items-center gap-2 text-slate-300">
-              <Building2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="text-[11px] font-semibold text-slate-400">Banco / Billetera:</span>
-              <span className="font-bold text-white truncate text-[11px]">{bankName}</span>
-            </div>
-            <div className="flex items-center gap-2 text-slate-300">
-              <User className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="text-[11px] font-semibold text-slate-400">Titular:</span>
-              <span className="font-bold text-white truncate text-[11px]">{accountHolder}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-2 px-1 text-[11px] text-slate-400">
-            <span className="truncate">{instructions}</span>
+          <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-2.5">
+            <span className="text-[11px] text-slate-300 leading-relaxed">{instructions}</span>
             <button
               onClick={handleCopyDetails}
               className="text-[10px] text-amber-400 hover:text-amber-300 font-mono font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+              title="Copiar instrucciones"
             >
               {copied ? (
                 <>
@@ -133,7 +118,7 @@ export const DonationQrModal: React.FC<DonationQrModalProps> = ({
               ) : (
                 <>
                   <Copy className="w-3 h-3" />
-                  <span>Copiar datos</span>
+                  <span>Copiar</span>
                 </>
               )}
             </button>
