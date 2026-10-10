@@ -139,6 +139,8 @@ export interface PrivateIngestCredentials {
   playbackUrl: string;
 }
 
+export type StreamProvider = 'cloudflare' | 'youtube' | 'kick';
+
 export interface StreamSettings {
   title: string;
   tournamentName: string;
@@ -160,6 +162,22 @@ export interface StreamSettings {
   backupChannelName?: string;
   activeStreamSource?: 'obs' | 'backup' | 'simulation';
   autoFailoverEnabled?: boolean;
+  primaryProvider?: StreamProvider;
+  cloudflare?: {
+    liveInputId: string;
+    playbackUrl: string;
+  };
+  youtube?: {
+    videoId: string;
+  };
+  kick?: {
+    channel: string;
+  };
+  fallbackOrder?: StreamProvider[];
+  homeScore?: number;
+  awayScore?: number;
+  matchMinute?: number;
+  isClockRunning?: boolean;
   version?: number;
   updatedAt?: number;
   updatedAtIso?: string;
@@ -186,8 +204,6 @@ export interface VipTransaction {
   status: 'pending' | 'approved' | 'rejected';
   userNote?: string;
 }
-
-export type StreamProvider = 'cloudflare' | 'youtube' | 'kick';
 
 export interface LiveEvent {
   id: string;

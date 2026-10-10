@@ -783,30 +783,133 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                 </button>
               </div>
 
-              {/* GESTIÓN MULTI-PARTIDO Y FUENTES UNIVERSALES (CLOUDFLARE · YOUTUBE · KICK) */}
-              <LiveEventsManager
-                activeEventId={activeEventId}
-                onEventSelected={(ev) => {
-                  if (ev.cloudflare?.playbackUrl) {
-                    setVideoUrlInput(ev.cloudflare.playbackUrl);
-                  }
-                  onUpdateStreamSettings({
-                    title: ev.title,
-                    homeClubId: ev.homeTeam,
-                    awayClubId: ev.awayTeam,
-                    isLive: ev.isLive,
-                    tournamentName: ev.tournamentName || streamSettings.tournamentName,
-                    stadiumName: ev.stadiumName || streamSettings.stadiumName,
-                    customVideoUrl: ev.cloudflare?.playbackUrl || streamSettings.customVideoUrl,
-                  });
-                  if (ev.homeScore !== undefined && ev.awayScore !== undefined) {
-                    onUpdateScore(ev.homeScore, ev.awayScore);
-                  }
-                  if (ev.matchMinute !== undefined) {
-                    onUpdateMinute(ev.matchMinute);
-                  }
-                }}
-              />
+              {/* FUENTES Y CANALES DE TRANSMISIÓN MULTI-PLATAFORMA (CLOUDFLARE · YOUTUBE · KICK) */}
+              <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider font-display">
+                        Proveedor Principal y Canales de Transmisión
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Configura la señal de emisión activa para los espectadores sin alterar los equipos ni el marcador.
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="text-[10px] px-2.5 py-1 rounded-full font-mono font-bold uppercase bg-slate-900 border border-slate-700 text-slate-300">
+                    Proveedor al Aire: <strong className="text-amber-400">{streamSettings.primaryProvider || 'cloudflare'}</strong>
+                  </span>
+                </div>
+
+                {/* Selector de Proveedor Principal */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Seleccionar Proveedor al Aire (Señal Primaria):
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateStreamSettings({ primaryProvider: 'cloudflare' });
+                        apiClient.updateStreamSettings({ primaryProvider: 'cloudflare' }).catch(() => {});
+                      }}
+                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition cursor-pointer ${
+                        (streamSettings.primaryProvider || 'cloudflare') === 'cloudflare'
+                          ? 'bg-sky-950/80 border-sky-400 ring-1 ring-sky-400 text-white'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Zap className="w-4 h-4 text-sky-400 mt-0.5 shrink-0" />
+                      <div>
+                        <div className="text-xs font-bold text-white">Cloudflare Stream</div>
+                        <div className="text-[10px] text-slate-400">HLS .m3u8 nativo de baja latencia</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateStreamSettings({ primaryProvider: 'youtube' });
+                        apiClient.updateStreamSettings({ primaryProvider: 'youtube' }).catch(() => {});
+                      }}
+                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition cursor-pointer ${
+                        streamSettings.primaryProvider === 'youtube'
+                          ? 'bg-red-950/80 border-red-400 ring-1 ring-red-400 text-white'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Tv className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                      <div>
+                        <div className="text-xs font-bold text-white">YouTube Live</div>
+                        <div className="text-[10px] text-slate-400">Embebido con ID oficial</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateStreamSettings({ primaryProvider: 'kick' });
+                        apiClient.updateStreamSettings({ primaryProvider: 'kick' }).catch(() => {});
+                      }}
+                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition cursor-pointer ${
+                        streamSettings.primaryProvider === 'kick'
+                          ? 'bg-emerald-950/80 border-emerald-400 ring-1 ring-emerald-400 text-white'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Radio className="w-4 h-4 text-[#53fc18] mt-0.5 shrink-0" />
+                      <div>
+                        <div className="text-xs font-bold text-white">Kick Streaming</div>
+                        <div className="text-[10px] text-slate-400">Canal de emisión en Kick</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Inputs de Canales */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1.5">
+                    <label className="text-xs font-semibold text-red-400 flex items-center gap-1.5">
+                      <Tv className="w-3.5 h-3.5" />
+                      <span>YouTube Video ID o URL:</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={streamSettings.youtube?.videoId || ''}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        let id = val;
+                        if (val.includes('youtube.com/watch?v=')) id = val.split('v=')[1]?.split('&')[0] || val;
+                        else if (val.includes('youtu.be/')) id = val.split('youtu.be/')[1]?.split('?')[0] || val;
+                        onUpdateStreamSettings({ youtube: { videoId: id } });
+                      }}
+                      placeholder="jfKfPfyJRdk o https://youtube.com/watch?v=..."
+                      className="w-full bg-[#060a14] border border-slate-750 focus:border-red-500 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1.5">
+                    <label className="text-xs font-semibold text-[#53fc18] flex items-center gap-1.5">
+                      <Radio className="w-3.5 h-3.5" />
+                      <span>Kick Channel Name:</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={streamSettings.kick?.channel || ''}
+                      onChange={(e) => {
+                        const val = e.target.value.trim().replace('https://kick.com/', '');
+                        onUpdateStreamSettings({ kick: { channel: val } });
+                      }}
+                      placeholder="golbolivia"
+                      className="w-full bg-[#060a14] border border-slate-750 focus:border-emerald-500 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
 
               {/* TARJETA DESTACADA: CONEXIÓN Y GUARDADO DE SEÑAL DE VIDEO REAL */}
               <div className="bg-gradient-to-r from-[#0d162b] via-[#0e1830] to-[#0a1226] border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-emerald-950/20">
@@ -1806,298 +1909,24 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               </div>
             </div>
           ) : activeTab === 'match' ? (
-            /* PESTAÑA 2: PARTIDO & MARCADOR */
+            /* PESTAÑA 2: PARTIDO & MARCADOR (CENTRO OFICIAL DE PARTIDOS Y MARCADOR) */
             <div className="space-y-6">
-              {/* Controles Rápidos de Marcador & Minuto en Tiempo Real */}
-              <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
-                {/* Selector de Partido a Administrar */}
-                {liveEvents && liveEvents.length > 0 && (
-                  <div className="bg-[#070b14] p-3 rounded-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-xs font-bold text-white uppercase tracking-wider">
-                        Partido en Edición:
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {liveEvents.map((evt) => (
-                        <button
-                          key={evt.id}
-                          type="button"
-                          onClick={() => onSelectEvent?.(evt.id)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                            evt.id === activeEventId
-                              ? 'bg-emerald-600 text-white border border-emerald-400 shadow-md ring-1 ring-emerald-400/50'
-                              : 'bg-slate-900 text-slate-400 border border-slate-700 hover:text-white hover:bg-slate-800'
-                          }`}
-                        >
-                          <span>{evt.title}</span>
-                          <span className="text-[10px] font-mono px-1 py-0.2 bg-black/50 rounded">
-                            {evt.homeScore ?? 0}-{evt.awayScore ?? 0}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-white font-display flex items-center gap-2">
-                      <span>Control de Marcador en Vivo</span>
-                      <span className="text-xs text-emerald-400 font-mono">({currentEvent?.title || 'Partido Seleccionado'})</span>
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Los cambios actualizan únicamente el marcador de este partido en tiempo real.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    {/* Período buttons */}
-                    {(['1T', 'Descanso', '2T', 'Finalizado'] as const).map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => {
-                          onUpdateStreamSettings({ period: p });
-                          onUpdatePeriod?.(p);
-                          setTimeout(() => setPreviewKey((prev) => prev + 1), 100);
-                        }}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                          (currentEvent?.period || streamSettings.period) === p
-                            ? 'bg-amber-500 text-black font-bold'
-                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Control de Reloj Oficial Administrado */}
-                <div className="bg-[#070b14] p-3.5 rounded-xl border border-slate-800 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => onToggleMatchClock?.(!isClockRunning)}
-                      className={`px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
-                        isClockRunning
-                          ? 'bg-amber-400 hover:bg-amber-300 text-black border border-amber-200'
-                          : 'bg-emerald-500 hover:bg-emerald-400 text-black border border-emerald-300'
-                      }`}
-                    >
-                      {isClockRunning ? '⏸ Pausar Marcador Automático' : '▶ Iniciar Marcador Automático'}
-                    </button>
-                    <div>
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span>Marcador en Directo:</span>
-                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded font-black ${
-                          isClockRunning
-                            ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/40 animate-pulse'
-                            : 'bg-slate-800 text-slate-400 border border-slate-700'
-                        }`}>
-                          {isClockRunning ? '● MODO AUTOMÁTICO ACTIVO' : '○ MANUAL / PAUSADO'}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400">
-                        El tiempo del partido avanza automáticamente minuto a minuto para todos los espectadores en vivo.
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Botones de Acceso Rápido para Operadores */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onUpdateMinute(1);
-                        onUpdateStreamSettings({ period: '1T' });
-                        onUpdatePeriod?.('1T');
-                        onToggleMatchClock?.(true);
-                      }}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-slate-200 border border-slate-700 cursor-pointer"
-                      title="Fijar en 1' y arrancar reloj"
-                    >
-                      1&apos; Inicio 1T
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onUpdateMinute(45);
-                        onUpdateStreamSettings({ period: 'Descanso' });
-                        onUpdatePeriod?.('Descanso');
-                        onToggleMatchClock?.(false);
-                      }}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-amber-300 border border-slate-700 cursor-pointer"
-                      title="Fijar en 45' Descanso y pausar reloj"
-                    >
-                      45&apos; Entretiempo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onUpdateMinute(46);
-                        onUpdateStreamSettings({ period: '2T' });
-                        onUpdatePeriod?.('2T');
-                        onToggleMatchClock?.(true);
-                      }}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-slate-200 border border-slate-700 cursor-pointer"
-                      title="Fijar en 46' y arrancar reloj"
-                    >
-                      46&apos; Inicio 2T
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onUpdateMinute(90);
-                        onUpdateStreamSettings({ period: 'Finalizado' });
-                        onUpdatePeriod?.('Finalizado');
-                        onToggleMatchClock?.(false);
-                      }}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-red-300 border border-slate-700 cursor-pointer"
-                      title="Fijar en 90' Finalizado y pausar reloj"
-                    >
-                      90&apos; Final
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                  {/* Home Team Score Stepper */}
-                  <div className="bg-[#070b14] p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-bold text-white block">{homeClub.name}</span>
-                      <span className="text-[10px] text-slate-400">Equipo Local (0 - 50)</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => onUpdateScore(Math.max(0, homeScore - 1), awayScore)}
-                        disabled={homeScore <= 0}
-                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-bold flex items-center justify-center cursor-pointer transition"
-                        title="Disminuir gol local"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        min={0}
-                        max={50}
-                        value={homeScore}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value, 10);
-                          if (!isNaN(val)) {
-                            onUpdateScore(Math.max(0, Math.min(50, val)), awayScore);
-                          }
-                        }}
-                        className="w-12 h-8 text-center bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg font-mono text-lg font-black text-white tabular-nums focus:outline-none"
-                      />
-                      <button
-                        onClick={() => onUpdateScore(Math.min(50, homeScore + 1), awayScore)}
-                        disabled={homeScore >= 50}
-                        className="w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-black font-bold flex items-center justify-center cursor-pointer transition"
-                        title="Aumentar gol local"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Minute Stepper */}
-                  <div className={`p-3.5 rounded-xl border flex items-center justify-between transition-colors ${
-                    isClockRunning ? 'bg-[#07131e] border-emerald-500/50 shadow-md shadow-emerald-950/30' : 'bg-[#070b14] border-slate-800'
-                  }`}>
-                    <div>
-                      <span className="text-xs font-bold text-white block">Minuto de Juego</span>
-                      <span className={`text-[10px] font-mono flex items-center gap-1 ${
-                        isClockRunning ? 'text-emerald-400 font-black animate-pulse' : 'text-slate-400'
-                      }`}>
-                        {isClockRunning ? '● Corriendo solo (Auto)' : 'Manual / Pausado'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => onUpdateMinute(Math.max(0, matchMinute - 1))}
-                        disabled={matchMinute <= 0}
-                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-bold flex items-center justify-center cursor-pointer transition"
-                        title="Restar 1 minuto"
-                      >
-                        -
-                      </button>
-                      <div className="relative flex items-center">
-                        <input
-                          type="number"
-                          min={0}
-                          max={130}
-                          value={matchMinute}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val)) {
-                              onUpdateMinute(Math.max(0, Math.min(130, val)));
-                            }
-                          }}
-                          className="w-14 h-8 text-center bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg font-mono text-base font-black text-emerald-400 tabular-nums focus:outline-none pr-3"
-                        />
-                        <span className="absolute right-1 text-xs font-mono text-emerald-500 pointer-events-none">&apos;</span>
-                      </div>
-                      <button
-                        onClick={() => onUpdateMinute(Math.min(130, matchMinute + 1))}
-                        disabled={matchMinute >= 130}
-                        className="w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-black font-bold flex items-center justify-center cursor-pointer transition"
-                        title="Sumar 1 minuto"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Away Team Score Stepper */}
-                  <div className="bg-[#070b14] p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-bold text-white block">{awayClub.name}</span>
-                      <span className="text-[10px] text-slate-400">Equipo Visitante (0 - 50)</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => onUpdateScore(homeScore, Math.max(0, awayScore - 1))}
-                        disabled={awayScore <= 0}
-                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-bold flex items-center justify-center cursor-pointer transition"
-                        title="Disminuir gol visitante"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        min={0}
-                        max={50}
-                        value={awayScore}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value, 10);
-                          if (!isNaN(val)) {
-                            onUpdateScore(homeScore, Math.max(0, Math.min(50, val)));
-                          }
-                        }}
-                        className="w-12 h-8 text-center bg-slate-900 border border-slate-700 focus:border-amber-500 rounded-lg font-mono text-lg font-black text-white tabular-nums focus:outline-none"
-                      />
-                      <button
-                        onClick={() => onUpdateScore(homeScore, Math.min(50, awayScore + 1))}
-                        disabled={awayScore >= 50}
-                        className="w-8 h-8 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-black font-bold flex items-center justify-center cursor-pointer transition"
-                        title="Aumentar gol visitante"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* EDITOR DE DATOS DEL PARTIDO (TÍTULO, CLUBES, ESTADIO, TORNEO) */}
               <MatchDetailsEditor
                 streamSettings={streamSettings}
                 onUpdateStreamSettings={onUpdateStreamSettings}
                 activeEventId={activeEventId}
                 activeEvent={currentEvent}
                 onUpdateLiveEvent={onUpdateLiveEvent}
+                liveEvents={liveEvents}
+                onSelectEvent={onSelectEvent}
+                homeScore={homeScore}
+                awayScore={awayScore}
+                matchMinute={matchMinute}
+                onUpdateScore={onUpdateScore}
+                onUpdateMinute={onUpdateMinute}
+                isClockRunning={isClockRunning}
+                onToggleMatchClock={onToggleMatchClock}
+                onUpdatePeriod={onUpdatePeriod}
               />
             </div>
           ) : activeTab === 'teams' ? (

@@ -399,6 +399,27 @@ async function runTests() {
   assert(cardSource.includes('optimizeQrImage'), 'Fix 413: DonationQrAdminCard cuenta con optimizador de imagen en cliente');
   assert(cardSource.includes('maxDimension = 800'), 'Fix 413: DonationQrAdminCard escala imágenes a max 800px');
 
+  // 28. SEPARACIÓN DE PESTAÑAS: Transmisión & Señal vs Partido & Marcador
+  const { MatchDetailsEditor } = await import('../src/components/MatchDetailsEditor');
+  assert(typeof MatchDetailsEditor === 'function', 'Pestañas: MatchDetailsEditor exportado como componente React');
+
+  const editorSource = await fs.promises.readFile(
+    path.join(__dirname, '../src/components/MatchDetailsEditor.tsx'),
+    'utf-8'
+  );
+  assert(editorSource.includes('Tablero Oficial del Marcador'), 'Pestañas: MatchDetailsEditor incluye el tablero unificado del marcador TV');
+  assert(editorSource.includes('preservedCloudflare') && editorSource.includes('preservedYoutube'), 'Pestañas: MatchDetailsEditor preserva intactas las señales de video configuradas en Pestaña 1');
+  assert(editorSource.includes('apiClient.saveLiveEvent'), 'Pestañas: MatchDetailsEditor guarda atómicamente el partido sin borrar señales');
+  assert(editorSource.includes('apiClient.updateScoreboard'), 'Pestañas: MatchDetailsEditor actualiza el marcador oficial');
+
+  const loginPageSource = await fs.promises.readFile(
+    path.join(__dirname, '../src/components/SecretLoginPage.tsx'),
+    'utf-8'
+  );
+  assert(loginPageSource.includes("<MatchDetailsEditor"), 'Pestañas: Pestaña 2 integra MatchDetailsEditor centralizado');
+  // Confirm tab 1 focuses on stream providers & connections without overlapping live events manager
+  assert(loginPageSource.includes('Proveedor Principal y Canales de Transmisión'), 'Pestañas: Pestaña 1 dedicada a Proveedor Principal y Canales');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);
   console.log('====================================================\n');

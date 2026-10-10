@@ -9,19 +9,40 @@ import {
   Radio,
   FileText,
   Mountain,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  Trash2,
+  Play,
+  Pause,
+  RefreshCw,
+  Clock,
+  Shield,
+  Activity,
+  Zap,
 } from 'lucide-react';
 import { StreamSettings, LiveEvent } from '../types/football';
-import { BOLIVIAN_CLUBS, groupClubsByLeague, PRESET_INTERNATIONAL_MATCHES } from '../data/bolivianFootballData';
+import { groupClubsByLeague, PRESET_INTERNATIONAL_MATCHES } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
 
-interface MatchDetailsEditorProps {
+export type MatchPeriod = '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
+
+export interface MatchDetailsEditorProps {
   streamSettings: StreamSettings;
   onUpdateStreamSettings: (newSettings: Partial<StreamSettings>) => void;
   activeEventId?: string;
   activeEvent?: LiveEvent;
   onUpdateLiveEvent?: (eventData: Partial<any>) => void;
+  liveEvents?: LiveEvent[];
+  onSelectEvent?: (eventId: string) => void;
+  homeScore?: number;
+  awayScore?: number;
+  matchMinute?: number;
+  onUpdateScore?: (home: number, away: number) => void;
+  onUpdateMinute?: (minute: number) => void;
+  isClockRunning?: boolean;
+  onToggleMatchClock?: (running: boolean) => void;
+  onUpdatePeriod?: (period: MatchPeriod) => void;
 }
 
 const TOURNAMENT_PRESETS = [
@@ -39,7 +60,20 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   activeEventId,
   activeEvent,
   onUpdateLiveEvent,
+  liveEvents = [],
+  onSelectEvent,
+  homeScore = 0,
+  awayScore = 0,
+  matchMinute = 0,
+  onUpdateScore,
+  onUpdateMinute,
+  isClockRunning = false,
+  onToggleMatchClock,
+  onUpdatePeriod,
 }) => {
+  const { clubs } = useClubs();
+
+  // Internal form fields
   const [title, setTitle] = useState(activeEvent?.title || streamSettings?.title || '');
   const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName || streamSettings?.tournamentName || '');
   const [homeClubId, setHomeClubId] = useState(activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar');
@@ -47,16 +81,22 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [stadiumName, setStadiumName] = useState(activeEvent?.stadiumName || streamSettings?.stadiumName || '');
   const [altitudeMeters, setAltitudeMeters] = useState(streamSettings?.altitudeMeters || 3637);
   const [officialAnnouncement, setOfficialAnnouncement] = useState(streamSettings?.officialAnnouncement || '');
+  const [isLiveMatch, setIsLiveMatch] = useState<boolean>(activeEvent?.isLive ?? streamSettings?.isLive ?? true);
+  const [period, setPeriod] = useState<MatchPeriod>((activeEvent?.period as MatchPeriod) || streamSettings?.period || '1T');
+
+  // Local score & minute state for responsive, rock-solid editing
+  const [localHomeScore, setLocalHomeScore] = useState<number>(activeEvent?.homeScore ?? homeScore);
+  const [localAwayScore, setLocalAwayScore] = useState<number>(activeEvent?.awayScore ?? awayScore);
+  const [localMinute, setLocalMinute] = useState<number>(activeEvent?.matchMinute ?? matchMinute);
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
 
-  const { clubs } = useClubs();
   const prevEventIdRef = useRef(activeEventId);
 
-  // Sync internal state when activeEventId or external props change
+  // Sync state when selected match changes
   useEffect(() => {
     if (prevEventIdRef.current !== activeEventId) {
       prevEventIdRef.current = activeEventId;
@@ -66,26 +106,32 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       const srcHome = activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar';
       const srcAway = activeEvent?.awayTeam || streamSettings?.awayClubId || 'strongest';
       const srcStadium = activeEvent?.stadiumName || streamSettings?.stadiumName || '';
+      const srcPeriod = (activeEvent?.period || streamSettings?.period || '1T') as MatchPeriod;
+      const srcIsLive = activeEvent?.isLive ?? streamSettings?.isLive ?? true;
+
       setTitle(srcTitle);
       setTournamentName(srcTourn);
       setHomeClubId(srcHome);
       setAwayClubId(srcAway);
       setStadiumName(srcStadium);
+      setPeriod(srcPeriod);
+      setIsLiveMatch(srcIsLive);
+      setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
+      setLocalAwayScore(activeEvent?.awayScore ?? awayScore);
+      setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
     } else if (!isDirty) {
-      const srcTitle = activeEvent?.title || streamSettings?.title || '';
-      const srcTourn = activeEvent?.tournamentName || streamSettings?.tournamentName || '';
-      const srcHome = activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar';
-      const srcAway = activeEvent?.awayTeam || streamSettings?.awayClubId || 'strongest';
-      const srcStadium = activeEvent?.stadiumName || streamSettings?.stadiumName || '';
-      if (srcTitle) setTitle(srcTitle);
-      if (srcTourn) setTournamentName(srcTourn);
-      if (srcHome) setHomeClubId(srcHome);
-      if (srcAway) setAwayClubId(srcAway);
-      if (srcStadium) setStadiumName(srcStadium);
-      if (streamSettings?.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
-      if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
+      if (activeEvent?.title) setTitle(activeEvent.title);
+      if (activeEvent?.tournamentName) setTournamentName(activeEvent.tournamentName);
+      if (activeEvent?.homeTeam) setHomeClubId(activeEvent.homeTeam);
+      if (activeEvent?.awayTeam) setAwayClubId(activeEvent.awayTeam);
+      if (activeEvent?.stadiumName) setStadiumName(activeEvent.stadiumName);
+      if (activeEvent?.period) setPeriod(activeEvent.period as MatchPeriod);
+      if (activeEvent?.isLive !== undefined) setIsLiveMatch(activeEvent.isLive);
+      setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
+      setLocalAwayScore(activeEvent?.awayScore ?? awayScore);
+      setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
     }
-  }, [activeEventId, activeEvent, streamSettings, isDirty]);
+  }, [activeEventId, activeEvent, streamSettings, isDirty, homeScore, awayScore, matchMinute]);
 
   const handleGenerateTitle = () => {
     setIsDirty(true);
@@ -111,8 +157,86 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     setAwayClubId(tempHome);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateNewMatch = async () => {
+    const existingNums = liveEvents
+      .map((e) => {
+        const m = e.id.match(/partido-(\d+)/);
+        return m ? parseInt(m[1], 10) : 0;
+      })
+      .filter((n) => !isNaN(n));
+    const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : liveEvents.length + 1;
+    const newId = `partido-${String(nextNum).padStart(3, '0')}`;
+
+    const newEv: LiveEvent = {
+      id: newId,
+      title: `Nuevo Partido ${nextNum}`,
+      homeTeam: 'bolivar',
+      awayTeam: 'strongest',
+      isLive: true,
+      primaryProvider: 'cloudflare',
+      cloudflare: {
+        liveInputId: '',
+        playbackUrl: '',
+      },
+      youtube: { videoId: '' },
+      kick: { channel: '' },
+      fallbackOrder: ['cloudflare', 'youtube', 'kick'],
+      tournamentName: 'Liga Tigo División Profesional',
+      stadiumName: 'Estadio Olímpico Hernando Siles - La Paz',
+      period: '1T',
+      homeScore: 0,
+      awayScore: 0,
+      matchMinute: 0,
+      version: 1,
+      updatedAt: Date.now(),
+    };
+
+    setIsSaving(true);
+    try {
+      const confirmed = await apiClient.saveLiveEvent(newEv);
+      onSelectEvent?.(confirmed.id);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 4000);
+    } catch (err: any) {
+      setErrorMsg('Error al crear nuevo partido: ' + (err.message || 'Error de permisos'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteCurrentMatch = async () => {
+    if (liveEvents.length <= 1) {
+      alert('Debe existir al menos un partido registrado en el sistema.');
+      return;
+    }
+    const currentId = activeEventId || activeEvent?.id || 'partido-001';
+    if (!confirm(`¿Estás seguro de eliminar el partido "${title}"?`)) return;
+
+    setIsSaving(true);
+    try {
+      await apiClient.deleteLiveEvent(currentId);
+      const remaining = liveEvents.filter((e) => e.id !== currentId);
+      if (remaining.length > 0) {
+        onSelectEvent?.(remaining[0].id);
+      }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 4000);
+    } catch (err: any) {
+      setErrorMsg('Error al eliminar partido: ' + (err.message || 'No autorizado'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePeriodChange = (p: MatchPeriod) => {
+    setPeriod(p);
+    setIsDirty(true);
+    onUpdatePeriod?.(p);
+    onUpdateStreamSettings({ period: p });
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setErrorMsg(null);
     setSaveSuccess(false);
 
@@ -123,222 +247,506 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     const cleanAwayId = awayClubId.trim().toLowerCase();
     const alt = Number(altitudeMeters);
 
-    // 1. Validation of Club IDs & formats
-    const clubIdRegex = /^[a-z0-9_-]{2,32}$/;
-    if (!clubIdRegex.test(cleanHomeId)) {
-      setErrorMsg('ID de club local inválido. Debe tener entre 2 y 32 caracteres (solo minúsculas, números y guiones).');
-      return;
-    }
-    if (!clubIdRegex.test(cleanAwayId)) {
-      setErrorMsg('ID de club visitante inválido. Debe tener entre 2 y 32 caracteres (solo minúsculas, números y guiones).');
+    // Validations
+    if (!cleanTitle || cleanTitle.length < 3) {
+      setErrorMsg('El título del partido debe tener al menos 3 caracteres.');
       return;
     }
     if (cleanHomeId === cleanAwayId) {
-      setErrorMsg('El club local y el club visitante no pueden ser el mismo equipo. Selecciona dos clubes distintos.');
-      return;
-    }
-
-    // 2. Validation of Title, Tournament, and Stadium lengths
-    if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
-      setErrorMsg('El título del partido debe tener entre 3 y 120 caracteres.');
-      return;
-    }
-    if (!cleanTournament || cleanTournament.length < 3 || cleanTournament.length > 80) {
-      setErrorMsg('El nombre del torneo debe tener entre 3 y 80 caracteres.');
-      return;
-    }
-    if (!cleanStadium || cleanStadium.length < 3 || cleanStadium.length > 80) {
-      setErrorMsg('El estadio y sede deben tener entre 3 y 80 caracteres.');
-      return;
-    }
-    if (isNaN(alt) || alt < 0 || alt > 6000) {
-      setErrorMsg('La altitud debe ser un valor válido entre 0 y 6.000 metros sobre el nivel del mar.');
+      setErrorMsg('El club local y visitante no pueden ser el mismo equipo.');
       return;
     }
 
     setIsSaving(true);
 
-    const payload: Partial<StreamSettings> = {
+    const activeId = activeEventId || activeEvent?.id || 'partido-001';
+    const currentEvt = activeEvent || liveEvents.find((e) => e.id === activeId);
+
+    // Preservar exactamente las fuentes de streaming configuradas en la Pestaña 1
+    const preservedCloudflare = currentEvt?.cloudflare || streamSettings.cloudflare || { liveInputId: '', playbackUrl: streamSettings.customVideoUrl || '' };
+    const preservedYoutube = currentEvt?.youtube || streamSettings.youtube || { videoId: '' };
+    const preservedKick = currentEvt?.kick || streamSettings.kick || { channel: '' };
+    const preservedCustomVideoUrl = currentEvt?.customVideoUrl || streamSettings.customVideoUrl || '';
+    const preservedPrimaryProvider = currentEvt?.primaryProvider || streamSettings.primaryProvider || 'cloudflare';
+
+    const fullEventPayload: LiveEvent = {
+      id: activeId,
       title: cleanTitle,
-      tournamentName: cleanTournament,
-      homeClubId: cleanHomeId,
-      awayClubId: cleanAwayId,
-      stadiumName: cleanStadium,
-      altitudeMeters: Math.round(alt),
-      officialAnnouncement: officialAnnouncement.trim().slice(0, 200),
+      homeTeam: cleanHomeId,
+      awayTeam: cleanAwayId,
+      tournamentName: cleanTournament || 'Liga Tigo División Profesional',
+      stadiumName: cleanStadium || 'Estadio Departamental',
+      isLive: isLiveMatch,
+      homeScore: localHomeScore,
+      awayScore: localAwayScore,
+      matchMinute: localMinute,
+      period,
+      primaryProvider: preservedPrimaryProvider,
+      fallbackOrder: currentEvt?.fallbackOrder || streamSettings.fallbackOrder || ['cloudflare', 'youtube', 'kick'],
+      cloudflare: preservedCloudflare,
+      youtube: preservedYoutube,
+      kick: preservedKick,
+      customVideoUrl: preservedCustomVideoUrl,
+      activeStreamSource: currentEvt?.activeStreamSource || streamSettings.activeStreamSource || 'obs',
+      autoFailoverEnabled: currentEvt?.autoFailoverEnabled ?? streamSettings.autoFailoverEnabled ?? true,
+      isClockRunning,
+      clockUpdatedAt: Date.now(),
+      version: typeof currentEvt?.version === 'number' ? currentEvt.version : undefined,
+      force: true,
     };
 
     try {
-      // 1. Immediately persist to localStorage
-      try {
-        const raw = localStorage.getItem('golbolivia_stream_settings');
-        const existing = raw ? JSON.parse(raw) : {};
-        localStorage.setItem('golbolivia_stream_settings', JSON.stringify({ ...existing, ...payload }));
-      } catch {}
+      // 1. Guardar partido completo en Firebase y Servidor (apiClient.saveLiveEvent)
+      await apiClient.saveLiveEvent(fullEventPayload);
 
-      // 2. Update parent stream settings
-      onUpdateStreamSettings(payload);
+      // 2. Actualizar marcador oficial
+      await apiClient.updateScoreboard({
+        activeEventId: activeId,
+        homeScore: localHomeScore,
+        awayScore: localAwayScore,
+        matchMinute: localMinute,
+        period,
+        isClockRunning,
+      });
 
-      // 3. Update active live event if callback is provided
+      // 3. Sincronizar streamSettings para consistencia
+      const streamPayload: Partial<StreamSettings> = {
+        title: cleanTitle,
+        tournamentName: cleanTournament,
+        homeClubId: cleanHomeId,
+        awayClubId: cleanAwayId,
+        stadiumName: cleanStadium,
+        altitudeMeters: Math.round(alt),
+        officialAnnouncement: officialAnnouncement.trim().slice(0, 200),
+        homeScore: localHomeScore,
+        awayScore: localAwayScore,
+        matchMinute: localMinute,
+        period,
+        isLive: isLiveMatch,
+      };
+
+      onUpdateStreamSettings(streamPayload);
+      onUpdateScore?.(localHomeScore, localAwayScore);
+      onUpdateMinute?.(localMinute);
+
       if (onUpdateLiveEvent) {
-        onUpdateLiveEvent({
-          title: payload.title,
-          homeTeam: payload.homeClubId,
-          awayTeam: payload.awayClubId,
-          tournamentName: payload.tournamentName,
-          stadiumName: payload.stadiumName,
-        });
+        onUpdateLiveEvent(fullEventPayload);
       }
-
-      // 4. Update and persist active live event directly via apiClient
-      const evts = await apiClient.getLiveEvents();
-      const activeId = activeEventId || 'partido-001';
-      const targetEvt = evts.find((e) => e.id === activeId) || evts[0];
-      if (targetEvt) {
-        const updatedEvt = {
-          ...targetEvt,
-          title: payload.title || targetEvt.title,
-          homeTeam: payload.homeClubId || targetEvt.homeTeam,
-          awayTeam: payload.awayClubId || targetEvt.awayTeam,
-          tournamentName: payload.tournamentName || targetEvt.tournamentName,
-          stadiumName: payload.stadiumName || targetEvt.stadiumName,
-          version: typeof targetEvt.version === 'number' ? targetEvt.version : undefined,
-          force: true,
-        };
-        await apiClient.saveLiveEvent(updatedEvt);
-      }
-
-      // 5. Direct server call ensuring server and cloud persistence
-      await apiClient.syncStreamConfig({ ...payload, activeEventId: activeId, eventId: activeId });
 
       setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 5000);
     } catch (err: any) {
+      console.error('[MatchDetailsEditor] Error al guardar partido y marcador:', err);
       setErrorMsg(err.message || 'Error al guardar los datos en el servidor.');
     } finally {
       setIsSaving(false);
     }
   };
 
+  const homeClub = clubs[homeClubId] || { name: 'Local', badgeEmoji: '⚽', city: 'Bolivia', primaryColor: '#0284c7' };
+  const awayClub = clubs[awayClubId] || { name: 'Visitante', badgeEmoji: '⚽', city: 'Bolivia', primaryColor: '#eab308' };
+
   return (
-    <div className="bg-[#0b1222] border-2 border-slate-800 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-black font-extrabold shadow-lg shadow-emerald-950/50">
-            <Trophy className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-              <span>Editor de Datos de la Página Principal</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                TIEMPO REAL
-              </span>
+    <div className="space-y-6">
+      {/* 1. BARRA DE SELECCIÓN Y CREACIÓN DE PARTIDOS */}
+      <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-4 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80 mb-3">
+          <div className="flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-amber-400" />
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-display">
+              Gestor de Partidos Registrados
             </h3>
-            <p className="text-xs text-slate-400">
-              Modifica el título, clubes, estadio, torneo y comunicados que ven los espectadores en la web.
-            </p>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              {liveEvents.length} {liveEvents.length === 1 ? 'partido' : 'partidos'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCreateNewMatch}
+              disabled={isSaving}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-950/40 transition cursor-pointer active:scale-95 disabled:opacity-50"
+            >
+              <Plus className="w-3.5 h-3.5 text-black" />
+              <span>Crear Nuevo Partido</span>
+            </button>
+
+            {liveEvents.length > 1 && (
+              <button
+                type="button"
+                onClick={handleDeleteCurrentMatch}
+                disabled={isSaving}
+                className="px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 font-semibold text-xs flex items-center gap-1 transition cursor-pointer active:scale-95 disabled:opacity-50"
+                title="Eliminar el partido actual"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Eliminar</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Live sync indicator */}
-        <div className="flex items-center gap-2 bg-[#060a14] px-3 py-1.5 rounded-xl border border-slate-700/80">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[11px] text-slate-300 font-medium">Sincronización SSE Activa</span>
+        {/* Match Pills Selector */}
+        <div className="flex flex-wrap items-center gap-2">
+          {liveEvents.map((evt) => {
+            const isSelected = evt.id === (activeEventId || activeEvent?.id);
+            const h = clubs[evt.homeTeam]?.name || evt.homeTeam || 'Local';
+            const a = clubs[evt.awayTeam]?.name || evt.awayTeam || 'Visitante';
+            return (
+              <button
+                key={evt.id}
+                type="button"
+                onClick={() => onSelectEvent?.(evt.id)}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-sm ${
+                  isSelected
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-black shadow-amber-950/40 ring-2 ring-amber-300'
+                    : 'bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
+                }`}
+              >
+                <span className="flex items-center gap-1">
+                  <span>{h}</span>
+                  <span className="text-[11px] font-mono font-black opacity-80">
+                    {evt.homeScore ?? 0} - {evt.awayScore ?? 0}
+                  </span>
+                  <span>{a}</span>
+                </span>
+                {evt.isLive && (
+                  <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-black animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Row 1: Match Title & Auto-generator */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-white flex items-center gap-1.5">
-              <span>Título Oficial del Partido (Encabezado Principal de la Web):</span>
-            </label>
-            <button
-              type="button"
-              onClick={handleGenerateTitle}
-              className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-              title="Generar nombre automático según los equipos seleccionados"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Generar con equipos</span>
-            </button>
+      {/* 2. TABLERO DE MARCADOR OFICIAL EN DIRECTO (LIVE SCOREBOARD CARD) */}
+      <div className="bg-[#070b14] border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 shadow-2xl relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3.5 border-b border-slate-800/80 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+              <Activity className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-black text-white font-display uppercase tracking-wide">
+                  Tablero Oficial del Marcador
+                </h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  MARCADOR TV
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Edita los goles, el minuto y el reloj automático. Los hinchas ven los cambios al instante.
+              </p>
+            </div>
           </div>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
+
+          {/* Toggle Transmisión EN VIVO / FINALIZADA */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextLive = !isLiveMatch;
+              setIsLiveMatch(nextLive);
               setIsDirty(true);
             }}
-            placeholder="Ej: Bolívar vs The Strongest - Clásico Paceño N° 234"
-            className="w-full bg-[#060a14] border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white font-semibold placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
-            required
-          />
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer shadow-md ${
+              isLiveMatch
+                ? 'bg-emerald-500/20 border border-emerald-500 text-emerald-300'
+                : 'bg-slate-800 text-slate-400 border border-slate-700'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${isLiveMatch ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+            <span>{isLiveMatch ? '🔴 EN VIVO' : '⚪ FINALIZADO'}</span>
+          </button>
         </div>
 
-        {/* Row 2: Tournament Name & Quick Presets */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-white block">
-            Torneo / Campeonato / Competición:
-          </label>
-          <input
-            type="text"
-            value={tournamentName}
-            onChange={(e) => {
-              setTournamentName(e.target.value);
-              setIsDirty(true);
-            }}
-            placeholder="Ej: Liga Tigo División Profesional - Torneo Clausura"
-            className="w-full bg-[#060a14] border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder:text-slate-600 focus:outline-none"
-            required
-          />
-          {/* Quick presets */}
-          <div className="flex items-center gap-1.5 flex-wrap pt-1">
-            <span className="text-[10px] text-slate-500 font-medium">Sugeridos:</span>
-            {TOURNAMENT_PRESETS.map((preset) => (
+        {/* Marcador Visual e Inputs de Goles */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center my-2">
+          {/* Local Team Stepper */}
+          <div className="p-4 rounded-xl bg-[#0a0f1d] border border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="text-2xl">{homeClub.badgeEmoji || '⚽'}</span>
+              <div>
+                <span className="text-xs font-bold text-white block truncate max-w-[120px] sm:max-w-[150px]">
+                  {homeClub.name}
+                </span>
+                <span className="text-[10px] text-sky-400 font-semibold">Local</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
               <button
-                key={preset}
                 type="button"
                 onClick={() => {
-                  setTournamentName(preset);
+                  const val = Math.max(0, localHomeScore - 1);
+                  setLocalHomeScore(val);
                   setIsDirty(true);
+                  onUpdateScore?.(val, localAwayScore);
                 }}
-                className={`text-[10px] px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${
-                  tournamentName === preset
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
-                    : 'bg-slate-900/60 text-slate-400 hover:text-white border-slate-800'
+                disabled={localHomeScore <= 0}
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-750 disabled:opacity-30 text-white font-bold flex items-center justify-center cursor-pointer transition text-base"
+              >
+                -
+              </button>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={localHomeScore}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val)) {
+                    const clamped = Math.max(0, Math.min(50, val));
+                    setLocalHomeScore(clamped);
+                    setIsDirty(true);
+                    onUpdateScore?.(clamped, localAwayScore);
+                  }
+                }}
+                className="w-12 h-9 text-center bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg font-mono text-xl font-black text-white tabular-nums focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const val = Math.min(50, localHomeScore + 1);
+                  setLocalHomeScore(val);
+                  setIsDirty(true);
+                  onUpdateScore?.(val, localAwayScore);
+                }}
+                disabled={localHomeScore >= 50}
+                className="w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-black font-black flex items-center justify-center cursor-pointer transition text-base shadow-sm"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          {/* Central Minute & Clock Controls */}
+          <div className="p-4 rounded-xl bg-[#0a0f1d] border border-slate-800 flex flex-col items-center justify-center text-center space-y-2.5">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const val = Math.max(0, localMinute - 1);
+                  setLocalMinute(val);
+                  setIsDirty(true);
+                  onUpdateMinute?.(val);
+                }}
+                disabled={localMinute <= 0}
+                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-750 disabled:opacity-30 text-white font-bold flex items-center justify-center cursor-pointer text-xs"
+              >
+                -
+              </button>
+              <div className="relative flex items-center">
+                <input
+                  type="number"
+                  min={0}
+                  max={130}
+                  value={localMinute}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val)) {
+                      const clamped = Math.max(0, Math.min(130, val));
+                      setLocalMinute(clamped);
+                      setIsDirty(true);
+                      onUpdateMinute?.(clamped);
+                    }
+                  }}
+                  className="w-16 h-9 text-center bg-slate-900 border border-emerald-500/50 rounded-lg font-mono text-xl font-black text-emerald-400 tabular-nums focus:outline-none pr-3"
+                />
+                <span className="absolute right-1 text-xs font-mono text-emerald-500 pointer-events-none">&apos;</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const val = Math.min(130, localMinute + 1);
+                  setLocalMinute(val);
+                  setIsDirty(true);
+                  onUpdateMinute?.(val);
+                }}
+                disabled={localMinute >= 130}
+                className="w-7 h-7 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-black font-black flex items-center justify-center cursor-pointer text-xs"
+              >
+                +
+              </button>
+            </div>
+
+            {/* Auto Clock Switch Button */}
+            <button
+              type="button"
+              onClick={() => onToggleMatchClock?.(!isClockRunning)}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-95 ${
+                isClockRunning
+                  ? 'bg-amber-400 hover:bg-amber-300 text-black border border-amber-200'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-black border border-emerald-300'
+              }`}
+            >
+              {isClockRunning ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-black" />}
+              <span>{isClockRunning ? '⏸ Pausar Reloj Automático' : '▶ Iniciar Reloj Automático'}</span>
+            </button>
+          </div>
+
+          {/* Away Team Stepper */}
+          <div className="p-4 rounded-xl bg-[#0a0f1d] border border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="text-2xl">{awayClub.badgeEmoji || '⚽'}</span>
+              <div>
+                <span className="text-xs font-bold text-white block truncate max-w-[120px] sm:max-w-[150px]">
+                  {awayClub.name}
+                </span>
+                <span className="text-[10px] text-amber-400 font-semibold">Visitante</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const val = Math.max(0, localAwayScore - 1);
+                  setLocalAwayScore(val);
+                  setIsDirty(true);
+                  onUpdateScore?.(localHomeScore, val);
+                }}
+                disabled={localAwayScore <= 0}
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-750 disabled:opacity-30 text-white font-bold flex items-center justify-center cursor-pointer transition text-base"
+              >
+                -
+              </button>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={localAwayScore}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val)) {
+                    const clamped = Math.max(0, Math.min(50, val));
+                    setLocalAwayScore(clamped);
+                    setIsDirty(true);
+                    onUpdateScore?.(localHomeScore, clamped);
+                  }
+                }}
+                className="w-12 h-9 text-center bg-slate-900 border border-slate-700 focus:border-amber-500 rounded-lg font-mono text-xl font-black text-white tabular-nums focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const val = Math.min(50, localAwayScore + 1);
+                  setLocalAwayScore(val);
+                  setIsDirty(true);
+                  onUpdateScore?.(localHomeScore, val);
+                }}
+                disabled={localAwayScore >= 50}
+                className="w-8 h-8 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-30 text-black font-black flex items-center justify-center cursor-pointer transition text-base shadow-sm"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Periods & Quick Operator Actions */}
+        <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-semibold text-slate-400 mr-1">Período:</span>
+            {(['1T', 'Descanso', '2T', 'Finalizado'] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => handlePeriodChange(p)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  period === p
+                    ? 'bg-amber-500 text-black shadow-md'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                 }`}
               >
-                {preset.split(' - ')[0]}
+                {p}
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Row 3: Clubs Selection (Home vs Away) with Swap button */}
-        <div className="p-3.5 bg-slate-900/70 border border-slate-800 rounded-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-white flex items-center gap-1.5">
-              <Trophy className="w-3.5 h-3.5 text-amber-400" />
-              <span>Equipos en Disputa (Clubes Oficiales de Bolivia)</span>
-            </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
-              onClick={handleSwapClubs}
-              className="text-[11px] text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-750 px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
-              title="Invertir condición de Local y Visitante"
+              onClick={() => {
+                setLocalMinute(1);
+                handlePeriodChange('1T');
+                onUpdateMinute?.(1);
+                onToggleMatchClock?.(true);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-850 hover:bg-slate-800 text-[11px] font-mono text-slate-200 border border-slate-750 cursor-pointer"
             >
-              <ArrowLeftRight className="w-3 h-3 text-emerald-400" />
-              <span>Invertir Local / Visitante</span>
+              1&apos; Arrancar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLocalMinute(45);
+                handlePeriodChange('Descanso');
+                onUpdateMinute?.(45);
+                onToggleMatchClock?.(false);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-850 hover:bg-slate-800 text-[11px] font-mono text-amber-300 border border-slate-750 cursor-pointer"
+            >
+              45&apos; Entretiempo
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLocalMinute(46);
+                handlePeriodChange('2T');
+                onUpdateMinute?.(46);
+                onToggleMatchClock?.(true);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-850 hover:bg-slate-800 text-[11px] font-mono text-slate-200 border border-slate-750 cursor-pointer"
+            >
+              46&apos; Inicio 2T
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLocalMinute(90);
+                handlePeriodChange('Finalizado');
+                onUpdateMinute?.(90);
+                onToggleMatchClock?.(false);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-850 hover:bg-slate-800 text-[11px] font-mono text-red-300 border border-slate-750 cursor-pointer"
+            >
+              90&apos; Finalizar
             </button>
           </div>
+        </div>
+      </div>
 
-          {/* Partidos Rápidos Multiliga */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-[10px] text-slate-400 font-semibold mr-1">⚡ Partidos Rápidos:</span>
+      {/* 3. CONFIGURACIÓN DETALLADA DEL PARTIDO (DETAILS FORM) */}
+      <div className="bg-[#0b1222] border-2 border-slate-800 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white uppercase tracking-wide">
+                Información del Partido y Equipos
+              </h4>
+              <p className="text-[11px] text-slate-400">
+                Ajusta los clubes en cancha, estadio, torneo y título visible para los espectadores.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Derbies & International Matches */}
+        <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+              <span>⚡</span>
+              <span>Partidos Rápidos Preconfigurados:</span>
+            </span>
+            <span className="text-[10px] text-slate-500">Un clic para auto-llenar equipos y torneo</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
             {PRESET_INTERNATIONAL_MATCHES.map((preset) => (
               <button
                 key={preset.id}
@@ -351,166 +759,260 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                   setStadiumName(preset.stadium);
                   setIsDirty(true);
                 }}
-                className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold border border-slate-700 transition cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold border border-slate-700 transition cursor-pointer"
               >
                 {preset.label}
               </button>
             ))}
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Home Club */}
-            <div>
-              <label className="block text-[11px] font-semibold text-sky-400 mb-1">
-                Club Local (España / Inglaterra / Bolivia):
-              </label>
-              <select
-                value={homeClubId}
-                onChange={(e) => {
-                  setHomeClubId(e.target.value);
-                  setIsDirty(true);
-                }}
-                className="w-full bg-[#060a14] border border-sky-500/40 focus:border-sky-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
-              >
-                {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
-                  leagueClubs.length > 0 && (
-                    <optgroup key={leagueTitle} label={leagueTitle}>
-                      {leagueClubs.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.badgeEmoji} {c.name} ({c.city})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )
-                ))}
-              </select>
-            </div>
-
-            {/* Away Club */}
-            <div>
-              <label className="block text-[11px] font-semibold text-amber-400 mb-1">
-                Club Visitante (España / Inglaterra / Bolivia):
-              </label>
-              <select
-                value={awayClubId}
-                onChange={(e) => {
-                  setAwayClubId(e.target.value);
-                  setIsDirty(true);
-                }}
-                className="w-full bg-[#060a14] border border-amber-500/40 focus:border-amber-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
-              >
-                {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
-                  leagueClubs.length > 0 && (
-                    <optgroup key={leagueTitle} label={leagueTitle}>
-                      {leagueClubs.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.badgeEmoji} {c.name} ({c.city})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )
-                ))}
-              </select>
-            </div>
-          </div>
         </div>
 
-        {/* Row 4: Stadium, City & Altitude */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="sm:col-span-2 space-y-1">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Row 1: Title */}
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Estadio y Sede del Encuentro:</span>
+              <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>Título Oficial del Partido:</span>
               </label>
               <button
                 type="button"
-                onClick={handleAutofillStadiumFromHomeClub}
-                className="text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer underline"
+                onClick={handleGenerateTitle}
+                className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
               >
-                Usar estadio del local
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Generar con equipos</span>
               </button>
             </div>
             <input
               type="text"
-              value={stadiumName}
+              value={title}
               onChange={(e) => {
-                setStadiumName(e.target.value);
+                setTitle(e.target.value);
                 setIsDirty(true);
               }}
-              placeholder="Ej: Estadio Hernando Siles - La Paz"
-              className="w-full bg-[#060a14] border border-slate-750 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none"
+              placeholder="Ej: Bolívar vs The Strongest - Clásico Paceño"
+              className="w-full bg-[#060a14] border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white font-semibold placeholder:text-slate-600 focus:outline-none"
               required
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
-              <Mountain className="w-3.5 h-3.5 text-blue-400" />
-              <span>Altitud (m s.n.m.):</span>
+          {/* Row 2: Clubs Selection */}
+          <div className="p-3.5 bg-slate-900/70 border border-slate-800 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-amber-400" />
+                <span>Selección de Clubes</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleSwapClubs}
+                className="text-[11px] text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-750 px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <ArrowLeftRight className="w-3 h-3 text-emerald-400" />
+                <span>Invertir Local / Visitante</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Home Club */}
+              <div>
+                <label className="block text-[11px] font-semibold text-sky-400 mb-1">
+                  Club Local:
+                </label>
+                <select
+                  value={homeClubId}
+                  onChange={(e) => {
+                    setHomeClubId(e.target.value);
+                    setIsDirty(true);
+                  }}
+                  className="w-full bg-[#060a14] border border-sky-500/40 focus:border-sky-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
+                >
+                  {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
+                    leagueClubs.length > 0 && (
+                      <optgroup key={leagueTitle} label={leagueTitle}>
+                        {leagueClubs.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.badgeEmoji} {c.name} ({c.city})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )
+                  ))}
+                </select>
+              </div>
+
+              {/* Away Club */}
+              <div>
+                <label className="block text-[11px] font-semibold text-amber-400 mb-1">
+                  Club Visitante:
+                </label>
+                <select
+                  value={awayClubId}
+                  onChange={(e) => {
+                    setAwayClubId(e.target.value);
+                    setIsDirty(true);
+                  }}
+                  className="w-full bg-[#060a14] border border-amber-500/40 focus:border-amber-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
+                >
+                  {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
+                    leagueClubs.length > 0 && (
+                      <optgroup key={leagueTitle} label={leagueTitle}>
+                        {leagueClubs.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.badgeEmoji} {c.name} ({c.city})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3: Tournament */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-white block">
+              Torneo / Competencia:
             </label>
             <input
-              type="number"
-              value={altitudeMeters}
+              type="text"
+              value={tournamentName}
               onChange={(e) => {
-                setAltitudeMeters(Number(e.target.value));
+                setTournamentName(e.target.value);
                 setIsDirty(true);
               }}
-              placeholder="3637"
-              className="w-full bg-[#060a14] border border-slate-750 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
+              placeholder="Ej: Liga Tigo División Profesional - Torneo Clausura"
+              className="w-full bg-[#060a14] border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder:text-slate-600 focus:outline-none"
               required
             />
+            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+              <span className="text-[10px] text-slate-500 font-medium">Sugeridos:</span>
+              {TOURNAMENT_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => {
+                    setTournamentName(preset);
+                    setIsDirty(true);
+                  }}
+                  className={`text-[10px] px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${
+                    tournamentName === preset
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
+                      : 'bg-slate-900/60 text-slate-400 hover:text-white border-slate-800'
+                  }`}
+                >
+                  {preset.split(' - ')[0]}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Row 5: Official Announcement Banner */}
-        <div className="space-y-1">
-          <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
-            <FileText className="w-3.5 h-3.5 text-amber-400" />
-            <span>Comunicado Oficial al Hincha (Aparece como banner superior en vivo):</span>
-          </label>
-          <input
-            type="text"
-            value={officialAnnouncement}
-            onChange={(e) => {
-              setOfficialAnnouncement(e.target.value);
-              setIsDirty(true);
-            }}
-            placeholder="Ej: Transmisión Oficial en HD para toda Bolivia por GolBolivia TV."
-            className="w-full bg-[#060a14] border border-slate-750 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none"
-          />
-        </div>
+          {/* Row 4: Stadium & Altitude */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2 space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Estadio y Sede del Encuentro:</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAutofillStadiumFromHomeClub}
+                  className="text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer underline"
+                >
+                  Usar estadio del local
+                </button>
+              </div>
+              <input
+                type="text"
+                value={stadiumName}
+                onChange={(e) => {
+                  setStadiumName(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder="Ej: Estadio Hernando Siles - La Paz"
+                className="w-full bg-[#060a14] border border-slate-750 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none"
+                required
+              />
+            </div>
 
-        {/* Submit Button & Feedback */}
-        <div className="pt-2">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-500 hover:from-emerald-400 hover:to-teal-400 text-black font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/80 transition-all cursor-pointer active:scale-98"
-          >
-            <Save className="w-4 h-4 text-black" />
-            <span>
-              {isSaving ? 'GUARDANDO EN SERVIDOR...' : 'GUARDAR Y APLICAR CAMBIOS EN LA PÁGINA PRINCIPAL'}
-            </span>
-          </button>
-        </div>
-
-        {saveSuccess && (
-          <div className="p-3 bg-emerald-950/90 border border-emerald-500 rounded-xl text-xs text-emerald-200 flex items-center gap-2 shadow-lg animate-fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>
-              <strong>¡Datos guardados con éxito en el servidor!</strong> El título, torneo, clubes, estadio y altitud se han actualizado en tiempo real para todos los hinchas conectados.
-            </span>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                <Mountain className="w-3.5 h-3.5 text-blue-400" />
+                <span>Altitud (m s.n.m.):</span>
+              </label>
+              <input
+                type="number"
+                value={altitudeMeters}
+                onChange={(e) => {
+                  setAltitudeMeters(Number(e.target.value));
+                  setIsDirty(true);
+                }}
+                placeholder="3637"
+                className="w-full bg-[#060a14] border border-slate-750 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
+                required
+              />
+            </div>
           </div>
-        )}
 
-        {errorMsg && (
-          <div className="p-3 bg-red-950/90 border border-red-500 rounded-xl text-xs text-red-200 flex items-center gap-2 shadow-lg animate-fade-in">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-            <span>{errorMsg}</span>
+          {/* Row 5: Official Announcement */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+              <FileText className="w-3.5 h-3.5 text-amber-400" />
+              <span>Comunicado Oficial al Hincha:</span>
+            </label>
+            <input
+              type="text"
+              value={officialAnnouncement}
+              onChange={(e) => {
+                setOfficialAnnouncement(e.target.value);
+                setIsDirty(true);
+              }}
+              placeholder="Ej: Transmisión Oficial en HD para toda Bolivia por GolBolivia TV."
+              className="w-full bg-[#060a14] border border-slate-750 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none"
+            />
           </div>
-        )}
-      </form>
+
+          {/* Submit Action Button */}
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-500 hover:from-emerald-400 hover:to-teal-400 text-black font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/80 transition-all cursor-pointer active:scale-98 disabled:opacity-50"
+            >
+              {isSaving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                  <span>GUARDANDO PARTIDO Y MARCADOR EN FIREBASE...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 text-black" />
+                  <span>GUARDAR PARTIDO Y MARCADOR</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Feedback Banners */}
+          {saveSuccess && (
+            <div className="p-3 bg-emerald-950/90 border border-emerald-500 rounded-xl text-xs text-emerald-200 flex items-center gap-2 shadow-lg animate-fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                <strong>¡Partido y Marcador guardados con éxito!</strong> Los datos han sido registrados en Google Firebase Firestore y sincronizados en tiempo real sin alterar las señales de transmisión.
+              </span>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="p-3 bg-red-950/90 border border-red-500 rounded-xl text-xs text-red-200 flex items-center gap-2 shadow-lg animate-fade-in">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+        </form>
+      </div>
     </div>
   );
 };
