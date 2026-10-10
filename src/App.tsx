@@ -133,7 +133,7 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return DEFAULT_LIVE_EVENTS;
+    return [DEFAULT_LIVE_EVENTS[0]];
   });
   const [activeEventId, setActiveEventId] = useState<string>('partido-001');
   const activeEventIdRef = useRef(activeEventId);
@@ -282,7 +282,7 @@ export default function App() {
     const unsubscribeEvents = apiClient.subscribeLiveEvents((type, data) => {
       if (type === 'INITIAL_STATE') {
         if (Array.isArray(data.liveEvents) && data.liveEvents.length > 0) {
-          setLiveEvents((prev) => mergeConfirmedEvents(prev, data.liveEvents));
+          setLiveEvents((prev) => (data.liveEvents.length < prev.length ? data.liveEvents : mergeConfirmedEvents(prev, data.liveEvents)));
         }
         if (data.events) setEvents(data.events);
         if (data.stream?.donationQr) {
@@ -334,10 +334,21 @@ export default function App() {
             };
           })
         );
-      } else if (type === 'LIVE_EVENTS_UPDATED') {
-        if (Array.isArray(data) && data.length > 0) {
+      } else if (type === 'LIVE_EVENT_DELETED') {
+        const deletedId = (data as any)?.id;
+        if (deletedId) {
           setLiveEvents((prev) => {
-            const merged = mergeConfirmedEvents(prev, data);
+            const filtered = prev.filter((e) => e.id !== deletedId);
+            try {
+              localStorage.setItem('golbolivia_live_events', JSON.stringify(filtered));
+            } catch {}
+            return filtered;
+          });
+        }
+      } else if (type === 'LIVE_EVENTS_UPDATED') {
+        if (Array.isArray(data)) {
+          setLiveEvents((prev) => {
+            const merged = (data.length < prev.length) ? data : mergeConfirmedEvents(prev, data);
             try {
               localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
             } catch {}
@@ -355,9 +366,9 @@ export default function App() {
 
     // 4. Real-time Firebase Firestore Push Listeners: Listen to liveEvents collection (Fuente única de datos reales por partido)
     const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((fbEvents) => {
-      if (fbEvents && fbEvents.length > 0) {
+      if (fbEvents && Array.isArray(fbEvents) && fbEvents.length > 0) {
         setLiveEvents((prev) => {
-          const merged = mergeConfirmedEvents(prev, fbEvents);
+          const merged = fbEvents.length < prev.length ? fbEvents : mergeConfirmedEvents(prev, fbEvents);
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
           } catch {}
@@ -366,10 +377,16 @@ export default function App() {
       }
     });
 
-    // Problema 1: Usar mergeConfirmedEvents en la carga inicial para no sobrescribir datos recientes
+    // Carga inicial sincronizada desde el backend
     apiClient.getLiveEvents().then((evts) => {
-      if (evts && evts.length > 0) {
-        setLiveEvents((prev) => mergeConfirmedEvents(prev, evts));
+      if (evts && Array.isArray(evts) && evts.length > 0) {
+        setLiveEvents((prev) => {
+          const merged = evts.length < prev.length ? evts : mergeConfirmedEvents(prev, evts);
+          try {
+            localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
       }
     }).catch(() => {});
 
@@ -756,6 +773,52 @@ export default function App() {
     });
   };
 
+  const handleDeleteLiveEvent = async (id: string) => {
+    try {
+      await apiClient.deleteLiveEvent(id);
+    } catch (err: any) {
+      console.warn('[App] Advertencia al eliminar partido en servidor/Firebase:', err.message || err);
+    }
+
+    setLiveEvents((prev) => {
+      const remaining = prev.filter((e) => e.id !== id);
+      try {
+        localStorage.setItem('golbolivia_live_events', JSON.stringify(remaining));
+      } catch {}
+      return remaining;
+    });
+
+    if (activeEventId === id) {
+      setLiveEvents((prev) => {
+        const next = prev.find((e) => e.id !== id) || prev[0];
+        if (next) {
+          setActiveEventId(next.id);
+          setStreamSettings((s) => ({
+            ...s,
+            title: next.title,
+            homeClubId: next.homeTeam,
+            awayClubId: next.awayTeam,
+            tournamentName: next.tournamentName || s.tournamentName || '',
+            stadiumName: next.stadiumName || s.stadiumName || '',
+            period: (next.period as any) || s.period || '1T',
+            homeScore: next.homeScore ?? s.homeScore,
+            awayScore: next.awayScore ?? s.awayScore,
+          }));
+        }
+        return prev;
+      });
+    }
+
+    setActiveToast({
+      id: `match-del-${Date.now()}`,
+      title: '🗑️ Partido Eliminado',
+      body: 'El partido ha sido eliminado exitosamente del panel.',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'exclusive',
+      read: false,
+    });
+  };
+
   // Check if iframe real-time preview mode was requested
   const isPreviewOnly = typeof window !== 'undefined' && window.location.search.includes('preview=1');
   if (isPreviewOnly) {
@@ -950,6 +1013,7 @@ export default function App() {
         onUpdatePoll={handleUpdatePoll}
         onClearChat={handleClearChat}
         onClearEvents={handleClearEvents}
+        onDeleteLiveEvent={handleDeleteLiveEvent}
         events={events}
         onReturnToPublic={handleReturnToPublic}
         presenceStats={presence}

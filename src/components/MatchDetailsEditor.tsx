@@ -47,6 +47,7 @@ export interface MatchDetailsEditorProps {
   onUpdatePeriod?: (period: MatchPeriod) => void;
   onClearEvents?: () => void;
   onClearChat?: () => void;
+  onDeleteEvent?: (eventId: string) => void;
   events?: MatchEvent[];
 }
 
@@ -67,6 +68,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   onUpdateLiveEvent,
   liveEvents = [],
   onSelectEvent,
+  onDeleteEvent,
   homeScore = 0,
   awayScore = 0,
   matchMinute = 0,
@@ -277,17 +279,22 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     }
   };
 
-  const handleDeleteCurrentMatch = async () => {
+  const handleDeleteCurrentMatch = async (targetId?: string) => {
     if (liveEvents.length <= 1) {
-      alert('Debe existir al menos un partido registrado en el sistema.');
+      alert('Debe existir al menos un partido registrado en el sistema. Puedes editar el partido actual en el formulario si deseas cambiarlo.');
       return;
     }
-    const currentId = activeEventId || activeEvent?.id || 'partido-001';
-    if (!confirm(`¿Estás seguro de eliminar el partido "${title}"?`)) return;
+    const currentId = targetId || activeEventId || activeEvent?.id || 'partido-001';
+    const targetEvt = liveEvents.find((e) => e.id === currentId);
+    const targetTitle = targetEvt?.title || title || 'este partido';
+
+    if (!confirm(`¿Estás seguro de eliminar el partido "${targetTitle}"?`)) return;
 
     setIsSaving(true);
+    setErrorMsg(null);
     try {
       await apiClient.deleteLiveEvent(currentId);
+      onDeleteEvent?.(currentId);
       const remaining = liveEvents.filter((e) => e.id !== currentId);
       if (remaining.length > 0) {
         onSelectEvent?.(remaining[0].id);
@@ -295,6 +302,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: any) {
+      console.error('[MatchDetailsEditor] Error al eliminar partido:', err);
       setErrorMsg('Error al eliminar partido: ' + (err.message || 'No autorizado'));
     } finally {
       setIsSaving(false);
@@ -449,13 +457,13 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             {liveEvents.length > 1 && (
               <button
                 type="button"
-                onClick={handleDeleteCurrentMatch}
+                onClick={() => handleDeleteCurrentMatch()}
                 disabled={isSaving}
-                className="px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 font-semibold text-xs flex items-center gap-1 transition cursor-pointer active:scale-95 disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95 disabled:opacity-50"
                 title="Eliminar el partido actual"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Eliminar</span>
+                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                <span>Eliminar Partido Actual</span>
               </button>
             )}
           </div>
@@ -468,27 +476,49 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             const h = clubs[evt.homeTeam]?.name || evt.homeTeam || 'Local';
             const a = clubs[evt.awayTeam]?.name || evt.awayTeam || 'Visitante';
             return (
-              <button
+              <div
                 key={evt.id}
-                type="button"
-                onClick={() => onSelectEvent?.(evt.id)}
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-sm ${
+                className={`flex items-center rounded-xl transition-all shadow-sm ${
                   isSelected
                     ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-black shadow-amber-950/40 ring-2 ring-amber-300'
                     : 'bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
                 }`}
               >
-                <span className="flex items-center gap-1">
-                  <span>{h}</span>
-                  <span className="text-[11px] font-mono font-black opacity-80">
-                    {evt.homeScore ?? 0} - {evt.awayScore ?? 0}
+                <button
+                  type="button"
+                  onClick={() => onSelectEvent?.(evt.id)}
+                  className="px-3 py-2 text-xs font-bold cursor-pointer flex items-center gap-2"
+                >
+                  <span className="flex items-center gap-1">
+                    <span>{h}</span>
+                    <span className="text-[11px] font-mono font-black opacity-80">
+                      {evt.homeScore ?? 0} - {evt.awayScore ?? 0}
+                    </span>
+                    <span>{a}</span>
                   </span>
-                  <span>{a}</span>
-                </span>
-                {evt.isLive && (
-                  <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-black animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
+                  {evt.isLive && (
+                    <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-black animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
+                  )}
+                </button>
+
+                {liveEvents.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteCurrentMatch(evt.id);
+                    }}
+                    className={`pr-2.5 pl-1 py-2 text-xs transition cursor-pointer flex items-center ${
+                      isSelected
+                        ? 'text-black/60 hover:text-red-700'
+                        : 'text-slate-500 hover:text-red-400'
+                    }`}
+                    title={`Eliminar partido ${h} vs ${a}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>

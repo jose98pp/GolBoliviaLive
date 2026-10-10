@@ -1743,19 +1743,34 @@ app2.post(
 app2.delete(
   ["/api/live-events/:id", "/live-events/:id"],
   authenticate,
-  requireRoles(["ADMIN", "TRANSMISOR"]),
+  requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
   async (req, res) => {
     const id = req.params.id;
     try {
       await deleteLiveEventFromFirebase(id);
     } catch (fbErr) {
-      res.status(500).json({ error: fbErr.message || "Error al eliminar partido en Firestore" });
-      return;
+      console.warn(`[GolBolivia Server] Advertencia al eliminar partido ${id} en Firestore:`, fbErr.message || fbErr);
     }
     state.liveEvents = state.liveEvents.filter((e) => e.id !== id);
+    if (state.liveEvents.length > 0) {
+      const activeMatchExists = state.liveEvents.some((e) => e.title === state.streamSettings.title || e.id === id);
+      if (activeMatchExists) {
+        const nextEvt = state.liveEvents[0];
+        state.streamSettings.title = nextEvt.title;
+        state.streamSettings.homeClubId = nextEvt.homeTeam;
+        state.streamSettings.awayClubId = nextEvt.awayTeam;
+        if (nextEvt.tournamentName) state.streamSettings.tournamentName = nextEvt.tournamentName;
+        if (nextEvt.stadiumName) state.streamSettings.stadiumName = nextEvt.stadiumName;
+        if (nextEvt.period) state.streamSettings.period = nextEvt.period;
+        if (nextEvt.homeScore !== void 0) state.scoreboard.homeScore = nextEvt.homeScore;
+        if (nextEvt.awayScore !== void 0) state.scoreboard.awayScore = nextEvt.awayScore;
+        if (nextEvt.matchMinute !== void 0) state.scoreboard.matchMinute = nextEvt.matchMinute;
+      }
+    }
     persistState();
+    broadcastSseEvent("LIVE_EVENT_DELETED", { id });
     broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
-    res.json({ success: true, message: "Partido eliminado.", events: state.liveEvents });
+    res.json({ success: true, message: "Partido eliminado.", events: state.liveEvents, deletedId: id });
   }
 );
 app2.get(["/api/scoreboard", "/scoreboard"], (_req, res) => {

@@ -67,6 +67,7 @@ interface SecretLoginPageProps {
   onUpdatePoll: (poll: LivePoll) => void;
   onClearChat: () => void;
   onClearEvents?: () => void;
+  onDeleteLiveEvent?: (eventId: string) => void;
   events?: MatchEvent[];
   onReturnToPublic: () => void;
   presenceStats?: RealPresenceStats;
@@ -93,6 +94,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   onUpdatePoll,
   onClearChat,
   onClearEvents,
+  onDeleteLiveEvent,
   events = [],
   onReturnToPublic,
   presenceStats,
@@ -1923,6 +1925,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                 onUpdateLiveEvent={onUpdateLiveEvent}
                 liveEvents={liveEvents}
                 onSelectEvent={onSelectEvent}
+                onDeleteEvent={onDeleteLiveEvent}
                 homeScore={homeScore}
                 awayScore={awayScore}
                 matchMinute={matchMinute}
@@ -1931,6 +1934,9 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                 isClockRunning={isClockRunning}
                 onToggleMatchClock={onToggleMatchClock}
                 onUpdatePeriod={onUpdatePeriod}
+                onClearEvents={onClearEvents}
+                onClearChat={onClearChat}
+                events={events}
               />
             </div>
           ) : activeTab === 'teams' ? (

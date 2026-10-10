@@ -820,7 +820,7 @@ class GolBoliviaApiClient {
       const res = await fetch('/api/live-events');
       if (res.ok) {
         const data = await res.json();
-        if (data && Array.isArray(data.events) && data.events.length > 0) {
+        if (data && Array.isArray(data.events)) {
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(data.events));
           } catch {}

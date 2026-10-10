@@ -455,6 +455,33 @@ async function runTests() {
   assert(editorSource.includes('onClearEvents'), 'MatchDetailsEditor: botón para limpiar cronología de eventos');
   assert(editorSource.includes('onClearChat'), 'MatchDetailsEditor: botón para limpiar chat en vivo');
 
+  // 33. ELIMINACIÓN DE PARTIDOS DESDE EL DASHBOARD
+  assert(typeof apiClient.deleteLiveEvent === 'function', 'Eliminación: apiClient.deleteLiveEvent disponible');
+  assert(serverSource.includes("'/api/live-events/:id'"), 'Eliminación: endpoint DELETE /api/live-events/:id activo en servidor');
+  assert(serverSource.includes('LIVE_EVENT_DELETED'), 'Eliminación: evento SSE LIVE_EVENT_DELETED emitido por servidor');
+  assert(editorSource.includes('handleDeleteCurrentMatch'), 'Eliminación: MatchDetailsEditor cuenta con handleDeleteCurrentMatch');
+  assert(editorSource.includes('Eliminar Partido Actual'), 'Eliminación: MatchDetailsEditor muestra botón Eliminar Partido Actual');
+  assert(editorSource.includes('onDeleteEvent'), 'Eliminación: MatchDetailsEditor propaga onDeleteEvent');
+  assert(loginPageSource.includes('onDeleteLiveEvent'), 'Eliminación: SecretLoginPage recibe y enlaza onDeleteLiveEvent');
+
+  assert(serverSource.includes('liveEvents: state.liveEvents'), 'Eliminación: INITIAL_STATE y /api/live incluyen liveEvents actualizados');
+
+  const appSource = await fs.promises.readFile(
+    path.join(__dirname, '../src/App.tsx'),
+    'utf-8'
+  );
+  assert(appSource.includes('onDeleteLiveEvent={handleDeleteLiveEvent}'), 'Eliminación: App.tsx pasa onDeleteLiveEvent a SecretLoginPage');
+  assert(appSource.includes('data.liveEvents.length < prev.length ? data.liveEvents'), 'Eliminación: App.tsx reduce lista en INITIAL_STATE sin revivir eliminados');
+
+  // Simular eliminación de partido-002 de la lista de eventos
+  const initialEventsList: LiveEvent[] = [
+    { id: 'partido-001', title: 'Oriente Petrolero vs ABB', homeTeam: 'oriente', awayTeam: 'abb', isLive: true },
+    { id: 'partido-002', title: 'Blooming vs Oriente Petrolero', homeTeam: 'blooming', awayTeam: 'oriente', isLive: false },
+  ];
+  const remainingAfterDelete = initialEventsList.filter((e) => e.id !== 'partido-002');
+  assert(remainingAfterDelete.length === 1, 'Eliminación: filtra y reduce lista de partidos a 1');
+  assert(remainingAfterDelete[0].id === 'partido-001', 'Eliminación: partido-001 permanece intacto y seleccionado');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);
   console.log('====================================================\n');

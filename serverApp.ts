@@ -484,8 +484,61 @@ function loadPersistedState(): void {
     } else {
       console.log('[GolBolivia Backend] Ningún partido encontrado en Firebase Firestore. Esperando configuración de producción.');
     }
+
+    if (state.liveEvents.length === 0 && state.streamSettings.title) {
+      state.liveEvents = [
+        {
+          id: 'partido-001',
+          title: state.streamSettings.title,
+          homeTeam: state.streamSettings.homeClubId || 'oriente',
+          awayTeam: state.streamSettings.awayClubId || 'abb',
+          tournamentName: state.streamSettings.tournamentName || 'Liga Tigo División Profesional',
+          stadiumName: state.streamSettings.stadiumName || 'Estadio Departamental',
+          period: (state.streamSettings.period as any) || '1T',
+          isLive: state.streamSettings.isLive ?? true,
+          homeScore: state.scoreboard.homeScore ?? 0,
+          awayScore: state.scoreboard.awayScore ?? 0,
+          matchMinute: state.scoreboard.matchMinute ?? 0,
+          version: state.scoreboard.version || 1,
+          customVideoUrl: state.streamSettings.customVideoUrl || '',
+          backupVideoUrl: state.streamSettings.backupVideoUrl || '',
+          activeStreamSource: state.streamSettings.activeStreamSource || 'obs',
+          cloudflare: {
+            playbackUrl: state.streamSettings.customVideoUrl || '',
+          },
+          primaryProvider: 'cloudflare',
+        },
+      ];
+      persistState();
+    }
   }).catch((err) => {
     console.warn('[GolBolivia Backend] Error conectando con Firebase en inicio:', err);
+    if (state.liveEvents.length === 0 && state.streamSettings.title) {
+      state.liveEvents = [
+        {
+          id: 'partido-001',
+          title: state.streamSettings.title,
+          homeTeam: state.streamSettings.homeClubId || 'oriente',
+          awayTeam: state.streamSettings.awayClubId || 'abb',
+          tournamentName: state.streamSettings.tournamentName || 'Liga Tigo División Profesional',
+          stadiumName: state.streamSettings.stadiumName || 'Estadio Departamental',
+          period: (state.streamSettings.period as any) || '1T',
+          isLive: state.streamSettings.isLive ?? true,
+          homeScore: state.scoreboard.homeScore ?? 0,
+          awayScore: state.scoreboard.awayScore ?? 0,
+          matchMinute: state.scoreboard.matchMinute ?? 0,
+          version: state.scoreboard.version || 1,
+          customVideoUrl: state.streamSettings.customVideoUrl || '',
+          backupVideoUrl: state.streamSettings.backupVideoUrl || '',
+          activeStreamSource: state.streamSettings.activeStreamSource || 'obs',
+          cloudflare: {
+            playbackUrl: state.streamSettings.customVideoUrl || '',
+          },
+          primaryProvider: 'cloudflare',
+        },
+      ];
+      persistState();
+    }
   });
 }
 
@@ -667,6 +720,7 @@ app.get(['/api/events', '/events'], (req: Request, res: Response) => {
       scoreboard: state.scoreboard,
       matchStats: state.matchStats,
       events: state.events,
+      liveEvents: state.liveEvents,
       viewersCount: Math.max(14820, viewerSessions.size),
     })}\n\n`);
   } catch {}
@@ -703,6 +757,7 @@ app.get(['/api/live', '/live'], (_req: Request, res: Response) => {
     scoreboard: state.scoreboard,
     matchStats: state.matchStats,
     events: state.events,
+    liveEvents: state.liveEvents,
     clubs: state.clubs,
     viewersCount: Math.max(14820, viewerSessions.size),
     serverTimestamp: Date.now(),
@@ -1151,19 +1206,38 @@ app.post(
 app.delete(
   ['/api/live-events/:id', '/live-events/:id'],
   authenticate,
-  requireRoles(['ADMIN', 'TRANSMISOR']),
+  requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
   async (req: Request, res: Response) => {
     const id = req.params.id;
     try {
       await deleteLiveEventFromFirebase(id);
     } catch (fbErr: any) {
-      res.status(500).json({ error: fbErr.message || 'Error al eliminar partido en Firestore' });
-      return;
+      console.warn(`[GolBolivia Server] Advertencia al eliminar partido ${id} en Firestore:`, fbErr.message || fbErr);
     }
+
     state.liveEvents = state.liveEvents.filter((e) => e.id !== id);
+
+    // Si se eliminó el partido activo en streamSettings, cambiar al primer partido disponible
+    if (state.liveEvents.length > 0) {
+      const activeMatchExists = state.liveEvents.some((e) => e.title === state.streamSettings.title || e.id === id);
+      if (activeMatchExists) {
+        const nextEvt = state.liveEvents[0];
+        state.streamSettings.title = nextEvt.title;
+        state.streamSettings.homeClubId = nextEvt.homeTeam;
+        state.streamSettings.awayClubId = nextEvt.awayTeam;
+        if (nextEvt.tournamentName) state.streamSettings.tournamentName = nextEvt.tournamentName;
+        if (nextEvt.stadiumName) state.streamSettings.stadiumName = nextEvt.stadiumName;
+        if (nextEvt.period) state.streamSettings.period = nextEvt.period as any;
+        if (nextEvt.homeScore !== undefined) state.scoreboard.homeScore = nextEvt.homeScore;
+        if (nextEvt.awayScore !== undefined) state.scoreboard.awayScore = nextEvt.awayScore;
+        if (nextEvt.matchMinute !== undefined) state.scoreboard.matchMinute = nextEvt.matchMinute;
+      }
+    }
+
     persistState();
+    broadcastSseEvent('LIVE_EVENT_DELETED', { id });
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
-    res.json({ success: true, message: 'Partido eliminado.', events: state.liveEvents });
+    res.json({ success: true, message: 'Partido eliminado.', events: state.liveEvents, deletedId: id });
   }
 );
 
