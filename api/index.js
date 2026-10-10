@@ -1910,6 +1910,16 @@ app2.delete(
     res.json({ success: true, message: `Evento ${id} eliminado correctamente.` });
   }
 );
+app2.post(
+  ["/api/matches/events/clear", "/matches/events/clear"],
+  authenticate,
+  requireRoles(["ADMIN", "EDITOR"]),
+  (_req, res) => {
+    state.events = [];
+    broadcastSseEvent("MATCH_EVENTS_CLEARED", {});
+    res.json({ success: true, message: "Cronolog\xEDa de eventos limpiada correctamente." });
+  }
+);
 app2.get(["/api/chat", "/chat"], (_req, res) => {
   res.json({ messages: state.chatMessages });
 });
@@ -1946,6 +1956,16 @@ app2.delete(
     state.chatMessages = state.chatMessages.filter((m) => m.id !== id);
     broadcastSseEvent("CHAT_MESSAGE_DELETED", { id });
     res.json({ success: true });
+  }
+);
+app2.post(
+  ["/api/chat/clear", "/chat/clear"],
+  authenticate,
+  requireRoles(["ADMIN", "MODERADOR"]),
+  (_req, res) => {
+    state.chatMessages = [];
+    broadcastSseEvent("CHAT_CLEARED", {});
+    res.json({ success: true, message: "Chat en vivo limpiado correctamente." });
   }
 );
 app2.get(["/api/viewers", "/viewers"], (_req, res) => {
@@ -2016,6 +2036,41 @@ app2.delete(
     res.json({ success: true, message: `Equipo ${id} eliminado correctamente.`, clubs: state.clubs });
   }
 );
+app2.get(["/api/football-api/matches", "/football-api/matches"], async (req, res) => {
+  const league = String(req.query.league || "bol.1").trim();
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/scoreboard`;
+  try {
+    const apiRes = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+    });
+    if (!apiRes.ok) {
+      res.status(apiRes.status).json({ error: "Error al consultar API deportiva gratuita de ESPN" });
+      return;
+    }
+    const data = await apiRes.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: "Error de red al consultar API deportiva: " + (err.message || "desconocido") });
+  }
+});
+app2.get(["/api/football-api/match/:id", "/football-api/match/:id"], async (req, res) => {
+  const eventId = String(req.params.id).trim();
+  const league = String(req.query.league || "bol.1").trim();
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/summary?event=${encodeURIComponent(eventId)}`;
+  try {
+    const apiRes = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+    });
+    if (!apiRes.ok) {
+      res.status(apiRes.status).json({ error: "Error al consultar detalles de partido en ESPN" });
+      return;
+    }
+    const data = await apiRes.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: "Error de red al consultar detalles del partido: " + (err.message || "desconocido") });
+  }
+});
 if (!process.env.VERCEL) {
   setInterval(() => {
     let anyUpdated = false;

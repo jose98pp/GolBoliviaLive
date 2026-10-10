@@ -420,6 +420,41 @@ async function runTests() {
   // Confirm tab 1 focuses on stream providers & connections without overlapping live events manager
   assert(loginPageSource.includes('Proveedor Principal y Canales de Transmisión'), 'Pestañas: Pestaña 1 dedicada a Proveedor Principal y Canales');
 
+  // 29. LIMPIEZA DE EVENTOS Y CHAT
+  assert(typeof apiClient.clearAllMatchEvents === 'function', 'Limpieza: apiClient.clearAllMatchEvents disponible');
+  assert(typeof apiClient.clearAllChatMessages === 'function', 'Limpieza: apiClient.clearAllChatMessages disponible');
+  assert(serverSource.includes("'/api/matches/events/clear'"), 'Limpieza: endpoint POST /api/matches/events/clear registrado en serverApp');
+  assert(serverSource.includes("'/api/chat/clear'"), 'Limpieza: endpoint POST /api/chat/clear registrado en serverApp');
+
+  const liveChatSource = await fs.promises.readFile(
+    path.join(__dirname, '../src/components/LiveChat.tsx'),
+    'utf-8'
+  );
+  assert(liveChatSource.includes("CLEAR_CHAT"), 'Limpieza: LiveChat escucha evento CLEAR_CHAT para vaciar mensajes');
+
+  // 30. API GRATUITA DE FÚTBOL (ESPN - Liga Boliviana y Torneos)
+  const { espnFootballApi } = await import('../src/services/espnFootballApi');
+  assert(typeof espnFootballApi.getMatches === 'function', 'API Fútbol Gratuita: espnFootballApi.getMatches disponible');
+  assert(typeof espnFootballApi.getMatchDetails === 'function', 'API Fútbol Gratuita: espnFootballApi.getMatchDetails disponible');
+  assert(typeof espnFootballApi.findMatchByTeams === 'function', 'API Fútbol Gratuita: espnFootballApi.findMatchByTeams disponible');
+  assert(serverSource.includes("'/api/football-api/matches'"), 'API Fútbol Gratuita: Proxy GET /api/football-api/matches activo');
+  assert(serverSource.includes("'/api/football-api/match/:id'"), 'API Fútbol Gratuita: Proxy GET /api/football-api/match/:id activo');
+
+  // 31. COMPONENTE MATCHSTATS CON DATOS DE API GRATUITA
+  const matchStatsSource = await fs.promises.readFile(
+    path.join(__dirname, '../src/components/MatchStats.tsx'),
+    'utf-8'
+  );
+  assert(matchStatsSource.includes('findMatchByTeams'), 'MatchStats: consulta automática a API de fútbol por nombres de equipos');
+  assert(matchStatsSource.includes('showSubstitutes'), 'MatchStats: conmutador para ver titulares o suplentes de cada equipo');
+  assert(matchStatsSource.includes('Sin eventos registrados'), 'MatchStats: mensaje elegante cuando los eventos han sido limpiados');
+  assert(matchStatsSource.includes('Datos Oficiales API ESPN'), 'MatchStats: badge indicador de datos oficiales en tiempo real');
+
+  // 32. PANEL DE EDICIÓN CON BUSCADOR DE PARTIDOS DE LA API
+  assert(editorSource.includes('API Gratuita de Partidos, Alineaciones & Estadísticas'), 'MatchDetailsEditor: buscador integrado de partidos en API pública');
+  assert(editorSource.includes('onClearEvents'), 'MatchDetailsEditor: botón para limpiar cronología de eventos');
+  assert(editorSource.includes('onClearChat'), 'MatchDetailsEditor: botón para limpiar chat en vivo');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);
   console.log('====================================================\n');

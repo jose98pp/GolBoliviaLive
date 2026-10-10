@@ -1341,6 +1341,18 @@ app.delete(
   }
 );
 
+// Clear all match events (Admin or Editor)
+app.post(
+  ['/api/matches/events/clear', '/matches/events/clear'],
+  authenticate,
+  requireRoles(['ADMIN', 'EDITOR']),
+  (_req: Request, res: Response) => {
+    state.events = [];
+    broadcastSseEvent('MATCH_EVENTS_CLEARED', {});
+    res.json({ success: true, message: 'Cronología de eventos limpiada correctamente.' });
+  }
+);
+
 // 9. Chat API
 app.get(['/api/chat', '/chat'], (_req: Request, res: Response) => {
   res.json({ messages: state.chatMessages });
@@ -1385,6 +1397,18 @@ app.delete(
     state.chatMessages = state.chatMessages.filter((m) => m.id !== id);
     broadcastSseEvent('CHAT_MESSAGE_DELETED', { id });
     res.json({ success: true });
+  }
+);
+
+// Clear all chat messages (Admin or Moderator)
+app.post(
+  ['/api/chat/clear', '/chat/clear'],
+  authenticate,
+  requireRoles(['ADMIN', 'MODERADOR']),
+  (_req: Request, res: Response) => {
+    state.chatMessages = [];
+    broadcastSseEvent('CHAT_CLEARED', {});
+    res.json({ success: true, message: 'Chat en vivo limpiado correctamente.' });
   }
 );
 
@@ -1463,6 +1487,46 @@ app.delete(
     res.json({ success: true, message: `Equipo ${id} eliminado correctamente.`, clubs: state.clubs });
   }
 );
+
+// ==========================================
+// 10.6 FREE SPORTS API PROXY (ESPN Open Soccer API)
+// ==========================================
+app.get(['/api/football-api/matches', '/football-api/matches'], async (req: Request, res: Response) => {
+  const league = String(req.query.league || 'bol.1').trim();
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/scoreboard`;
+  try {
+    const apiRes = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    });
+    if (!apiRes.ok) {
+      res.status(apiRes.status).json({ error: 'Error al consultar API deportiva gratuita de ESPN' });
+      return;
+    }
+    const data = await apiRes.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Error de red al consultar API deportiva: ' + (err.message || 'desconocido') });
+  }
+});
+
+app.get(['/api/football-api/match/:id', '/football-api/match/:id'], async (req: Request, res: Response) => {
+  const eventId = String(req.params.id).trim();
+  const league = String(req.query.league || 'bol.1').trim();
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/summary?event=${encodeURIComponent(eventId)}`;
+  try {
+    const apiRes = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    });
+    if (!apiRes.ok) {
+      res.status(apiRes.status).json({ error: 'Error al consultar detalles de partido en ESPN' });
+      return;
+    }
+    const data = await apiRes.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Error de red al consultar detalles del partido: ' + (err.message || 'desconocido') });
+  }
+});
 
 // ==========================================
 // 10.5 AUTOMATIC MATCH CLOCK TICKER (60s tick)

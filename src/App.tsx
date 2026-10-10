@@ -462,7 +462,23 @@ export default function App() {
     });
   };
 
-  const [events, setEvents] = useState<MatchEvent[]>(INITIAL_EVENTS);
+  const [events, setEvents] = useState<MatchEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_match_events');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('golbolivia_match_events', JSON.stringify(events));
+    } catch {}
+  }, [events]);
+
   const [activePoll, setActivePoll] = useState<LivePoll>(INITIAL_POLL);
 
   // Floating reactions array
@@ -704,6 +720,22 @@ export default function App() {
     } catch {}
   };
 
+  const handleClearEvents = () => {
+    setEvents([]);
+    try {
+      localStorage.removeItem('golbolivia_match_events');
+    } catch {}
+    apiClient.clearAllMatchEvents().catch(() => {});
+    setActiveToast({
+      id: `events-cleared-${Date.now()}`,
+      title: '🗑️ Cronología limpiada',
+      body: 'Se vaciaron todos los eventos del partido anterior con éxito.',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'exclusive',
+      read: false,
+    });
+  };
+
   const handleClearChat = () => {
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -711,7 +743,17 @@ export default function App() {
         bc.postMessage({ type: 'CLEAR_CHAT' });
         bc.close();
       }
+      localStorage.removeItem('golbolivia_real_chat_messages');
     } catch {}
+    apiClient.clearAllChatMessages().catch(() => {});
+    setActiveToast({
+      id: `chat-cleared-${Date.now()}`,
+      title: '🗑️ Chat limpiado',
+      body: 'Se borraron los mensajes del chat en vivo con éxito.',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'exclusive',
+      read: false,
+    });
   };
 
   // Check if iframe real-time preview mode was requested
@@ -907,6 +949,8 @@ export default function App() {
         onPostOfficialMessage={handlePostOfficialMessage}
         onUpdatePoll={handleUpdatePoll}
         onClearChat={handleClearChat}
+        onClearEvents={handleClearEvents}
+        events={events}
         onReturnToPublic={handleReturnToPublic}
         presenceStats={presence}
       />

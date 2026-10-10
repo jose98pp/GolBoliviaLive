@@ -1,6 +1,7 @@
 import { StreamSettings, MatchEvent, ChatMessage, MatchStats, PublicStreamState, PrivateIngestCredentials, Club, LiveEvent, StreamProvider, DonationQrInfo } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { authService, AuthUser, UserRole } from './auth';
+import { espnFootballApi } from './espnFootballApi';
 import {
   saveStreamSettingsToFirebase,
   getStreamSettingsFromFirebase,
@@ -542,6 +543,49 @@ class GolBoliviaApiClient {
       throw new Error(data.error || 'Error al eliminar mensaje de chat');
     }
     return true;
+  }
+
+  // 7.3 Clear All Match Events (Local + Backend)
+  async clearAllMatchEvents(): Promise<boolean> {
+    try {
+      await fetch('/api/matches/events/clear', {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+      });
+    } catch {}
+    return true;
+  }
+
+  // 8.3 Clear All Chat Messages (Local + Broadcast + Backend)
+  async clearAllChatMessages(): Promise<boolean> {
+    try {
+      await fetch('/api/chat/clear', {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+      });
+    } catch {}
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('gol_bolivia_live_chat_channel');
+        bc.postMessage({ type: 'CLEAR_CHAT' });
+        bc.close();
+      }
+      localStorage.removeItem('golbolivia_real_chat_messages');
+    } catch {}
+    return true;
+  }
+
+  // 12. Free Football API (ESPN Open API: Bolivian & International)
+  async getFootballApiMatches(league = 'bol.1') {
+    return espnFootballApi.getMatches(league);
+  }
+
+  async getFootballApiMatchDetails(eventId: string, league = 'bol.1') {
+    return espnFootballApi.getMatchDetails(eventId, league);
+  }
+
+  async findFootballApiMatch(homeName: string, awayName: string, league = 'bol.1') {
+    return espnFootballApi.findMatchByTeams(homeName, awayName, league);
   }
 
   // 8.2 Delete / Purge Confirmation Log (Firebase audit cleanup)

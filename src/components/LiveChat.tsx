@@ -104,6 +104,20 @@ export const LiveChat: React.FC<LiveChatProps> = ({
             setPoll(event.data.poll);
           } else if (event.data?.type === 'REACTION') {
             onTriggerFloatingReaction(event.data.emoji);
+          } else if (event.data?.type === 'CLEAR_CHAT') {
+            setMessages([
+              {
+                id: 'welcome-live-' + Date.now(),
+                sender: 'GolBolivia Live',
+                clubId: 'fbf',
+                text: 'Chat oficial reiniciado para la nueva transmisión. ¡Bienvenidos!',
+                timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
+                isOfficialRelator: true,
+              },
+            ]);
+            try {
+              localStorage.removeItem('golbolivia_real_chat_messages');
+            } catch {}
           }
         };
       }

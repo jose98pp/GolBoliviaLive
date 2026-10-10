@@ -29,6 +29,7 @@ interface EventsAndChatModerationProps {
   onPostOfficialMessage: (text: string) => void;
   onUpdatePoll: (poll: LivePoll) => void;
   onClearChat: () => void;
+  onClearEvents?: () => void;
   clubs: Record<string, Club>;
 }
 
@@ -44,6 +45,7 @@ export const EventsAndChatModeration: React.FC<EventsAndChatModerationProps> = (
   onPostOfficialMessage,
   onUpdatePoll,
   onClearChat,
+  onClearEvents,
   clubs,
 }) => {
   // Event creation form
@@ -260,6 +262,26 @@ export const EventsAndChatModeration: React.FC<EventsAndChatModerationProps> = (
             </button>
           </div>
         </form>
+
+        {onClearEvents && (
+          <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs">
+            <span className="text-slate-400">¿Nuevo partido o reiniciar cronología?</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('¿Estás seguro de que deseas limpiar todos los eventos de la cronología para el nuevo partido?')) {
+                  onClearEvents();
+                  setEventFeedback('¡Cronología de eventos limpiada correctamente!');
+                  setTimeout(() => setEventFeedback(null), 4000);
+                }
+              }}
+              className="px-3 py-1.5 bg-red-950/50 hover:bg-red-900 text-red-300 border border-red-800/50 rounded-lg flex items-center gap-1.5 cursor-pointer font-semibold transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Limpiar Cronología de Eventos</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* SECCIÓN 2: MODERACIÓN DE CHAT EN VIVO */}
@@ -377,8 +399,14 @@ export const EventsAndChatModeration: React.FC<EventsAndChatModerationProps> = (
           <span className="text-slate-400">¿Mensajes ofensivos o spam masivo?</span>
           <button
             type="button"
-            onClick={onClearChat}
-            className="px-3 py-1.5 bg-red-950/50 hover:bg-red-900 text-red-300 border border-red-800/50 rounded-lg flex items-center gap-1.5 cursor-pointer font-semibold"
+            onClick={() => {
+              if (window.confirm('¿Estás seguro de que deseas vaciar todos los mensajes del chat en vivo?')) {
+                onClearChat();
+                setChatFeedback('¡Chat en vivo limpiado exitosamente!');
+                setTimeout(() => setChatFeedback(null), 4000);
+              }
+            }}
+            className="px-3 py-1.5 bg-red-950/50 hover:bg-red-900 text-red-300 border border-red-800/50 rounded-lg flex items-center gap-1.5 cursor-pointer font-semibold transition-colors"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>Limpiar Mensajes del Chat</span>

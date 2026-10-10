@@ -66,6 +66,8 @@ interface SecretLoginPageProps {
   onPostOfficialMessage: (text: string) => void;
   onUpdatePoll: (poll: LivePoll) => void;
   onClearChat: () => void;
+  onClearEvents?: () => void;
+  events?: MatchEvent[];
   onReturnToPublic: () => void;
   presenceStats?: RealPresenceStats;
   activeEventId?: string;
@@ -90,6 +92,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   onPostOfficialMessage,
   onUpdatePoll,
   onClearChat,
+  onClearEvents,
+  events = [],
   onReturnToPublic,
   presenceStats,
   activeEventId,

@@ -19,11 +19,13 @@ import {
   Shield,
   Activity,
   Zap,
+  Download,
 } from 'lucide-react';
-import { StreamSettings, LiveEvent } from '../types/football';
+import { StreamSettings, LiveEvent, MatchEvent } from '../types/football';
 import { groupClubsByLeague, PRESET_INTERNATIONAL_MATCHES } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
+import { espnFootballApi, ApiMatchSummary } from '../services/espnFootballApi';
 
 export type MatchPeriod = '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
 
@@ -43,6 +45,9 @@ export interface MatchDetailsEditorProps {
   isClockRunning?: boolean;
   onToggleMatchClock?: (running: boolean) => void;
   onUpdatePeriod?: (period: MatchPeriod) => void;
+  onClearEvents?: () => void;
+  onClearChat?: () => void;
+  events?: MatchEvent[];
 }
 
 const TOURNAMENT_PRESETS = [
@@ -70,6 +75,9 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   isClockRunning = false,
   onToggleMatchClock,
   onUpdatePeriod,
+  onClearEvents,
+  onClearChat,
+  events = [],
 }) => {
   const { clubs } = useClubs();
 
@@ -132,6 +140,71 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
     }
   }, [activeEventId, activeEvent, streamSettings, isDirty, homeScore, awayScore, matchMinute]);
+
+  // Free Football API (ESPN) state
+  const [apiLeague, setApiLeague] = useState<string>('bol.1');
+  const [apiMatches, setApiMatches] = useState<ApiMatchSummary[]>([]);
+  const [isLoadingApiMatches, setIsLoadingApiMatches] = useState<boolean>(false);
+  const [selectedApiMatchId, setSelectedApiMatchId] = useState<string>('');
+  const [apiFeedback, setApiFeedback] = useState<string | null>(null);
+  const [clearActionFeedback, setClearActionFeedback] = useState<string | null>(null);
+
+  const handleLoadApiMatches = async () => {
+    setIsLoadingApiMatches(true);
+    setApiFeedback(null);
+    try {
+      const matches = await espnFootballApi.getMatches(apiLeague);
+      setApiMatches(matches);
+      if (matches.length > 0) {
+        setSelectedApiMatchId(matches[0].id);
+        setApiFeedback(`¡Se encontraron ${matches.length} partidos oficiales en la API de ESPN!`);
+      } else {
+        setApiFeedback('No hay partidos programados en este momento para la liga seleccionada.');
+      }
+    } catch {
+      setApiFeedback('No se pudo conectar con la API deportiva.');
+    } finally {
+      setIsLoadingApiMatches(false);
+      setTimeout(() => setApiFeedback(null), 5000);
+    }
+  };
+
+  const handleImportSelectedApiMatch = () => {
+    if (!selectedApiMatchId) return;
+    const match = apiMatches.find((m) => m.id === selectedApiMatchId);
+    if (!match) return;
+
+    setIsDirty(true);
+    const newTitle = `${match.homeTeam.displayName} vs ${match.awayTeam.displayName} — En Vivo`;
+    setTitle(newTitle);
+
+    const foundHomeKey = Object.keys(clubs).find((k) =>
+      clubs[k].name.toLowerCase().includes(match.homeTeam.displayName.toLowerCase()) ||
+      match.homeTeam.displayName.toLowerCase().includes(clubs[k].name.toLowerCase())
+    );
+    if (foundHomeKey) setHomeClubId(foundHomeKey);
+
+    const foundAwayKey = Object.keys(clubs).find((k) =>
+      clubs[k].name.toLowerCase().includes(match.awayTeam.displayName.toLowerCase()) ||
+      match.awayTeam.displayName.toLowerCase().includes(clubs[k].name.toLowerCase())
+    );
+    if (foundAwayKey) setAwayClubId(foundAwayKey);
+
+    if (match.venue) setStadiumName(match.venue);
+
+    if (match.isLive || match.isFinished || match.homeTeam.score > 0 || match.awayTeam.score > 0) {
+      setLocalHomeScore(match.homeTeam.score);
+      setLocalAwayScore(match.awayTeam.score);
+      onUpdateScore?.(match.homeTeam.score, match.awayTeam.score);
+      if (typeof match.minute === 'number') {
+        setLocalMinute(match.minute);
+        onUpdateMinute?.(match.minute);
+      }
+    }
+
+    setApiFeedback(`¡Datos de "${match.homeTeam.displayName} vs ${match.awayTeam.displayName}" importados al formulario!`);
+    setTimeout(() => setApiFeedback(null), 5000);
+  };
 
   const handleGenerateTitle = () => {
     setIsDirty(true);
@@ -1012,6 +1085,161 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             </div>
           )}
         </form>
+
+        {/* SECCIÓN API GRATUITA DEL PARTIDO (ESPN FÚTBOL) */}
+        <div className="bg-[#0a0f1d] border border-sky-500/30 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center">
+                <Radio className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider font-display">
+                  API Gratuita de Partidos, Alineaciones & Estadísticas
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Conexión directa con la API gratuita y abierta de ESPN para partidos del fútbol boliviano y torneos internacionales.
+                </p>
+              </div>
+            </div>
+
+            <span className="text-[10px] px-2.5 py-1 rounded-full font-mono font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 self-start sm:self-auto">
+              API Gratuita Activa
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Torneo / Liga Oficial:
+              </label>
+              <select
+                value={apiLeague}
+                onChange={(e) => setApiLeague(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+              >
+                <option value="bol.1">🇧🇴 División Profesional de Bolivia (Liga Tigo)</option>
+                <option value="conmebol.libertadores">🏆 Copa CONMEBOL Libertadores</option>
+                <option value="conmebol.sudamericana">⭐ Copa CONMEBOL Sudamericana</option>
+                <option value="esp.1">🇪🇸 LaLiga de España</option>
+                <option value="uefa.champions">⭐ UEFA Champions League</option>
+              </select>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={handleLoadApiMatches}
+                disabled={isLoadingApiMatches}
+                className="w-full py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-md disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingApiMatches ? 'animate-spin' : ''}`} />
+                <span>{isLoadingApiMatches ? 'Buscando partidos...' : 'Consultar Partidos de Hoy'}</span>
+              </button>
+            </div>
+
+            {apiMatches.length > 0 && (
+              <div>
+                <button
+                  type="button"
+                  onClick={handleImportSelectedApiMatch}
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Importar al Formulario</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {apiMatches.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-slate-800/80">
+              <label className="block text-xs font-semibold text-slate-300">
+                Seleccionar Partido Encontrado en la API:
+              </label>
+              <select
+                value={selectedApiMatchId}
+                onChange={(e) => setSelectedApiMatchId(e.target.value)}
+                className="w-full bg-[#070b14] border border-sky-500/40 rounded-xl px-3 py-2.5 text-xs text-white font-medium"
+              >
+                {apiMatches.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} — {m.statusText} ({m.isLive ? '🔴 EN VIVO' : m.isFinished ? 'FINALIZADO' : 'PROGRAMADO'})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {apiFeedback && (
+            <div className="p-3 bg-sky-950/80 border border-sky-500/60 rounded-xl text-xs text-sky-200 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>{apiFeedback}</span>
+            </div>
+          )}
+        </div>
+
+        {/* SECCIÓN LIMPIEZA Y REINICIO DE PARTIDO (EVENTOS Y CHAT) */}
+        {(onClearEvents || onClearChat) && (
+          <div className="bg-[#0a0f1d] border border-red-500/30 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-slate-800">
+              <div className="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 flex items-center justify-center">
+                <Trash2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider font-display">
+                  Limpieza y Reinicio para Nuevo Partido
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Limpia la cronología de eventos anteriores y los mensajes del chat antes de arrancar un nuevo partido.
+                </p>
+              </div>
+            </div>
+
+            {clearActionFeedback && (
+              <div className="p-2.5 bg-emerald-950/80 border border-emerald-500/60 rounded-xl text-xs text-emerald-200 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{clearActionFeedback}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {onClearEvents && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('¿Estás seguro de que deseas limpiar todos los eventos (goles, tarjetas, cambios) de la cronología para el nuevo partido?')) {
+                      onClearEvents();
+                      setClearActionFeedback('¡Cronología de eventos vaciada exitosamente!');
+                      setTimeout(() => setClearActionFeedback(null), 4000);
+                    }
+                  }}
+                  className="p-3 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-red-200 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                  <span>Limpiar Cronología de Eventos ({events.length})</span>
+                </button>
+              )}
+
+              {onClearChat && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('¿Estás seguro de que deseas limpiar todos los mensajes del chat en vivo para el nuevo partido?')) {
+                      onClearChat();
+                      setClearActionFeedback('¡Chat en vivo limpiado exitosamente para todos los usuarios!');
+                      setTimeout(() => setClearActionFeedback(null), 4000);
+                    }
+                  }}
+                  className="p-3 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-700 text-slate-300 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Limpiar Mensajes del Chat en Vivo</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
