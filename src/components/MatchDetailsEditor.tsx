@@ -12,7 +12,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { StreamSettings, LiveEvent } from '../types/football';
-import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
+import { BOLIVIAN_CLUBS, groupClubsByLeague, PRESET_INTERNATIONAL_MATCHES } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
 
@@ -40,13 +40,13 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   activeEvent,
   onUpdateLiveEvent,
 }) => {
-  const [title, setTitle] = useState(activeEvent?.title || streamSettings.title || '');
-  const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName || streamSettings.tournamentName || '');
-  const [homeClubId, setHomeClubId] = useState(activeEvent?.homeTeam || streamSettings.homeClubId || 'bolivar');
-  const [awayClubId, setAwayClubId] = useState(activeEvent?.awayTeam || streamSettings.awayClubId || 'strongest');
-  const [stadiumName, setStadiumName] = useState(activeEvent?.stadiumName || streamSettings.stadiumName || '');
-  const [altitudeMeters, setAltitudeMeters] = useState(streamSettings.altitudeMeters || 3637);
-  const [officialAnnouncement, setOfficialAnnouncement] = useState(streamSettings.officialAnnouncement || '');
+  const [title, setTitle] = useState(activeEvent?.title || streamSettings?.title || '');
+  const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName || streamSettings?.tournamentName || '');
+  const [homeClubId, setHomeClubId] = useState(activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar');
+  const [awayClubId, setAwayClubId] = useState(activeEvent?.awayTeam || streamSettings?.awayClubId || 'strongest');
+  const [stadiumName, setStadiumName] = useState(activeEvent?.stadiumName || streamSettings?.stadiumName || '');
+  const [altitudeMeters, setAltitudeMeters] = useState(streamSettings?.altitudeMeters || 3637);
+  const [officialAnnouncement, setOfficialAnnouncement] = useState(streamSettings?.officialAnnouncement || '');
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -61,28 +61,28 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     if (prevEventIdRef.current !== activeEventId) {
       prevEventIdRef.current = activeEventId;
       setIsDirty(false);
-      const srcTitle = activeEvent?.title || streamSettings.title || '';
-      const srcTourn = activeEvent?.tournamentName || streamSettings.tournamentName || '';
-      const srcHome = activeEvent?.homeTeam || streamSettings.homeClubId || 'bolivar';
-      const srcAway = activeEvent?.awayTeam || streamSettings.awayClubId || 'strongest';
-      const srcStadium = activeEvent?.stadiumName || streamSettings.stadiumName || '';
+      const srcTitle = activeEvent?.title || streamSettings?.title || '';
+      const srcTourn = activeEvent?.tournamentName || streamSettings?.tournamentName || '';
+      const srcHome = activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar';
+      const srcAway = activeEvent?.awayTeam || streamSettings?.awayClubId || 'strongest';
+      const srcStadium = activeEvent?.stadiumName || streamSettings?.stadiumName || '';
       setTitle(srcTitle);
       setTournamentName(srcTourn);
       setHomeClubId(srcHome);
       setAwayClubId(srcAway);
       setStadiumName(srcStadium);
     } else if (!isDirty) {
-      const srcTitle = activeEvent?.title || streamSettings.title || '';
-      const srcTourn = activeEvent?.tournamentName || streamSettings.tournamentName || '';
-      const srcHome = activeEvent?.homeTeam || streamSettings.homeClubId || 'bolivar';
-      const srcAway = activeEvent?.awayTeam || streamSettings.awayClubId || 'strongest';
-      const srcStadium = activeEvent?.stadiumName || streamSettings.stadiumName || '';
+      const srcTitle = activeEvent?.title || streamSettings?.title || '';
+      const srcTourn = activeEvent?.tournamentName || streamSettings?.tournamentName || '';
+      const srcHome = activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar';
+      const srcAway = activeEvent?.awayTeam || streamSettings?.awayClubId || 'strongest';
+      const srcStadium = activeEvent?.stadiumName || streamSettings?.stadiumName || '';
       if (srcTitle) setTitle(srcTitle);
       if (srcTourn) setTournamentName(srcTourn);
       if (srcHome) setHomeClubId(srcHome);
       if (srcAway) setAwayClubId(srcAway);
       if (srcStadium) setStadiumName(srcStadium);
-      if (streamSettings.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
+      if (streamSettings?.altitudeMeters !== undefined) setAltitudeMeters(streamSettings.altitudeMeters);
       if (streamSettings.officialAnnouncement !== undefined) setOfficialAnnouncement(streamSettings.officialAnnouncement);
     }
   }, [activeEventId, activeEvent, streamSettings, isDirty]);
@@ -336,11 +336,33 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             </button>
           </div>
 
+          {/* Partidos Rápidos Multiliga */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-[10px] text-slate-400 font-semibold mr-1">⚡ Partidos Rápidos:</span>
+            {PRESET_INTERNATIONAL_MATCHES.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  setHomeClubId(preset.homeTeam);
+                  setAwayClubId(preset.awayTeam);
+                  setTitle(preset.title);
+                  setTournamentName(preset.tournament);
+                  setStadiumName(preset.stadium);
+                  setIsDirty(true);
+                }}
+                className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold border border-slate-700 transition cursor-pointer"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Home Club */}
             <div>
               <label className="block text-[11px] font-semibold text-sky-400 mb-1">
-                Club Local (Anfitrión):
+                Club Local (España / Inglaterra / Bolivia):
               </label>
               <select
                 value={homeClubId}
@@ -350,10 +372,16 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                 }}
                 className="w-full bg-[#060a14] border border-sky-500/40 focus:border-sky-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
               >
-                {Object.values(clubs).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.badgeEmoji} {c.name} ({c.city})
-                  </option>
+                {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
+                  leagueClubs.length > 0 && (
+                    <optgroup key={leagueTitle} label={leagueTitle}>
+                      {leagueClubs.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.badgeEmoji} {c.name} ({c.city})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )
                 ))}
               </select>
             </div>
@@ -361,7 +389,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             {/* Away Club */}
             <div>
               <label className="block text-[11px] font-semibold text-amber-400 mb-1">
-                Club Visitante:
+                Club Visitante (España / Inglaterra / Bolivia):
               </label>
               <select
                 value={awayClubId}
@@ -371,10 +399,16 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                 }}
                 className="w-full bg-[#060a14] border border-amber-500/40 focus:border-amber-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
               >
-                {Object.values(clubs).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.badgeEmoji} {c.name} ({c.city})
-                  </option>
+                {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
+                  leagueClubs.length > 0 && (
+                    <optgroup key={leagueTitle} label={leagueTitle}>
+                      {leagueClubs.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.badgeEmoji} {c.name} ({c.city})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )
                 ))}
               </select>
             </div>

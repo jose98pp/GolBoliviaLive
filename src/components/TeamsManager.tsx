@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Club } from '../types/football';
-import { Shield, Plus, Edit2, Trash2, CheckCircle2, AlertTriangle, X, Search, Sparkles, MapPin, Compass } from 'lucide-react';
+import { SPANISH_CLUBS, ENGLISH_CLUBS } from '../data/bolivianFootballData';
+import { Shield, Plus, Edit2, Trash2, CheckCircle2, AlertTriangle, X, Search, Sparkles, MapPin, Compass, Globe2, Download } from 'lucide-react';
 
 interface TeamsManagerProps {
   clubs: Record<string, Club>;
@@ -10,7 +11,7 @@ interface TeamsManagerProps {
   currentAwayClubId?: string;
 }
 
-const EMOJI_OPTIONS = ['⚽', '⚡', '🐯', '🦅', '✈️', '🛢️', '🔴', '🎸', '🏁', '🦁', '🛡️', '🐂', '👑', '🐺', '🌟', '🏆', '🔥', '⚔️'];
+const EMOJI_OPTIONS = ['⚽', '⚡', '🐯', '🦅', '✈️', '🛢️', '🔴', '🎸', '🏁', '🦁', '🛡️', '🐂', '👑', '🐺', '🌟', '🏆', '🔥', '⚔️', '🔵🔴', '⚪🔴', '🩵', '⚫⚪'];
 
 export const TeamsManager: React.FC<TeamsManagerProps> = ({
   clubs,
@@ -20,6 +21,7 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
   currentAwayClubId = '',
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLeague, setSelectedLeague] = useState<'all' | 'espana' | 'inglaterra' | 'bolivia'>('all');
   const [isEditing, setIsEditing] = useState(false);
   const [editingClub, setEditingClub] = useState<Partial<Club> | null>(null);
   const [isNewClub, setIsNewClub] = useState(false);
@@ -28,13 +30,62 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
   const [clubToDelete, setClubToDelete] = useState<Club | null>(null);
 
   const clubList = Object.values(clubs);
-  const filteredClubs = clubList.filter(
-    (c) =>
+  const filteredClubs = clubList.filter((c) => {
+    const matchesSearch =
       c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.shortName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.stadium.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      c.stadium.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.league && c.league.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    if (!matchesSearch) return false;
+
+    if (selectedLeague === 'espana') {
+      return (
+        c.league?.includes('España') ||
+        c.country === 'España' ||
+        ['real_madrid', 'barcelona', 'atletico_madrid', 'athletic_club', 'sevilla', 'real_betis', 'real_sociedad', 'villarreal', 'valencia', 'girona'].includes(c.id)
+      );
+    }
+    if (selectedLeague === 'inglaterra') {
+      return (
+        c.league?.includes('Inglaterra') ||
+        c.country === 'Inglaterra' ||
+        ['man_city', 'arsenal', 'liverpool', 'man_united', 'chelsea', 'tottenham', 'aston_villa', 'newcastle'].includes(c.id)
+      );
+    }
+    if (selectedLeague === 'bolivia') {
+      return (
+        c.league?.includes('Bolivia') ||
+        c.country === 'Bolivia' ||
+        (!c.league?.includes('España') && !c.league?.includes('Inglaterra') && c.altitudeMeters > 300)
+      );
+    }
+    return true;
+  });
+
+  const handleBatchImport = async (type: 'espana' | 'inglaterra') => {
+    const source = type === 'espana' ? SPANISH_CLUBS : ENGLISH_CLUBS;
+    const leagueName = type === 'espana' ? 'LaLiga (España)' : 'Premier League (Inglaterra)';
+    setIsSaving(true);
+    let count = 0;
+    try {
+      for (const club of Object.values(source)) {
+        await onSaveClub(club);
+        count++;
+      }
+      setFeedback({
+        message: `¡Se sincronizaron ${count} equipos de ${leagueName} en el marcador y base de datos con éxito!`,
+        type: 'success',
+      });
+      setSelectedLeague(type);
+      setTimeout(() => setFeedback(null), 6000);
+    } catch (err: any) {
+      setFeedback({ message: err.message || 'Error al importar equipos', type: 'error' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleOpenNewClub = () => {
     setIsNewClub(true);
@@ -42,13 +93,15 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
       id: '',
       name: '',
       shortName: '',
-      city: 'La Paz',
+      city: 'Madrid',
       primaryColor: '#0284c7',
       secondaryColor: '#ffffff',
       textColor: '#ffffff',
       badgeEmoji: '⚽',
       stadium: 'Estadio Departamental',
-      altitudeMeters: 2500,
+      altitudeMeters: 600,
+      league: 'España (LaLiga EA Sports)',
+      country: 'España',
     });
     setIsEditing(true);
   };
@@ -113,6 +166,8 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
       badgeEmoji: editingClub.badgeEmoji?.trim() || '⚽',
       stadium: cleanStadium.slice(0, 80),
       altitudeMeters: Math.round(alt) || 2500,
+      league: editingClub.league?.trim() || 'Bolivia (División Profesional)',
+      country: editingClub.country?.trim() || 'Bolivia',
     };
 
     setIsSaving(true);
@@ -153,27 +208,109 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-[#0a1122] border border-slate-800 rounded-2xl p-4 sm:p-5">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 bg-[#0a1122] border border-slate-800 rounded-2xl p-4 sm:p-5">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
             <Shield className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-white font-display">
-              Gestión de Equipos y Clubes
+            <h2 className="text-base font-bold text-white font-display flex items-center gap-2">
+              <span>Gestión de Equipos y Ligas</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-sans font-semibold">
+                Multiliga Activa
+              </span>
             </h2>
             <p className="text-xs text-slate-400">
-              Personaliza escudos, colores, estadios y añade nuevos equipos sincronizados con Firebase.
+              Personaliza escudos, colores y estadios de clubes de Bolivia, España (LaLiga) e Inglaterra (Premier League).
             </p>
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          {/* Botones de Carga Rápida de Ligas Internacionales */}
+          <button
+            type="button"
+            onClick={() => handleBatchImport('espana')}
+            disabled={isSaving}
+            className="px-3 py-2 rounded-xl bg-red-950/60 hover:bg-red-900/70 border border-red-500/40 text-red-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+            title="Importar Real Madrid, Barcelona, Atlético, etc."
+          >
+            <span>🇪🇸</span>
+            <span>+ Cargar LaLiga España</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleBatchImport('inglaterra')}
+            disabled={isSaving}
+            className="px-3 py-2 rounded-xl bg-sky-950/60 hover:bg-sky-900/70 border border-sky-500/40 text-sky-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+            title="Importar Man. City, Arsenal, Liverpool, Man. United, etc."
+          >
+            <span>🏴󠁧󠁢󠁥󠁮󠁧󠁿</span>
+            <span>+ Cargar Premier League</span>
+          </button>
+
+          <button
+            onClick={handleOpenNewClub}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black text-xs font-black flex items-center gap-2 shadow-lg shadow-amber-950/40 transition-all cursor-pointer ml-auto sm:ml-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nuevo Equipo</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Selector de Pestañas por Liga */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
         <button
-          onClick={handleOpenNewClub}
-          className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black text-xs font-black flex items-center gap-2 shadow-lg shadow-amber-950/40 transition-all cursor-pointer"
+          onClick={() => setSelectedLeague('all')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            selectedLeague === 'all'
+              ? 'bg-amber-500 text-black shadow-md shadow-amber-950/30'
+              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+          }`}
         >
-          <Plus className="w-4 h-4" />
-          <span>Agregar Nuevo Equipo</span>
+          <Globe2 className="w-3.5 h-3.5" />
+          <span>Todos los Equipos</span>
+          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/40">
+            {clubList.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setSelectedLeague('espana')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            selectedLeague === 'espana'
+              ? 'bg-red-600 text-white shadow-md shadow-red-950/30'
+              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <span>🇪🇸</span>
+          <span>España (LaLiga EA Sports)</span>
+        </button>
+
+        <button
+          onClick={() => setSelectedLeague('inglaterra')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            selectedLeague === 'inglaterra'
+              ? 'bg-sky-600 text-white shadow-md shadow-sky-950/30'
+              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <span>🏴󠁧󠁢󠁥󠁮󠁧󠁿</span>
+          <span>Inglaterra (Premier League)</span>
+        </button>
+
+        <button
+          onClick={() => setSelectedLeague('bolivia')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            selectedLeague === 'bolivia'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/30'
+              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <span>🇧🇴</span>
+          <span>Bolivia (División Profesional)</span>
         </button>
       </div>
 
@@ -265,6 +402,18 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                         <MapPin className="w-3 h-3 text-slate-500" />
                         {club.city}
                       </span>
+                      {club.league && (
+                        <>
+                          <span>•</span>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-medium border border-slate-700">
+                            {club.league.includes('España')
+                              ? '🇪🇸 LaLiga'
+                              : club.league.includes('Inglaterra')
+                              ? '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier'
+                              : '🇧🇴 Bolivia'}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -402,6 +551,51 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                     disabled={!isNewClub}
                     placeholder="ej. san_antonio (autogenerado)"
                     className="w-full px-3 py-2 bg-slate-900/70 border border-slate-800 rounded-xl text-slate-300 placeholder-slate-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* League & Country Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Liga o Competición</label>
+                  <select
+                    value={editingClub.league || 'España (LaLiga EA Sports)'}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      let country = 'Bolivia';
+                      let alt = 2500;
+                      if (val.includes('España')) {
+                        country = 'España';
+                        alt = 300;
+                      } else if (val.includes('Inglaterra')) {
+                        country = 'Inglaterra';
+                        alt = 50;
+                      }
+                      setEditingClub({
+                        ...editingClub,
+                        league: val,
+                        country,
+                        altitudeMeters: isNewClub ? alt : (editingClub.altitudeMeters || alt),
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="España (LaLiga EA Sports)">🇪🇸 España (LaLiga EA Sports)</option>
+                    <option value="Inglaterra (Premier League)">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra (Premier League)</option>
+                    <option value="Bolivia (División Profesional)">🇧🇴 Bolivia (División Profesional)</option>
+                    <option value="Torneo Internacional / UEFA Champions">🏆 Torneo Internacional / Champions</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">País</label>
+                  <input
+                    type="text"
+                    value={editingClub.country || ''}
+                    onChange={(e) => setEditingClub({ ...editingClub, country: e.target.value })}
+                    placeholder="Ej. España, Inglaterra, Bolivia"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>

@@ -599,7 +599,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <label className="block text-slate-300 font-semibold mb-1">Torneo / Campeonato:</label>
                 <input
                   type="text"
-                  value={streamSettings.tournamentName}
+                  value={streamSettings?.tournamentName || ''}
                   onChange={(e) => onUpdateStreamSettings({ tournamentName: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-750 rounded-lg p-2 text-white"
                 />

@@ -24,6 +24,9 @@ interface NavbarProps {
   homeClub?: Club;
   awayClub?: Club;
   period?: string;
+  isClockRunning?: boolean;
+  onToggleMatchClock?: () => void;
+  matchSeconds?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -46,6 +49,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   homeClub,
   awayClub,
   period = '2T',
+  isClockRunning = false,
+  onToggleMatchClock,
+  matchSeconds = 0,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPurgingCache, setIsPurgingCache] = useState(false);
@@ -114,10 +120,23 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-red-400 text-[11px]">viendo en vivo</span>
           </button>
 
-          {/* Marcador en Vivo Compacto en Header (Desktop) */}
+          {/* Marcador en Vivo Compacto en Header (Desktop) - Clic para Iniciar/Pausar Avance Automático */}
           {homeClub && awayClub && (
-            <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-slate-900/90 border border-slate-700/80 rounded-full text-xs shadow-md">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <button
+              type="button"
+              onClick={onToggleMatchClock}
+              className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-full text-xs shadow-md transition-all cursor-pointer select-none active:scale-95 ${
+                isClockRunning
+                  ? 'bg-emerald-950/80 border border-emerald-500/70 hover:bg-emerald-900/80 ring-1 ring-emerald-500/40 text-emerald-200'
+                  : 'bg-slate-900/90 border border-slate-700/80 hover:border-slate-600 text-slate-300'
+              }`}
+              title={
+                isClockRunning
+                  ? `Reloj automático activo: ${matchMinute}' (${String(matchSeconds).padStart(2, '0')}") - Clic para pausar`
+                  : 'Clic para iniciar minutos automáticamente sin ajustar manual'
+              }
+            >
+              <span className={`w-2 h-2 rounded-full ${isClockRunning ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
               <div className="flex items-center gap-1 font-bold text-slate-200">
                 <span>{homeClub.badgeEmoji}</span>
                 <span className="truncate max-w-[80px]">{homeClub.shortName}</span>
@@ -129,10 +148,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="truncate max-w-[80px]">{awayClub.shortName}</span>
                 <span>{awayClub.badgeEmoji}</span>
               </div>
-              <span className="text-[10px] text-amber-400 font-mono font-bold pl-1 border-l border-slate-700">
-                {matchMinute}&apos;
+              <span className="text-[10px] text-amber-400 font-mono font-bold pl-1 border-l border-slate-700 flex items-center gap-1">
+                <span>{matchMinute}&apos;</span>
+                {isClockRunning && (
+                  <span className="text-[9px] text-emerald-400 font-normal">
+                    {String(matchSeconds).padStart(2, '0')}&quot;
+                  </span>
+                )}
               </span>
-            </div>
+            </button>
           )}
         </div>
 

@@ -205,9 +205,279 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u26AA",
     stadium: "Estadio Real Santa Cruz",
-    altitudeMeters: 416
+    altitudeMeters: 416,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   }
 };
+var SPANISH_CLUBS = {
+  real_madrid: {
+    id: "real_madrid",
+    name: "Real Madrid CF",
+    shortName: "Real Madrid",
+    city: "Madrid",
+    primaryColor: "#ffffff",
+    secondaryColor: "#00529f",
+    textColor: "#00529f",
+    badgeEmoji: "\u{1F451}",
+    stadium: "Estadio Santiago Bernab\xE9u",
+    altitudeMeters: 667,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  },
+  barcelona: {
+    id: "barcelona",
+    name: "FC Barcelona",
+    shortName: "Barcelona",
+    city: "Barcelona",
+    primaryColor: "#a50044",
+    secondaryColor: "#004d98",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F535}\u{1F534}",
+    stadium: "Spotify Camp Nou / Montju\xEFc",
+    altitudeMeters: 42,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  },
+  atletico_madrid: {
+    id: "atletico_madrid",
+    name: "Atl\xE9tico de Madrid",
+    shortName: "Atl\xE9tico",
+    city: "Madrid",
+    primaryColor: "#cb3524",
+    secondaryColor: "#1b3562",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F534}\u26AA",
+    stadium: "C\xEDvitas Metropolitano",
+    altitudeMeters: 690,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  },
+  athletic_club: {
+    id: "athletic_club",
+    name: "Athletic Club Bilbao",
+    shortName: "Athletic Club",
+    city: "Bilbao",
+    primaryColor: "#ee2524",
+    secondaryColor: "#ffffff",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F981}",
+    stadium: "San Mam\xE9s",
+    altitudeMeters: 19,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  },
+  sevilla: {
+    id: "sevilla",
+    name: "Sevilla FC",
+    shortName: "Sevilla",
+    city: "Sevilla",
+    primaryColor: "#f4364c",
+    secondaryColor: "#ffffff",
+    textColor: "#ffffff",
+    badgeEmoji: "\u26AA\u{1F534}",
+    stadium: "Estadio Ram\xF3n S\xE1nchez-Pizju\xE1n",
+    altitudeMeters: 7,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  },
+  real_betis: {
+    id: "real_betis",
+    name: "Real Betis Balompi\xE9",
+    shortName: "Real Betis",
+    city: "Sevilla",
+    primaryColor: "#0bb364",
+    secondaryColor: "#ffffff",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F7E2}\u26AA",
+    stadium: "Estadio Benito Villamar\xEDn",
+    altitudeMeters: 10,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  },
+  real_sociedad: {
+    id: "real_sociedad",
+    name: "Real Sociedad",
+    shortName: "Real Sociedad",
+    city: "San Sebasti\xE1n",
+    primaryColor: "#0067b1",
+    secondaryColor: "#ffffff",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F535}\u26AA",
+    stadium: "Reale Arena (Anoeta)",
+    altitudeMeters: 6,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  },
+  villarreal: {
+    id: "villarreal",
+    name: "Villarreal CF",
+    shortName: "Villarreal",
+    city: "Vila-real",
+    primaryColor: "#ffe600",
+    secondaryColor: "#005ca9",
+    textColor: "#002d62",
+    badgeEmoji: "\u{1F7E1}",
+    stadium: "Estadio de la Cer\xE1mica",
+    altitudeMeters: 42,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  },
+  valencia: {
+    id: "valencia",
+    name: "Valencia CF",
+    shortName: "Valencia",
+    city: "Valencia",
+    primaryColor: "#ffffff",
+    secondaryColor: "#ee7500",
+    textColor: "#1e293b",
+    badgeEmoji: "\u{1F987}",
+    stadium: "Estadio de Mestalla",
+    altitudeMeters: 15,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  },
+  girona: {
+    id: "girona",
+    name: "Girona FC",
+    shortName: "Girona",
+    city: "Girona",
+    primaryColor: "#cd1b2c",
+    secondaryColor: "#ffffff",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F534}\u26AA",
+    stadium: "Estadi Montilivi",
+    altitudeMeters: 95,
+    league: "Espa\xF1a (LaLiga EA Sports)",
+    country: "Espa\xF1a"
+  }
+};
+var ENGLISH_CLUBS = {
+  man_city: {
+    id: "man_city",
+    name: "Manchester City FC",
+    shortName: "Man. City",
+    city: "Manchester",
+    primaryColor: "#6cabdd",
+    secondaryColor: "#1c2c5b",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1FA75}",
+    stadium: "Etihad Stadium",
+    altitudeMeters: 48,
+    league: "Inglaterra (Premier League)",
+    country: "Inglaterra"
+  },
+  arsenal: {
+    id: "arsenal",
+    name: "Arsenal FC",
+    shortName: "Arsenal",
+    city: "Londres",
+    primaryColor: "#ef0107",
+    secondaryColor: "#063672",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F534}",
+    stadium: "Emirates Stadium",
+    altitudeMeters: 40,
+    league: "Inglaterra (Premier League)",
+    country: "Inglaterra"
+  },
+  liverpool: {
+    id: "liverpool",
+    name: "Liverpool FC",
+    shortName: "Liverpool",
+    city: "Liverpool",
+    primaryColor: "#c8102e",
+    secondaryColor: "#00b2a9",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F534}",
+    stadium: "Anfield",
+    altitudeMeters: 55,
+    league: "Inglaterra (Premier League)",
+    country: "Inglaterra"
+  },
+  man_united: {
+    id: "man_united",
+    name: "Manchester United",
+    shortName: "Man. United",
+    city: "Manchester",
+    primaryColor: "#da291c",
+    secondaryColor: "#fbe122",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F479}",
+    stadium: "Old Trafford",
+    altitudeMeters: 38,
+    league: "Inglaterra (Premier League)",
+    country: "Inglaterra"
+  },
+  chelsea: {
+    id: "chelsea",
+    name: "Chelsea FC",
+    shortName: "Chelsea",
+    city: "Londres",
+    primaryColor: "#034694",
+    secondaryColor: "#ffffff",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F981}",
+    stadium: "Stamford Bridge",
+    altitudeMeters: 12,
+    league: "Inglaterra (Premier League)",
+    country: "Inglaterra"
+  },
+  tottenham: {
+    id: "tottenham",
+    name: "Tottenham Hotspur",
+    shortName: "Tottenham",
+    city: "Londres",
+    primaryColor: "#132257",
+    secondaryColor: "#ffffff",
+    textColor: "#ffffff",
+    badgeEmoji: "\u26AA",
+    stadium: "Tottenham Hotspur Stadium",
+    altitudeMeters: 17,
+    league: "Inglaterra (Premier League)",
+    country: "Inglaterra"
+  },
+  aston_villa: {
+    id: "aston_villa",
+    name: "Aston Villa FC",
+    shortName: "Aston Villa",
+    city: "Birmingham",
+    primaryColor: "#95bfe5",
+    secondaryColor: "#670e36",
+    textColor: "#ffffff",
+    badgeEmoji: "\u{1F981}",
+    stadium: "Villa Park",
+    altitudeMeters: 110,
+    league: "Inglaterra (Premier League)",
+    country: "Inglaterra"
+  },
+  newcastle: {
+    id: "newcastle",
+    name: "Newcastle United",
+    shortName: "Newcastle",
+    city: "Newcastle",
+    primaryColor: "#241f20",
+    secondaryColor: "#41b6e6",
+    textColor: "#ffffff",
+    badgeEmoji: "\u26AB\u26AA",
+    stadium: "St James' Park",
+    altitudeMeters: 60,
+    league: "Inglaterra (Premier League)",
+    country: "Inglaterra"
+  }
+};
+var ALL_DEFAULT_CLUBS = {
+  ...BOLIVIAN_CLUBS,
+  ...SPANISH_CLUBS,
+  ...ENGLISH_CLUBS
+};
+Object.assign(BOLIVIAN_CLUBS, SPANISH_CLUBS, ENGLISH_CLUBS);
+for (const club of Object.values(BOLIVIAN_CLUBS)) {
+  if (!club.league) {
+    club.league = "Bolivia (Divisi\xF3n Profesional)";
+    club.country = "Bolivia";
+  }
+}
 var LINEUPS_DATA = {
   home: {
     club: BOLIVIAN_CLUBS.bolivar,
@@ -1649,7 +1919,9 @@ app2.post(
       textColor: String(club.textColor || existing.textColor || "#ffffff").trim(),
       badgeEmoji: String(club.badgeEmoji || existing.badgeEmoji || "\u26BD").trim(),
       stadium: String(club.stadium || existing.stadium || "Estadio Departamental").trim(),
-      altitudeMeters: Number(club.altitudeMeters || existing.altitudeMeters || 2500)
+      altitudeMeters: Number(club.altitudeMeters || existing.altitudeMeters || 2500),
+      league: String(club.league || existing.league || "Bolivia (Divisi\xF3n Profesional)").trim(),
+      country: String(club.country || existing.country || "Bolivia").trim()
     };
     state.clubs[cleanId] = updatedClub;
     persistState();

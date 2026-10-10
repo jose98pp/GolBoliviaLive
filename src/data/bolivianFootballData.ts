@@ -200,12 +200,386 @@ export let BOLIVIAN_CLUBS: Record<string, Club> = {
     badgeEmoji: '⚪',
     stadium: 'Estadio Real Santa Cruz',
     altitudeMeters: 416,
+    league: 'Bolivia (División Profesional)',
+    country: 'Bolivia',
   }
 };
+
+// Equipos de LaLiga (España)
+export const SPANISH_CLUBS: Record<string, Club> = {
+  real_madrid: {
+    id: 'real_madrid',
+    name: 'Real Madrid CF',
+    shortName: 'Real Madrid',
+    city: 'Madrid',
+    primaryColor: '#ffffff',
+    secondaryColor: '#00529f',
+    textColor: '#00529f',
+    badgeEmoji: '👑',
+    stadium: 'Estadio Santiago Bernabéu',
+    altitudeMeters: 667,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+  barcelona: {
+    id: 'barcelona',
+    name: 'FC Barcelona',
+    shortName: 'Barcelona',
+    city: 'Barcelona',
+    primaryColor: '#a50044',
+    secondaryColor: '#004d98',
+    textColor: '#ffffff',
+    badgeEmoji: '🔵🔴',
+    stadium: 'Spotify Camp Nou / Montjuïc',
+    altitudeMeters: 42,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+  atletico_madrid: {
+    id: 'atletico_madrid',
+    name: 'Atlético de Madrid',
+    shortName: 'Atlético',
+    city: 'Madrid',
+    primaryColor: '#cb3524',
+    secondaryColor: '#1b3562',
+    textColor: '#ffffff',
+    badgeEmoji: '🔴⚪',
+    stadium: 'Cívitas Metropolitano',
+    altitudeMeters: 690,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+  athletic_club: {
+    id: 'athletic_club',
+    name: 'Athletic Club Bilbao',
+    shortName: 'Athletic Club',
+    city: 'Bilbao',
+    primaryColor: '#ee2524',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🦁',
+    stadium: 'San Mamés',
+    altitudeMeters: 19,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+  sevilla: {
+    id: 'sevilla',
+    name: 'Sevilla FC',
+    shortName: 'Sevilla',
+    city: 'Sevilla',
+    primaryColor: '#f4364c',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '⚪🔴',
+    stadium: 'Estadio Ramón Sánchez-Pizjuán',
+    altitudeMeters: 7,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+  real_betis: {
+    id: 'real_betis',
+    name: 'Real Betis Balompié',
+    shortName: 'Real Betis',
+    city: 'Sevilla',
+    primaryColor: '#0bb364',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🟢⚪',
+    stadium: 'Estadio Benito Villamarín',
+    altitudeMeters: 10,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+  real_sociedad: {
+    id: 'real_sociedad',
+    name: 'Real Sociedad',
+    shortName: 'Real Sociedad',
+    city: 'San Sebastián',
+    primaryColor: '#0067b1',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🔵⚪',
+    stadium: 'Reale Arena (Anoeta)',
+    altitudeMeters: 6,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+  villarreal: {
+    id: 'villarreal',
+    name: 'Villarreal CF',
+    shortName: 'Villarreal',
+    city: 'Vila-real',
+    primaryColor: '#ffe600',
+    secondaryColor: '#005ca9',
+    textColor: '#002d62',
+    badgeEmoji: '🟡',
+    stadium: 'Estadio de la Cerámica',
+    altitudeMeters: 42,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+  valencia: {
+    id: 'valencia',
+    name: 'Valencia CF',
+    shortName: 'Valencia',
+    city: 'Valencia',
+    primaryColor: '#ffffff',
+    secondaryColor: '#ee7500',
+    textColor: '#1e293b',
+    badgeEmoji: '🦇',
+    stadium: 'Estadio de Mestalla',
+    altitudeMeters: 15,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+  girona: {
+    id: 'girona',
+    name: 'Girona FC',
+    shortName: 'Girona',
+    city: 'Girona',
+    primaryColor: '#cd1b2c',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🔴⚪',
+    stadium: 'Estadi Montilivi',
+    altitudeMeters: 95,
+    league: 'España (LaLiga EA Sports)',
+    country: 'España',
+  },
+};
+
+// Equipos de Premier League (Inglaterra)
+export const ENGLISH_CLUBS: Record<string, Club> = {
+  man_city: {
+    id: 'man_city',
+    name: 'Manchester City FC',
+    shortName: 'Man. City',
+    city: 'Manchester',
+    primaryColor: '#6cabdd',
+    secondaryColor: '#1c2c5b',
+    textColor: '#ffffff',
+    badgeEmoji: '🩵',
+    stadium: 'Etihad Stadium',
+    altitudeMeters: 48,
+    league: 'Inglaterra (Premier League)',
+    country: 'Inglaterra',
+  },
+  arsenal: {
+    id: 'arsenal',
+    name: 'Arsenal FC',
+    shortName: 'Arsenal',
+    city: 'Londres',
+    primaryColor: '#ef0107',
+    secondaryColor: '#063672',
+    textColor: '#ffffff',
+    badgeEmoji: '🔴',
+    stadium: 'Emirates Stadium',
+    altitudeMeters: 40,
+    league: 'Inglaterra (Premier League)',
+    country: 'Inglaterra',
+  },
+  liverpool: {
+    id: 'liverpool',
+    name: 'Liverpool FC',
+    shortName: 'Liverpool',
+    city: 'Liverpool',
+    primaryColor: '#c8102e',
+    secondaryColor: '#00b2a9',
+    textColor: '#ffffff',
+    badgeEmoji: '🔴',
+    stadium: 'Anfield',
+    altitudeMeters: 55,
+    league: 'Inglaterra (Premier League)',
+    country: 'Inglaterra',
+  },
+  man_united: {
+    id: 'man_united',
+    name: 'Manchester United',
+    shortName: 'Man. United',
+    city: 'Manchester',
+    primaryColor: '#da291c',
+    secondaryColor: '#fbe122',
+    textColor: '#ffffff',
+    badgeEmoji: '👹',
+    stadium: 'Old Trafford',
+    altitudeMeters: 38,
+    league: 'Inglaterra (Premier League)',
+    country: 'Inglaterra',
+  },
+  chelsea: {
+    id: 'chelsea',
+    name: 'Chelsea FC',
+    shortName: 'Chelsea',
+    city: 'Londres',
+    primaryColor: '#034694',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🦁',
+    stadium: 'Stamford Bridge',
+    altitudeMeters: 12,
+    league: 'Inglaterra (Premier League)',
+    country: 'Inglaterra',
+  },
+  tottenham: {
+    id: 'tottenham',
+    name: 'Tottenham Hotspur',
+    shortName: 'Tottenham',
+    city: 'Londres',
+    primaryColor: '#132257',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '⚪',
+    stadium: 'Tottenham Hotspur Stadium',
+    altitudeMeters: 17,
+    league: 'Inglaterra (Premier League)',
+    country: 'Inglaterra',
+  },
+  aston_villa: {
+    id: 'aston_villa',
+    name: 'Aston Villa FC',
+    shortName: 'Aston Villa',
+    city: 'Birmingham',
+    primaryColor: '#95bfe5',
+    secondaryColor: '#670e36',
+    textColor: '#ffffff',
+    badgeEmoji: '🦁',
+    stadium: 'Villa Park',
+    altitudeMeters: 110,
+    league: 'Inglaterra (Premier League)',
+    country: 'Inglaterra',
+  },
+  newcastle: {
+    id: 'newcastle',
+    name: 'Newcastle United',
+    shortName: 'Newcastle',
+    city: 'Newcastle',
+    primaryColor: '#241f20',
+    secondaryColor: '#41b6e6',
+    textColor: '#ffffff',
+    badgeEmoji: '⚫⚪',
+    stadium: 'St James\' Park',
+    altitudeMeters: 60,
+    league: 'Inglaterra (Premier League)',
+    country: 'Inglaterra',
+  },
+};
+
+// Todos los equipos predeterminados combinados
+export const ALL_DEFAULT_CLUBS: Record<string, Club> = {
+  ...BOLIVIAN_CLUBS,
+  ...SPANISH_CLUBS,
+  ...ENGLISH_CLUBS,
+};
+
+// Sincronizamos BOLIVIAN_CLUBS para incluir también los clubes internacionales por defecto
+Object.assign(BOLIVIAN_CLUBS, SPANISH_CLUBS, ENGLISH_CLUBS);
+
+// Asignamos liga y país predeterminados a los clubes que no lo tengan
+for (const club of Object.values(BOLIVIAN_CLUBS)) {
+  if (!club.league) {
+    club.league = 'Bolivia (División Profesional)';
+    club.country = 'Bolivia';
+  }
+}
 
 export function setGlobalClubs(newClubs: Record<string, Club>) {
   BOLIVIAN_CLUBS = { ...newClubs };
 }
+
+export function groupClubsByLeague(clubs: Record<string, Club> | Club[]) {
+  const list = Array.isArray(clubs) ? clubs : Object.values(clubs);
+  const groups: Record<string, Club[]> = {
+    '🇪🇸 España (LaLiga EA Sports)': [],
+    '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra (Premier League)': [],
+    '🇧🇴 Bolivia (División Profesional)': [],
+    'Otros Equipos': [],
+  };
+
+  for (const c of list) {
+    if (
+      c.league?.includes('España') ||
+      c.country === 'España' ||
+      ['real_madrid', 'barcelona', 'atletico_madrid', 'athletic_club', 'sevilla', 'real_betis', 'real_sociedad', 'villarreal', 'valencia', 'girona'].includes(c.id)
+    ) {
+      groups['🇪🇸 España (LaLiga EA Sports)'].push(c);
+    } else if (
+      c.league?.includes('Inglaterra') ||
+      c.country === 'Inglaterra' ||
+      ['man_city', 'arsenal', 'liverpool', 'man_united', 'chelsea', 'tottenham', 'aston_villa', 'newcastle'].includes(c.id)
+    ) {
+      groups['🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra (Premier League)'].push(c);
+    } else if (
+      c.league?.includes('Bolivia') ||
+      c.country === 'Bolivia' ||
+      c.altitudeMeters > 300
+    ) {
+      groups['🇧🇴 Bolivia (División Profesional)'].push(c);
+    } else {
+      groups['Otros Equipos'].push(c);
+    }
+  }
+
+  return groups;
+}
+
+export interface MatchPreset {
+  id: string;
+  label: string;
+  tournament: string;
+  homeTeam: string;
+  awayTeam: string;
+  stadium: string;
+  title: string;
+}
+
+export const PRESET_INTERNATIONAL_MATCHES: MatchPreset[] = [
+  {
+    id: 'el_clasico',
+    label: '🇪🇸 El Clásico: Real Madrid vs FC Barcelona',
+    tournament: 'LaLiga EA Sports · Fecha 32',
+    homeTeam: 'real_madrid',
+    awayTeam: 'barcelona',
+    stadium: 'Estadio Santiago Bernabéu - Madrid',
+    title: 'Real Madrid vs FC Barcelona - El Clásico de España',
+  },
+  {
+    id: 'derbi_madrileno',
+    label: '🇪🇸 Derbi Madrileño: Atlético vs Real Madrid',
+    tournament: 'LaLiga EA Sports · Fecha 23',
+    homeTeam: 'atletico_madrid',
+    awayTeam: 'real_madrid',
+    stadium: 'Cívitas Metropolitano - Madrid',
+    title: 'Atlético de Madrid vs Real Madrid - Derbi Madrileño',
+  },
+  {
+    id: 'premier_city_arsenal',
+    label: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League: Manchester City vs Arsenal',
+    tournament: 'Premier League · Matchday 30',
+    homeTeam: 'man_city',
+    awayTeam: 'arsenal',
+    stadium: 'Etihad Stadium - Manchester',
+    title: 'Manchester City vs Arsenal - Batalla por la Cima de Inglaterra',
+  },
+  {
+    id: 'premier_reds_united',
+    label: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Clásico Inglés: Liverpool vs Manchester United',
+    tournament: 'Premier League · Matchday 17',
+    homeTeam: 'liverpool',
+    awayTeam: 'man_united',
+    stadium: 'Anfield - Liverpool',
+    title: 'Liverpool FC vs Manchester United - El Gran Clásico de Inglaterra',
+  },
+  {
+    id: 'clasico_paceno',
+    label: '🇧🇴 Clásico Paceño: Bolívar vs The Strongest',
+    tournament: 'Liga Tigo División Profesional - Torneo Clausura',
+    homeTeam: 'bolivar',
+    awayTeam: 'strongest',
+    stadium: 'Estadio Hernando Siles - La Paz',
+    title: 'Bolívar vs The Strongest - Clásico Paceño de Bolivia',
+  },
+];
 
 export const INITIAL_MATCH_STATS: MatchStats = {
   possession: [56, 44],

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LiveEvent, StreamProvider } from '../types/football';
-import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
+import { BOLIVIAN_CLUBS, groupClubsByLeague, PRESET_INTERNATIONAL_MATCHES } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
 import { sanitizeClubId, validateScore, validateMinute, CLUB_ID_REGEX } from '../services/firebase';
@@ -490,10 +490,45 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
           </div>
         </div>
 
+        {/* Selector Rápido de Partidos Clásicos (España, Inglaterra, Bolivia) */}
+        <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+              <span>⚡</span>
+              <span>Partidos Preconfigurados (Multiliga):</span>
+            </span>
+            <span className="text-[10px] text-slate-500">Un clic para cargar equipos y torneo</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {PRESET_INTERNATIONAL_MATCHES.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  isDirtyRef.current = true;
+                  setFormData({
+                    ...formData,
+                    title: preset.title,
+                    homeTeam: preset.homeTeam,
+                    awayTeam: preset.awayTeam,
+                    tournamentName: preset.tournament,
+                    stadiumName: preset.stadium,
+                  });
+                }}
+                className="px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold border border-slate-700 transition cursor-pointer"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Row 2: Teams & Tournament */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Equipo Local</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Equipo Local (España / Inglaterra / Bolivia)
+            </label>
             <select
               value={formData.homeTeam}
               onChange={(e) => {
@@ -502,16 +537,24 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
               }}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
             >
-              {Object.values(clubs).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.badgeEmoji} {c.name} ({c.city})
-                </option>
+              {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
+                leagueClubs.length > 0 && (
+                  <optgroup key={leagueTitle} label={leagueTitle}>
+                    {leagueClubs.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.badgeEmoji} {c.name} ({c.city})
+                      </option>
+                    ))}
+                  </optgroup>
+                )
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Equipo Visitante</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Equipo Visitante (España / Inglaterra / Bolivia)
+            </label>
             <select
               value={formData.awayTeam}
               onChange={(e) => {
@@ -520,16 +563,22 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
               }}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
             >
-              {Object.values(clubs).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.badgeEmoji} {c.name} ({c.city})
-                </option>
+              {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
+                leagueClubs.length > 0 && (
+                  <optgroup key={leagueTitle} label={leagueTitle}>
+                    {leagueClubs.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.badgeEmoji} {c.name} ({c.city})
+                      </option>
+                    ))}
+                  </optgroup>
+                )
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Torneo</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Torneo / Liga</label>
             <input
               type="text"
               value={formData.tournamentName || ''}
@@ -537,7 +586,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
                 isDirtyRef.current = true;
                 setFormData({ ...formData, tournamentName: e.target.value });
               }}
-              placeholder="División Profesional de Bolivia"
+              placeholder="Ej: LaLiga EA Sports o Premier League"
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
             />
           </div>
@@ -545,8 +594,13 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
 
         {/* Row 2.5: Marcador y Minuto en Vivo con Validación de Límites */}
         <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2">
-          <span className="text-xs font-bold text-amber-400 block">Marcador y Minuto del Partido</span>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-400 block">Marcador y Minuto del Partido</span>
+            <span className="text-[11px] text-slate-400">
+              Modo automático avanza los minutos sin necesidad de ajuste manual
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div>
               <label className="block text-[11px] text-slate-400 mb-1">Goles Local (0 - 50)</label>
               <input
@@ -611,6 +665,25 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
                 <option value="Tiempo Extra">Tiempo Extra</option>
                 <option value="Finalizado">Finalizado</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">Reloj Automático</label>
+              <button
+                type="button"
+                onClick={() => {
+                  isDirtyRef.current = true;
+                  setFormData({ ...formData, isClockRunning: !formData.isClockRunning });
+                }}
+                className={`w-full py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  formData.isClockRunning
+                    ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/50 shadow-sm'
+                    : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'
+                }`}
+                title="Activar para que el cronómetro avance minuto a minuto automáticamente"
+              >
+                <span>{formData.isClockRunning ? '▶ Auto Activo' : '⏸ Pausado'}</span>
+              </button>
             </div>
           </div>
         </div>

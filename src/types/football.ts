@@ -19,6 +19,8 @@ export interface Club {
   badgeEmoji: string;
   stadium: string;
   altitudeMeters: number;
+  league?: string;
+  country?: string;
 }
 
 export interface MatchEvent {

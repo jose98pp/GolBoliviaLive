@@ -1944,10 +1944,16 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   </div>
 
                   {/* Minute Stepper */}
-                  <div className="bg-[#070b14] p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <div className={`p-3.5 rounded-xl border flex items-center justify-between transition-colors ${
+                    isClockRunning ? 'bg-[#07131e] border-emerald-500/50 shadow-md shadow-emerald-950/30' : 'bg-[#070b14] border-slate-800'
+                  }`}>
                     <div>
                       <span className="text-xs font-bold text-white block">Minuto de Juego</span>
-                      <span className="text-[10px] text-emerald-400 font-mono">Oficial (0&apos; - 130&apos;)</span>
+                      <span className={`text-[10px] font-mono flex items-center gap-1 ${
+                        isClockRunning ? 'text-emerald-400 font-black animate-pulse' : 'text-slate-400'
+                      }`}>
+                        {isClockRunning ? '● Corriendo solo (Auto)' : 'Manual / Pausado'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button

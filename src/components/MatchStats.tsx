@@ -26,6 +26,8 @@ interface MatchStatsProps {
   matchMinute: number;
   streamSettings?: StreamSettings;
   events?: MatchEvent[];
+  isClockRunning?: boolean;
+  onToggleMatchClock?: () => void;
 }
 
 export const MatchStats: React.FC<MatchStatsProps> = ({
@@ -34,6 +36,8 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
   matchMinute,
   streamSettings,
   events: propEvents,
+  isClockRunning = false,
+  onToggleMatchClock,
 }) => {
   const [statsTab, setStatsTab] = useState<'timeline' | 'stats' | 'lineups' | 'table'>('timeline');
   const [matchStats] = useState<IMatchStats>(INITIAL_MATCH_STATS);
@@ -55,10 +59,24 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
             <span>·</span>
             <span>Fecha 22 / Torneo Clausura</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-bold">Minuto {matchMinute}&apos; ({streamSettings?.period || '2T'})</span>
-          </div>
+          <button
+            type="button"
+            onClick={onToggleMatchClock}
+            className={`flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+              isClockRunning
+                ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 ring-1 ring-emerald-500/30'
+                : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+            }`}
+            title={isClockRunning ? "Marcador automático activo: clic para pausar" : "Clic para iniciar minutos automáticamente"}
+          >
+            <span className={`w-2 h-2 rounded-full ${isClockRunning ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+            <span className="font-bold">
+              Minuto {matchMinute}&apos; ({streamSettings?.period || '2T'})
+            </span>
+            <span className="text-[10px] text-amber-400 ml-0.5">
+              {isClockRunning ? '⏱ Auto' : '▶ Clic Iniciar'}
+            </span>
+          </button>
         </div>
 
         {/* CLUBS SCORE ROW */}
@@ -70,9 +88,11 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
                 {homeClub.name}
               </h3>
               <div className="flex items-center gap-1 text-[11px] text-slate-400 justify-center md:justify-end">
-                <span>La Paz</span>
+                <span>{homeClub.city}</span>
                 <span>·</span>
-                <span className="text-sky-400 font-medium">Celeste</span>
+                <span className="text-sky-400 font-medium">
+                  {homeClub.league ? (homeClub.league.includes('España') ? '🇪🇸 LaLiga' : homeClub.league.includes('Inglaterra') ? '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier' : '🇧🇴 Bolivia') : 'Titular'}
+                </span>
               </div>
             </div>
             <div className="w-12 h-12 rounded-xl bg-sky-950/70 border border-sky-500/50 flex items-center justify-center text-2xl shadow-md shrink-0">
@@ -80,17 +100,28 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
             </div>
           </div>
 
-          {/* Central Score */}
-          <div className="col-span-1 flex flex-col items-center justify-center">
+          {/* Central Score - Clic para Iniciar o Pausar Reloj */}
+          <button
+            type="button"
+            onClick={onToggleMatchClock}
+            className={`col-span-1 flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer group select-none active:scale-95 ${
+              isClockRunning
+                ? 'bg-emerald-950/40 border border-emerald-500/50 shadow-lg shadow-emerald-950/40'
+                : 'hover:bg-slate-800/60 border border-transparent hover:border-slate-700'
+            }`}
+            title={isClockRunning ? "Marcador corriendo automáticamente: Clic para pausar" : "Clic para iniciar minutos automáticamente"}
+          >
             <div className="flex items-center gap-2 font-display text-2xl md:text-4xl font-black text-white tabular-nums tracking-tight">
-              <span>{homeScore}</span>
+              <span className="group-hover:text-emerald-400 transition-colors">{homeScore}</span>
               <span className="text-slate-600">-</span>
-              <span>{awayScore}</span>
+              <span className="group-hover:text-emerald-400 transition-colors">{awayScore}</span>
             </div>
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider mt-0.5">
-              En Vivo
+            <span className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1 ${
+              isClockRunning ? 'text-emerald-400 animate-pulse' : 'text-slate-400 group-hover:text-amber-400'
+            }`}>
+              {isClockRunning ? '● Corriendo Auto' : '▶ Clic Iniciar Reloj'}
             </span>
-          </div>
+          </button>
 
           {/* Away team */}
           <div className="col-span-3 flex flex-col-reverse md:flex-row items-center justify-center md:justify-start gap-2 md:gap-3">

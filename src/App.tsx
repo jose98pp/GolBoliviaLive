@@ -32,6 +32,7 @@ import {
   subscribeMatchEventsFirebase,
   subscribeStreamSettingsFirebase,
   getStreamSettingsFromFirebase,
+  DEFAULT_LIVE_EVENTS,
 } from './services/firebase';
 
 export default function App() {
@@ -130,7 +131,7 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [];
+    return DEFAULT_LIVE_EVENTS;
   });
   const [activeEventId, setActiveEventId] = useState<string>('partido-001');
   const activeEventIdRef = useRef(activeEventId);
@@ -140,19 +141,46 @@ export default function App() {
     activeEventIdRef.current = activeEventId;
   }, [activeEventId]);
 
-  const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0];
-  const currentHomeClub = currentLiveEvent?.homeTeam
-    ? (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam])
-    : (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId] || Object.values(clubs)[0]);
-  const currentAwayClub = currentLiveEvent?.awayTeam
-    ? (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam])
-    : (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId] || Object.values(clubs)[1]);
+  const defaultFallbackClub = Object.values(BOLIVIAN_CLUBS)[0] || {
+    id: 'bolivar',
+    name: 'Club Bolívar',
+    shortName: 'BOL',
+    city: 'La Paz',
+    primaryColor: '#0099e6',
+    secondaryColor: '#ffffff',
+    textColor: '#ffffff',
+    badgeEmoji: '🔵',
+    stadium: 'Estadio Hernando Siles',
+    altitudeMeters: 3637,
+  };
+  const defaultAwayClub = Object.values(BOLIVIAN_CLUBS)[1] || {
+    id: 'strongest',
+    name: 'The Strongest',
+    shortName: 'STR',
+    city: 'La Paz',
+    primaryColor: '#ffcc00',
+    secondaryColor: '#000000',
+    textColor: '#000000',
+    badgeEmoji: '🟡',
+    stadium: 'Estadio Rafael Mendoza Castellón',
+    altitudeMeters: 3600,
+  };
+
+  const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || DEFAULT_LIVE_EVENTS[0];
+  const currentHomeClub = (currentLiveEvent?.homeTeam && (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam]))
+    || (streamSettings?.homeClubId && (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId]))
+    || Object.values(clubs)[0]
+    || defaultFallbackClub;
+  const currentAwayClub = (currentLiveEvent?.awayTeam && (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam]))
+    || (streamSettings?.awayClubId && (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId]))
+    || Object.values(clubs)[1]
+    || defaultAwayClub;
 
   // Problema 2: Derivar el marcador visible directamente del evento confirmado más reciente, sin estado duplicado
   const currentHomeScore = typeof currentLiveEvent?.homeScore === 'number' ? currentLiveEvent.homeScore : 0;
   const currentAwayScore = typeof currentLiveEvent?.awayScore === 'number' ? currentLiveEvent.awayScore : 0;
   const currentMatchMinute = typeof currentLiveEvent?.matchMinute === 'number' ? currentLiveEvent.matchMinute : 0;
-  const currentPeriod = currentLiveEvent?.period || streamSettings.period || '1T';
+  const currentPeriod = currentLiveEvent?.period || streamSettings?.period || '1T';
 
   // Authoritative Backend Synchronization: Dedicated Match-Specific Stream Sync, GET /api/live & SSE /api/events
   useEffect(() => {
@@ -458,40 +486,109 @@ export default function App() {
     }
   ]);
   const [activeToast, setActiveToast] = useState<NotificationItem | null>(null);
+  const [matchSeconds, setMatchSeconds] = useState<number>(0);
+  const [isFastDemoClock, setIsFastDemoClock] = useState<boolean>(false);
 
-  // Reloj oficial del partido (modo automático: avanza 1 minuto cada 60s si está en juego)
+  // Función principal para iniciar/pausar el reloj automático con 1 solo clic
+  const handleToggleMatchClock = (explicitRunning?: boolean) => {
+    const isCurrentlyRunning = Boolean(currentLiveEvent?.isClockRunning);
+    const targetRunning = explicitRunning !== undefined ? explicitRunning : !isCurrentlyRunning;
+    const prevRunning = isCurrentlyRunning;
+
+    setLiveEvents((prev) =>
+      prev.map((ev) =>
+        ev.id === activeEventId ? { ...ev, isClockRunning: targetRunning, clockUpdatedAt: Date.now() } : ev
+      )
+    );
+
+    apiClient
+      .updateScoreboard({
+        activeEventId,
+        isClockRunning: targetRunning,
+        homeScore: currentHomeScore,
+        awayScore: currentAwayScore,
+        matchMinute: currentMatchMinute,
+        version: currentLiveEvent?.version ? currentLiveEvent.version + 1 : undefined,
+      })
+      .then((res) => {
+        if (res.scoreboard?.version) {
+          setLiveEvents((prev) =>
+            prev.map((ev) => (ev.id === activeEventId ? { ...ev, version: res.scoreboard.version } : ev))
+          );
+        }
+        setActiveToast({
+          id: `clock-ok-${Date.now()}`,
+          title: '✅ Marcador en Marcha',
+          body: targetRunning
+            ? '▶ Cronómetro automático iniciado: los minutos avanzan automáticamente sin ajuste manual.'
+            : '⏸ Cronómetro pausado.',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          type: 'exclusive',
+          read: false,
+        });
+      })
+      .catch((err: any) => {
+        // Revertir si falló
+        setLiveEvents((prev) =>
+          prev.map((ev) => (ev.id === activeEventId ? { ...ev, isClockRunning: prevRunning } : ev))
+        );
+        setActiveToast({
+          id: `clock-err-${Date.now()}`,
+          title: '❌ Error al sincronizar reloj',
+          body: err.message || 'No autorizado o error de conexión al sincronizar el reloj',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          type: 'exclusive',
+          read: false,
+        });
+      });
+  };
+
+  // Reloj oficial del partido: avanza segundos y minutos automáticamente (sin ajuste manual)
   useEffect(() => {
     const activeEvt = liveEvents.find((e) => e.id === activeEventId);
-    const isClockActive = activeEvt?.isClockRunning ?? (activeEvt?.isLive && activeEvt.period !== 'Descanso' && activeEvt.period !== 'Finalizado');
+    const isClockActive = Boolean(activeEvt?.isClockRunning);
     if (!isClockActive) return;
     if (activeEvt?.period === 'Descanso' || activeEvt?.period === 'Finalizado') return;
 
+    const thresholdSec = isFastDemoClock ? 5 : 60; // 5 segundos en modo demo rápido, 60 segundos en tiempo real
+
     const timer = setInterval(() => {
-      setLiveEvents((prev) =>
-        prev.map((ev) => {
-          if (ev.id === activeEventId) {
-            const running = ev.isClockRunning ?? (ev.isLive && ev.period !== 'Descanso' && ev.period !== 'Finalizado');
-            if (running) {
-              const nextMin = (ev.matchMinute || 0) + 1;
-              if (nextMin <= 130) {
-                const updated = { ...ev, matchMinute: nextMin };
-                try {
-                  localStorage.setItem(
-                    'golbolivia_live_events',
-                    JSON.stringify(prev.map((p) => (p.id === ev.id ? updated : p)))
-                  );
-                } catch {}
-                return updated;
+      setMatchSeconds((prevSec) => {
+        const nextSec = prevSec + 1;
+        if (nextSec >= thresholdSec) {
+          // Ha transcurrido 1 minuto completo: avanzar minuto automáticamente
+          setLiveEvents((prevEvents) =>
+            prevEvents.map((ev) => {
+              if (ev.id === activeEventId) {
+                const nextMin = (ev.matchMinute || 0) + 1;
+                if (nextMin <= 130) {
+                  const updated = { ...ev, matchMinute: nextMin, version: ev.version ? ev.version + 1 : undefined };
+                  try {
+                    localStorage.setItem(
+                      'golbolivia_live_events',
+                      JSON.stringify(prevEvents.map((p) => (p.id === ev.id ? updated : p)))
+                    );
+                  } catch {}
+                  // Sincronizar en segundo plano con la API
+                  apiClient.updateScoreboard({
+                    activeEventId,
+                    matchMinute: nextMin,
+                    version: updated.version,
+                  }).catch(() => {});
+                  return updated;
+                }
               }
-            }
-          }
-          return ev;
-        })
-      );
-    }, 60000);
+              return ev;
+            })
+          );
+          return 0; // Reiniciar contador de segundos
+        }
+        return nextSec;
+      });
+    }, 1000);
 
     return () => clearInterval(timer);
-  }, [activeEventId, liveEvents]);
+  }, [activeEventId, liveEvents, isFastDemoClock]);
 
   const triggerReaction = (emoji: string) => {
     presence.registerUserInteraction(`Reacción ${emoji}`);
@@ -640,53 +737,7 @@ export default function App() {
           if (ev) handleSelectMatchEvent(ev);
         }}
         isClockRunning={Boolean(currentLiveEvent?.isClockRunning)}
-        onToggleMatchClock={(running) => {
-          const prevRunning = Boolean(currentLiveEvent?.isClockRunning);
-          setLiveEvents((prev) =>
-            prev.map((ev) =>
-              ev.id === activeEventId ? { ...ev, isClockRunning: running, clockUpdatedAt: Date.now() } : ev
-            )
-          );
-          apiClient.updateScoreboard({
-            activeEventId,
-            isClockRunning: running,
-            homeScore: currentHomeScore,
-            awayScore: currentAwayScore,
-            matchMinute: currentMatchMinute,
-            version: currentLiveEvent?.version ? currentLiveEvent.version + 1 : undefined,
-          }).then((res) => {
-            if (res.scoreboard?.version) {
-              setLiveEvents((prev) =>
-                prev.map((ev) =>
-                  ev.id === activeEventId ? { ...ev, version: res.scoreboard.version } : ev
-                )
-              );
-            }
-            setActiveToast({
-              id: `clock-ok-${Date.now()}`,
-              title: '✅ Guardado confirmado',
-              body: running ? 'Cronómetro iniciado y sincronizado' : 'Cronómetro detenido y sincronizado',
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              type: 'exclusive',
-              read: false,
-            });
-          }).catch((err: any) => {
-            // Revertir estado si el guardado falló (Regla 2: no confirmar guardados fallidos)
-            setLiveEvents((prev) =>
-              prev.map((ev) =>
-                ev.id === activeEventId ? { ...ev, isClockRunning: prevRunning } : ev
-              )
-            );
-            setActiveToast({
-              id: `clock-err-${Date.now()}`,
-              title: '❌ Error al guardar cronómetro',
-              body: err.message || 'No autorizado o error al guardar estado del cronómetro',
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              type: 'exclusive',
-              read: false,
-            });
-          });
-        }}
+        onToggleMatchClock={handleToggleMatchClock}
         onUpdatePeriod={(p) => {
           const prevPeriod = currentLiveEvent?.period || streamSettings.period || '1T';
           setLiveEvents((prev) =>
@@ -883,6 +934,9 @@ export default function App() {
         homeClub={currentHomeClub}
         awayClub={currentAwayClub}
         period={currentPeriod}
+        isClockRunning={Boolean(currentLiveEvent?.isClockRunning)}
+        onToggleMatchClock={() => handleToggleMatchClock()}
+        matchSeconds={matchSeconds}
       />
 
       {/* MAIN VIEWPORT BODY */}
@@ -950,7 +1004,7 @@ export default function App() {
                   viewerCount={liveViewerCount}
                   onProviderChange={(newProv) => {
                     setLiveEvents((prev) =>
-                      prev.map((e) => (e.id === currentLiveEvent.id ? { ...e, primaryProvider: newProv } : e))
+                      prev.map((e) => (e.id === (currentLiveEvent?.id || activeEventId) ? { ...e, primaryProvider: newProv } : e))
                     );
                   }}
                 />
@@ -986,15 +1040,37 @@ export default function App() {
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                         <span>EN VIVO</span>
                       </span>
-                      <span className="font-semibold text-white">{currentLiveEvent.tournamentName || streamSettings.tournamentName}</span>
+                      <span className="font-semibold text-white">{currentLiveEvent?.tournamentName || streamSettings?.tournamentName || 'Liga Profesional'}</span>
                       <span className="text-slate-500 hidden sm:inline">·</span>
                       <span className="text-slate-400 font-mono text-[11px] hidden sm:inline">1080p60 HLS HD</span>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        {currentPeriod} · {currentMatchMinute}&apos;
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMatchClock()}
+                        className={`text-xs font-mono font-bold px-2.5 py-1 rounded-md border transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 ${
+                          Boolean(currentLiveEvent?.isClockRunning)
+                            ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/60 ring-1 ring-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30'
+                        }`}
+                        title={
+                          Boolean(currentLiveEvent?.isClockRunning)
+                            ? `Reloj automático activo (${currentMatchMinute}' ${String(matchSeconds).padStart(2, '0')}") - Clic para pausar`
+                            : 'Clic para iniciar minutos automáticamente sin ajustar manual'
+                        }
+                      >
+                        <span className={`w-2 h-2 rounded-full ${Boolean(currentLiveEvent?.isClockRunning) ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
+                        <span>{currentPeriod} · {currentMatchMinute}&apos;</span>
+                        {Boolean(currentLiveEvent?.isClockRunning) && (
+                          <span className="text-[10px] text-emerald-400 font-normal">
+                            {String(matchSeconds).padStart(2, '0')}&quot;
+                          </span>
+                        )}
+                        <span className="text-[10px] text-amber-400 ml-0.5">
+                          {Boolean(currentLiveEvent?.isClockRunning) ? 'Auto' : '▶ Iniciar'}
+                        </span>
+                      </button>
                       <button
                         onClick={() => setActiveTab('stats')}
                         className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 cursor-pointer transition-colors"
@@ -1007,7 +1083,7 @@ export default function App() {
 
                   {/* Main Match Title */}
                   <h1 className="font-display font-black text-lg sm:text-xl md:text-2xl text-white tracking-tight">
-                    {currentLiveEvent.title || streamSettings.title}
+                    {currentLiveEvent?.title || streamSettings?.title || 'Partido en Directo'}
                   </h1>
 
                   {/* Live Scoreboard Hero Display */}
@@ -1030,15 +1106,41 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Central Score */}
-                    <div className="flex flex-col items-center justify-center px-3 sm:px-6">
-                      <div className="font-mono text-2xl sm:text-4xl font-black text-emerald-400 tracking-wider tabular-nums bg-black/60 px-3 sm:px-4 py-1 rounded-xl border border-slate-700 shadow-inner">
-                        {currentHomeScore} <span className="text-slate-500 font-light">-</span> {currentAwayScore}
+                    {/* Central Score - Interactivo: Clic para arrancar o pausar el avance automático de minutos */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleMatchClock()}
+                      className={`flex flex-col items-center justify-center px-3 sm:px-6 py-2 rounded-2xl border transition-all cursor-pointer group select-none active:scale-95 ${
+                        Boolean(currentLiveEvent?.isClockRunning)
+                          ? 'bg-emerald-950/40 border-emerald-500/60 shadow-xl shadow-emerald-950/60 ring-1 ring-emerald-500/40'
+                          : 'bg-black/60 border-slate-700/80 hover:border-emerald-500/50 hover:bg-slate-900/80'
+                      }`}
+                      title={
+                        Boolean(currentLiveEvent?.isClockRunning)
+                          ? `Marcador automático activo: ${currentMatchMinute}' ${String(matchSeconds).padStart(2, '0')}" - Clic para pausar`
+                          : 'Clic en el marcador para que empiece a correr los minutos automáticamente sin ajuste manual'
+                      }
+                    >
+                      <div className="font-mono text-2xl sm:text-4xl font-black text-emerald-400 tracking-wider tabular-nums bg-black/70 px-3 sm:px-5 py-1 rounded-xl border border-slate-700 shadow-inner group-hover:scale-105 transition-transform flex items-center gap-1.5">
+                        <span>{currentHomeScore}</span>
+                        <span className="text-slate-500 font-light">-</span>
+                        <span>{currentAwayScore}</span>
                       </div>
-                      <span className="text-[10px] text-amber-400 font-mono font-bold mt-1 uppercase tracking-wider">
-                        {currentPeriod} ({currentMatchMinute}&apos;)
-                      </span>
-                    </div>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
+                          Boolean(currentLiveEvent?.isClockRunning) ? 'text-emerald-300' : 'text-amber-400'
+                        }`}>
+                          {currentPeriod} ({currentMatchMinute}&apos;{Boolean(currentLiveEvent?.isClockRunning) ? ` ${String(matchSeconds).padStart(2, '0')}"` : ''})
+                        </span>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider flex items-center gap-1 ${
+                          Boolean(currentLiveEvent?.isClockRunning)
+                            ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 animate-pulse'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700 group-hover:text-amber-300'
+                        }`}>
+                          {Boolean(currentLiveEvent?.isClockRunning) ? '⏱ Corriendo Auto' : '▶ Clic Iniciar'}
+                        </span>
+                      </div>
+                    </button>
 
                     {/* Away Team */}
                     <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 justify-end text-right">
@@ -1056,6 +1158,48 @@ export default function App() {
                       >
                         {currentAwayClub.badgeEmoji}
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Barra Rápida de Control de Marcador Automático */}
+                  <div className="bg-[#050811] p-2.5 sm:p-3 rounded-xl border border-slate-800/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMatchClock()}
+                        className={`px-3 py-1.5 rounded-lg font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-95 ${
+                          Boolean(currentLiveEvent?.isClockRunning)
+                            ? 'bg-amber-400 hover:bg-amber-300 text-black border border-amber-200'
+                            : 'bg-emerald-500 hover:bg-emerald-400 text-black border border-emerald-300'
+                        }`}
+                      >
+                        {Boolean(currentLiveEvent?.isClockRunning) ? '⏸ Pausar Reloj' : '▶ Iniciar Reloj Automático'}
+                      </button>
+
+                      <div className="text-[11px] text-slate-300 flex items-center gap-1 font-mono">
+                        <span className={`w-2 h-2 rounded-full ${Boolean(currentLiveEvent?.isClockRunning) ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
+                        <span>
+                          {Boolean(currentLiveEvent?.isClockRunning)
+                            ? `Minutos corriendo automáticamente (${currentMatchMinute}' ${String(matchSeconds).padStart(2, '0')}")`
+                            : 'Reloj en pausa manual'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                      {/* Selector de Velocidad: Normal 60s vs Rápido 5s para demostración */}
+                      <button
+                        type="button"
+                        onClick={() => setIsFastDemoClock(!isFastDemoClock)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer flex items-center gap-1 ${
+                          isFastDemoClock
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                        }`}
+                        title="Alterna entre velocidad estándar (1 min = 60s) o prueba rápida (1 min = 5s)"
+                      >
+                        <span>{isFastDemoClock ? '⚡ Demostración Rápida (5s/min)' : '⏱ Tiempo Real (60s/min)'}</span>
+                      </button>
                     </div>
                   </div>
 
@@ -1131,14 +1275,16 @@ export default function App() {
                 homeScore={currentHomeScore}
                 awayScore={currentAwayScore}
                 matchMinute={currentMatchMinute}
+                isClockRunning={Boolean(currentLiveEvent?.isClockRunning)}
+                onToggleMatchClock={() => handleToggleMatchClock()}
                 streamSettings={{
                   ...streamSettings,
-                  title: currentLiveEvent.title || streamSettings.title,
-                  homeClubId: currentLiveEvent.homeTeam || streamSettings.homeClubId,
-                  awayClubId: currentLiveEvent.awayTeam || streamSettings.awayClubId,
-                  tournamentName: currentLiveEvent.tournamentName || streamSettings.tournamentName,
-                  stadiumName: currentLiveEvent.stadiumName || streamSettings.stadiumName,
-                  period: (currentLiveEvent.period || streamSettings.period) as any,
+                  title: currentLiveEvent?.title || streamSettings?.title || 'Partido en Directo',
+                  homeClubId: currentLiveEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar',
+                  awayClubId: currentLiveEvent?.awayTeam || streamSettings?.awayClubId || 'strongest',
+                  tournamentName: currentLiveEvent?.tournamentName || streamSettings?.tournamentName || 'División Profesional',
+                  stadiumName: currentLiveEvent?.stadiumName || streamSettings?.stadiumName || '',
+                  period: (currentLiveEvent?.period || streamSettings?.period || '1T') as any,
                 }}
                 events={events}
               />
@@ -1152,14 +1298,16 @@ export default function App() {
             homeScore={currentHomeScore}
             awayScore={currentAwayScore}
             matchMinute={currentMatchMinute}
+            isClockRunning={Boolean(currentLiveEvent?.isClockRunning)}
+            onToggleMatchClock={() => handleToggleMatchClock()}
             streamSettings={{
               ...streamSettings,
-              title: currentLiveEvent.title || streamSettings.title,
-              homeClubId: currentLiveEvent.homeTeam || streamSettings.homeClubId,
-              awayClubId: currentLiveEvent.awayTeam || streamSettings.awayClubId,
-              tournamentName: currentLiveEvent.tournamentName || streamSettings.tournamentName,
-              stadiumName: currentLiveEvent.stadiumName || streamSettings.stadiumName,
-              period: (currentLiveEvent.period || streamSettings.period) as any,
+              title: currentLiveEvent?.title || streamSettings?.title || 'Partido en Directo',
+              homeClubId: currentLiveEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar',
+              awayClubId: currentLiveEvent?.awayTeam || streamSettings?.awayClubId || 'strongest',
+              tournamentName: currentLiveEvent?.tournamentName || streamSettings?.tournamentName || 'División Profesional',
+              stadiumName: currentLiveEvent?.stadiumName || streamSettings?.stadiumName || '',
+              period: (currentLiveEvent?.period || streamSettings?.period || '1T') as any,
             }}
             events={events}
           />

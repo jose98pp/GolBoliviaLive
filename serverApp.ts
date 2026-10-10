@@ -1416,6 +1416,8 @@ app.post(
       badgeEmoji: String(club.badgeEmoji || existing.badgeEmoji || '⚽').trim(),
       stadium: String(club.stadium || existing.stadium || 'Estadio Departamental').trim(),
       altitudeMeters: Number(club.altitudeMeters || existing.altitudeMeters || 2500),
+      league: String(club.league || existing.league || 'Bolivia (División Profesional)').trim(),
+      country: String(club.country || existing.country || 'Bolivia').trim(),
     };
 
     state.clubs[cleanId] = updatedClub;
