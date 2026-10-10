@@ -96,6 +96,18 @@
         "updatedAt": { "type": "number" }
       }
     },
+    "DonationQr": {
+      "title": "DonationQr",
+      "description": "Configuración del código QR e instrucciones para el botón de donaciones Apóyame",
+      "type": "object",
+      "properties": {
+        "imageUrl": { "type": "string" },
+        "instructions": { "type": "string", "maxLength": 500 },
+        "updatedAt": { "type": "number" },
+        "updatedAtIso": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      }
+    },
     "ConfirmationLog": {
       "title": "ConfirmationLog",
       "description": "Registro de auditoría y confirmación de cambios",

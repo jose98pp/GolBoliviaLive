@@ -9,6 +9,8 @@ import type { Club, LiveEvent, DonationQrInfo } from './src/types/football';
 import {
   saveStreamSettingsToFirebase,
   getStreamSettingsFromFirebase,
+  saveDonationQrToFirebase,
+  getDonationQrFromFirebase,
   saveScoreboardToFirebase,
   saveMatchScoreboardFirebase,
   getClubsFromFirebase,
@@ -461,6 +463,13 @@ function loadPersistedState(): void {
     }
   }).catch(() => {});
 
+  getDonationQrFromFirebase().then((fbQr) => {
+    if (fbQr && fbQr.imageUrl) {
+      state.streamSettings.donationQr = fbQr;
+      console.log('[GolBolivia Backend] Código QR de donaciones cargado desde Firebase Firestore.');
+    }
+  }).catch(() => {});
+
   getClubsFromFirebase().then((fbClubs) => {
     if (fbClubs && Object.keys(fbClubs).length > 0) {
       state.clubs = { ...state.clubs, ...fbClubs };
@@ -790,12 +799,17 @@ app.post(
     state.streamSettings.donationQr = updatedQr;
     persistState();
 
+    // Persistir directamente en Google Firebase Firestore (/config/donation_qr)
+    saveDonationQrToFirebase(updatedQr, (req as any).user?.username || 'admin').catch((err) => {
+      console.warn('[Firebase] Advertencia al persistir donationQr en Firestore:', err);
+    });
+
     broadcastSseEvent('DONATION_QR_UPDATED', updatedQr);
     broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
 
     res.json({
       success: true,
-      message: 'Código QR de apoyo y donaciones guardado con éxito.',
+      message: 'Código QR de apoyo y donaciones guardado y sincronizado con éxito en Firebase y servidor.',
       donationQr: updatedQr,
     });
   }

@@ -33,6 +33,8 @@ import {
   subscribeStreamSettingsFirebase,
   getStreamSettingsFromFirebase,
   DEFAULT_LIVE_EVENTS,
+  subscribeDonationQrFirebase,
+  getDonationQrFromFirebase,
 } from './services/firebase';
 
 export default function App() {
@@ -206,9 +208,19 @@ export default function App() {
         // Fallback gracefully if offline
       });
 
-    // 1.1 Cargar datos del QR de donación
+    // 1.1 Cargar y sincronizar datos del QR de donación desde Firebase y servidor
+    getDonationQrFromFirebase().then((qr) => {
+      if (qr && qr.imageUrl) setDonationQrInfo(qr);
+    }).catch(() => {});
+
     apiClient.getDonationQr().then((qr) => {
-      if (qr) setDonationQrInfo(qr);
+      if (qr && qr.imageUrl) setDonationQrInfo(qr);
+    });
+
+    const unsubscribeDonationQr = subscribeDonationQrFirebase((qr) => {
+      if (qr && qr.imageUrl) {
+        setDonationQrInfo(qr);
+      }
     });
 
     // 2. Dedicated Match-Scoped Stream & Failover Synchronization Subscriber
@@ -372,6 +384,7 @@ export default function App() {
       unsubscribeStream();
       unsubscribeEvents();
       unsubscribeMultiLiveEvents();
+      unsubscribeDonationQr();
       clearInterval(heartbeatTimer);
     };
   }, []);

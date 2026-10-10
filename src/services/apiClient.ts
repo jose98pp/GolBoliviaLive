@@ -4,6 +4,9 @@ import { authService, AuthUser, UserRole } from './auth';
 import {
   saveStreamSettingsToFirebase,
   getStreamSettingsFromFirebase,
+  saveDonationQrToFirebase,
+  getDonationQrFromFirebase,
+  subscribeDonationQrFirebase,
   saveScoreboardToFirebase,
   addMatchEventToFirebase,
   updateMatchEventInFirebase,
@@ -236,6 +239,12 @@ class GolBoliviaApiClient {
   }
 
   async saveDonationQr(data: DonationQrInfo): Promise<{ success: boolean; donationQr?: DonationQrInfo }> {
+    // 1. Persistir directamente en Google Firebase Firestore (/config/donation_qr)
+    await saveDonationQrToFirebase(data).catch((err) => {
+      console.warn('[Firebase] Advertencia guardando donationQr en Firestore desde apiClient:', err);
+    });
+
+    // 2. Persistir en el servidor Node.js Express para difusión en tiempo real vía SSE
     const res = await fetch('/api/donation-qr', {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -365,6 +374,9 @@ class GolBoliviaApiClient {
     // 1. Save stream settings to Firebase and backend
     if (params.streamSettings) {
       await saveStreamSettingsToFirebase(params.streamSettings).catch(() => {});
+      if (params.streamSettings.donationQr) {
+        await saveDonationQrToFirebase(params.streamSettings.donationQr, operator).catch(() => {});
+      }
       await this.syncStreamConfig(params.streamSettings).catch(() => {});
     }
 

@@ -19,7 +19,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { StreamSettings, MatchEvent, ChatMessage, LivePoll, Club, LiveEvent, StreamProvider } from '../types/football';
+import { StreamSettings, MatchEvent, ChatMessage, LivePoll, Club, LiveEvent, StreamProvider, DonationQrInfo } from '../types/football';
 
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -100,6 +100,13 @@ export async function saveStreamSettingsToFirebase(settings: Partial<StreamSetti
   if (settings.altitudeMeters !== undefined) {
     payload.altitudeMeters = Math.max(0, Math.min(6000, Number(settings.altitudeMeters) || 0));
   }
+  if (settings.donationQr) {
+    payload.donationQr = {
+      imageUrl: settings.donationQr.imageUrl || '',
+      instructions: settings.donationQr.instructions || '',
+      updatedAt: settings.donationQr.updatedAt || now,
+    };
+  }
   try {
     await setDoc(ref, payload, { merge: true });
   } catch (err: any) {
@@ -136,6 +143,102 @@ export function subscribeStreamSettingsFirebase(
       },
       (error) => {
         console.warn('[Firebase] Error en snapshot de transmisión:', error);
+      }
+    );
+  } catch {
+    return () => {};
+  }
+}
+
+/**
+ * 1.1 GESTIÓN Y PERSISTENCIA OFICIAL DEL CÓDIGO QR DE DONACIONES EN FIREBASE
+ */
+export async function saveDonationQrToFirebase(
+  qr: DonationQrInfo,
+  operator = 'admin'
+): Promise<DonationQrInfo> {
+  const now = Date.now();
+  const cleanPayload: DonationQrInfo = {
+    imageUrl: typeof qr.imageUrl === 'string' ? qr.imageUrl.trim() : '',
+    instructions: typeof qr.instructions === 'string' ? qr.instructions.trim().slice(0, 500) : '',
+    updatedAt: now,
+  };
+
+  // 1. Guardar en documento dedicado oficial /config/donation_qr
+  const qrRef = doc(db, 'config', 'donation_qr');
+  await setDoc(
+    qrRef,
+    {
+      ...cleanPayload,
+      updatedAtIso: new Date(now).toISOString(),
+      updatedBy: operator,
+    },
+    { merge: true }
+  );
+
+  // 2. Sincronizar en /config/stream_settings para consistencia total en toda la app
+  try {
+    const streamRef = doc(db, 'config', 'stream_settings');
+    await setDoc(
+      streamRef,
+      {
+        donationQr: cleanPayload,
+        updatedAt: now,
+        updatedBy: operator,
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('[Firebase] Advertencia sincronizando donationQr en stream_settings:', err);
+  }
+
+  return cleanPayload;
+}
+
+export async function getDonationQrFromFirebase(): Promise<DonationQrInfo | null> {
+  try {
+    const qrRef = doc(db, 'config', 'donation_qr');
+    const qrSnap = await getDoc(qrRef);
+    if (qrSnap.exists()) {
+      const data = qrSnap.data();
+      return {
+        imageUrl: data.imageUrl || '',
+        instructions: data.instructions || '',
+        updatedAt: data.updatedAt || Date.now(),
+      };
+    }
+
+    // Fallback: leer desde /config/stream_settings
+    const streamRef = doc(db, 'config', 'stream_settings');
+    const streamSnap = await getDoc(streamRef);
+    if (streamSnap.exists() && streamSnap.data()?.donationQr) {
+      return streamSnap.data().donationQr as DonationQrInfo;
+    }
+  } catch (err) {
+    console.warn('[Firebase] Error al leer donationQr de Firestore:', err);
+  }
+  return null;
+}
+
+export function subscribeDonationQrFirebase(
+  callback: (qr: DonationQrInfo) => void
+): () => void {
+  try {
+    const qrRef = doc(db, 'config', 'donation_qr');
+    return onSnapshot(
+      qrRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          callback({
+            imageUrl: data.imageUrl || '',
+            instructions: data.instructions || '',
+            updatedAt: data.updatedAt || Date.now(),
+          });
+        }
+      },
+      (error) => {
+        console.warn('[Firebase] Error en snapshot de donationQr:', error);
       }
     );
   } catch {

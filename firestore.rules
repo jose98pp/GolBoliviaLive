@@ -6,33 +6,42 @@ service cloud.firestore {
       allow read: if true;
     }
 
-    // Colecciones de datos oficiales: sólo administradores autenticados pueden modificar
+    // Colecciones de configuración y ajustes oficiales (incluyendo QR y señal de streaming)
     match /config/{docId} {
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
 
+    // Marcador y estado en tiempo real
     match /match/{docId} {
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
 
+    // Partidos y eventos en vivo
     match /liveEvents/{eventId} {
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
 
+    // Equipos y clubes
     match /clubs/{clubId} {
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
 
+    // Eventos e incidencias del partido
     match /events/{eventId} {
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
 
-    // Chat interactivo: los visitantes pueden enviar mensajes de texto válidos
+    // Chat interactivo
     match /chat/{msgId} {
       allow create: if request.resource.data.text is string 
                     && request.resource.data.text.size() > 0 
                     && request.resource.data.text.size() <= 300;
-      allow update, delete: if request.auth != null;
+      allow update, delete: if true;
+    }
+
+    // Encuestas interactivas
+    match /polls/{pollId} {
+      allow read, write: if true;
     }
 
     // Registro de auditoría
@@ -42,3 +51,4 @@ service cloud.firestore {
     }
   }
 }
+

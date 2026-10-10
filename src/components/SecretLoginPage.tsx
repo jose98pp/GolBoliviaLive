@@ -1776,13 +1776,33 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   </div>
                 </div>
 
-                {/* 6. GESTIÓN DEL CÓDIGO QR DE DONACIONES & APÓYAME */}
-                <DonationQrAdminCard
-                  initialQr={streamSettings.donationQr}
-                  onQrUpdated={(newQr) => {
-                    onUpdateStreamSettings({ donationQr: newQr });
-                  }}
-                />
+                {/* ENLACE DE ACCESO A PESTAÑA 6: CÓDIGO QR DE DONACIONES */}
+                <div className="bg-[#0a0f1d] border border-slate-800 hover:border-rose-500/40 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                      <Heart className="w-5 h-5 fill-rose-500 text-rose-400" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-white font-display">Código QR de Apoyo y Donaciones</h4>
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                          Pestaña 6
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        La configuración y subida del código QR para el botón «Apóyame» ahora se gestiona de forma centralizada en la <strong>Pestaña 6 (QR Apóyame)</strong>.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('qr_donations')}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-400 hover:to-pink-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-rose-950/40 shrink-0"
+                  >
+                    <Heart className="w-3.5 h-3.5 fill-white" />
+                    <span>Ir a Pestaña 6 (QR Apóyame)</span>
+                  </button>
+                </div>
               </div>
             </div>
           ) : activeTab === 'match' ? (
