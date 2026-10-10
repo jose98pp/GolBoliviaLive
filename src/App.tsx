@@ -1092,7 +1092,8 @@ export default function App() {
                   </span>
                   {liveEvents.map((evt) => {
                     const isSelected = evt.id === activeEventId;
-                    const providerEmoji = evt.primaryProvider === 'cloudflare' ? '⚡' : (evt.primaryProvider === 'youtube' ? '🔴' : '🟢');
+                    const provider = evt.primaryProvider || 'cloudflare';
+                    const providerEmoji = provider === 'cloudflare' ? '⚡' : (provider === 'youtube' ? '🔴' : '🟢');
                     return (
                       <button
                         key={evt.id}
@@ -1106,7 +1107,7 @@ export default function App() {
                         <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
                         <span>{evt.title}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-300">
-                          {providerEmoji} {evt.primaryProvider.toUpperCase()}
+                          {providerEmoji} {provider.toUpperCase()}
                         </span>
                       </button>
                     );

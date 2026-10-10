@@ -1165,8 +1165,64 @@ function loadPersistedState() {
     } else {
       console.log("[GolBolivia Backend] Ning\xFAn partido encontrado en Firebase Firestore. Esperando configuraci\xF3n de producci\xF3n.");
     }
+    if (state.liveEvents.length === 0 && state.streamSettings.title) {
+      state.liveEvents = [
+        {
+          id: "partido-001",
+          title: state.streamSettings.title,
+          homeTeam: state.streamSettings.homeClubId || "oriente",
+          awayTeam: state.streamSettings.awayClubId || "abb",
+          tournamentName: state.streamSettings.tournamentName || "Liga Tigo Divisi\xF3n Profesional",
+          stadiumName: state.streamSettings.stadiumName || "Estadio Departamental",
+          period: state.streamSettings.period || "1T",
+          isLive: state.streamSettings.isLive ?? true,
+          homeScore: state.scoreboard.homeScore ?? 0,
+          awayScore: state.scoreboard.awayScore ?? 0,
+          matchMinute: state.scoreboard.matchMinute ?? 0,
+          version: state.scoreboard.version || 1,
+          customVideoUrl: state.streamSettings.customVideoUrl || "",
+          backupVideoUrl: state.streamSettings.backupVideoUrl || "",
+          activeStreamSource: state.streamSettings.activeStreamSource || "obs",
+          cloudflare: {
+            liveInputId: "",
+            playbackUrl: state.streamSettings.customVideoUrl || ""
+          },
+          primaryProvider: "cloudflare",
+          fallbackOrder: ["cloudflare", "youtube", "kick"]
+        }
+      ];
+      persistState();
+    }
   }).catch((err) => {
     console.warn("[GolBolivia Backend] Error conectando con Firebase en inicio:", err);
+    if (state.liveEvents.length === 0 && state.streamSettings.title) {
+      state.liveEvents = [
+        {
+          id: "partido-001",
+          title: state.streamSettings.title,
+          homeTeam: state.streamSettings.homeClubId || "oriente",
+          awayTeam: state.streamSettings.awayClubId || "abb",
+          tournamentName: state.streamSettings.tournamentName || "Liga Tigo Divisi\xF3n Profesional",
+          stadiumName: state.streamSettings.stadiumName || "Estadio Departamental",
+          period: state.streamSettings.period || "1T",
+          isLive: state.streamSettings.isLive ?? true,
+          homeScore: state.scoreboard.homeScore ?? 0,
+          awayScore: state.scoreboard.awayScore ?? 0,
+          matchMinute: state.scoreboard.matchMinute ?? 0,
+          version: state.scoreboard.version || 1,
+          customVideoUrl: state.streamSettings.customVideoUrl || "",
+          backupVideoUrl: state.streamSettings.backupVideoUrl || "",
+          activeStreamSource: state.streamSettings.activeStreamSource || "obs",
+          cloudflare: {
+            liveInputId: "",
+            playbackUrl: state.streamSettings.customVideoUrl || ""
+          },
+          primaryProvider: "cloudflare",
+          fallbackOrder: ["cloudflare", "youtube", "kick"]
+        }
+      ];
+      persistState();
+    }
   });
 }
 function persistState() {
@@ -1319,6 +1375,7 @@ data: ${JSON.stringify({
       scoreboard: state.scoreboard,
       matchStats: state.matchStats,
       events: state.events,
+      liveEvents: state.liveEvents,
       viewersCount: Math.max(14820, viewerSessions.size)
     })}
 
@@ -1352,6 +1409,7 @@ app2.get(["/api/live", "/live"], (_req, res) => {
     scoreboard: state.scoreboard,
     matchStats: state.matchStats,
     events: state.events,
+    liveEvents: state.liveEvents,
     clubs: state.clubs,
     viewersCount: Math.max(14820, viewerSessions.size),
     serverTimestamp: Date.now()

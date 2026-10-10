@@ -400,8 +400,9 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
       <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
         {events.map((evt) => {
           const isSelected = evt.id === selectedId;
+          const provider = evt.primaryProvider || 'cloudflare';
           const providerIcon =
-            evt.primaryProvider === 'cloudflare' ? '⚡' : evt.primaryProvider === 'youtube' ? '🔴' : '🟢';
+            provider === 'cloudflare' ? '⚡' : provider === 'youtube' ? '🔴' : '🟢';
 
           return (
             <button
@@ -417,7 +418,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
               <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
               <span>{evt.title}</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-sky-300 uppercase">
-                {providerIcon} {evt.primaryProvider}
+                {providerIcon} {provider}
               </span>
             </button>
           );

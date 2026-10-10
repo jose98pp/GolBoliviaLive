@@ -504,9 +504,11 @@ function loadPersistedState(): void {
           backupVideoUrl: state.streamSettings.backupVideoUrl || '',
           activeStreamSource: state.streamSettings.activeStreamSource || 'obs',
           cloudflare: {
+            liveInputId: '',
             playbackUrl: state.streamSettings.customVideoUrl || '',
           },
           primaryProvider: 'cloudflare',
+          fallbackOrder: ['cloudflare', 'youtube', 'kick'],
         },
       ];
       persistState();
@@ -532,9 +534,11 @@ function loadPersistedState(): void {
           backupVideoUrl: state.streamSettings.backupVideoUrl || '',
           activeStreamSource: state.streamSettings.activeStreamSource || 'obs',
           cloudflare: {
+            liveInputId: '',
             playbackUrl: state.streamSettings.customVideoUrl || '',
           },
           primaryProvider: 'cloudflare',
+          fallbackOrder: ['cloudflare', 'youtube', 'kick'],
         },
       ];
       persistState();

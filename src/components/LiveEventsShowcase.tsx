@@ -156,7 +156,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
                 <div className="text-[11px] text-slate-400 flex items-center gap-1">
                   <span>Respaldos:</span>
                   <span className="font-mono text-slate-300 uppercase">
-                    {(event.fallbackOrder || []).filter((p) => p !== event.primaryProvider).join(', ') || 'Ninguno'}
+                    {(event.fallbackOrder || []).filter((p) => p !== (event.primaryProvider || 'cloudflare')).join(', ') || 'Ninguno'}
                   </span>
                 </div>
 

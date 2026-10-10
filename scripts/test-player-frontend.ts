@@ -475,12 +475,19 @@ async function runTests() {
 
   // Simular eliminación de partido-002 de la lista de eventos
   const initialEventsList: LiveEvent[] = [
-    { id: 'partido-001', title: 'Oriente Petrolero vs ABB', homeTeam: 'oriente', awayTeam: 'abb', isLive: true },
-    { id: 'partido-002', title: 'Blooming vs Oriente Petrolero', homeTeam: 'blooming', awayTeam: 'oriente', isLive: false },
+    { id: 'partido-001', title: 'Oriente Petrolero vs ABB', homeTeam: 'oriente', awayTeam: 'abb', isLive: true, primaryProvider: 'cloudflare', fallbackOrder: ['cloudflare'] },
+    { id: 'partido-002', title: 'Blooming vs Oriente Petrolero', homeTeam: 'blooming', awayTeam: 'oriente', isLive: false, primaryProvider: 'youtube', fallbackOrder: ['youtube'] },
   ];
   const remainingAfterDelete = initialEventsList.filter((e) => e.id !== 'partido-002');
   assert(remainingAfterDelete.length === 1, 'Eliminación: filtra y reduce lista de partidos a 1');
   assert(remainingAfterDelete[0].id === 'partido-001', 'Eliminación: partido-001 permanece intacto y seleccionado');
+
+  // 34. PROTECCIÓN RESILIENTE: primaryProvider undefined no lanza TypeError toUpperCase
+  assert(appSource.includes("const provider = evt.primaryProvider || 'cloudflare';"), 'Resiliencia: App.tsx provee fallback cloudflare para primaryProvider');
+  assert(appSource.includes('provider.toUpperCase()'), 'Resiliencia: App.tsx usa variable segura provider.toUpperCase()');
+  const dummyEventWithoutProvider: any = { id: 'test-no-provider', title: 'Test FC' };
+  const safeProvider = (dummyEventWithoutProvider.primaryProvider || 'cloudflare').toUpperCase();
+  assert(safeProvider === 'CLOUDFLARE', 'Resiliencia: fallback produce CLOUDFLARE en mayúsculas sin errores');
 
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);

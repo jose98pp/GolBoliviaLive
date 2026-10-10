@@ -34,8 +34,8 @@
     ],
     "playbackUrl": "https://switches-scanned-twin-tapes.trycloudflare.com/live/partido/index.m3u8",
     "success": true,
-    "match": "U de Vinto vs Real Oruro",
-    "tournament": "Liga Tigo División Profesional",
+    "match": "Oriente Petrolero vs ABB",
+    "tournament": "Liga 1XBET División Profesional",
     "updatedAt": 1791671850628,
     "live": true,
     "activeEventId": "partido-001",
@@ -49,12 +49,12 @@
     "matchMinute": 0
   },
   "scoreboard": {
-    "homeScore": 1,
+    "homeScore": 0,
     "awayScore": 0,
-    "matchMinute": 90,
-    "period": "Finalizado",
-    "updatedAt": 1791671245319,
-    "version": 105
+    "matchMinute": 99,
+    "period": "1T",
+    "updatedAt": 1791675788029,
+    "version": 117
   },
   "clubs": {
     "bolivar": {
@@ -540,18 +540,23 @@
       "stadiumName": "Estadio Ramon Tahuichi Aguilera",
       "period": "1T",
       "isLive": true,
-      "homeScore": 1,
+      "homeScore": 0,
       "awayScore": 0,
-      "matchMinute": 90,
-      "version": 105,
+      "matchMinute": 100,
+      "version": 117,
       "customVideoUrl": "https://switches-scanned-twin-tapes.trycloudflare.com/live/partido/index.m3u8",
       "backupVideoUrl": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
       "activeStreamSource": "obs",
       "cloudflare": {
         "playbackUrl": "https://switches-scanned-twin-tapes.trycloudflare.com/live/partido/index.m3u8"
       },
-      "primaryProvider": "cloudflare"
+      "primaryProvider": "cloudflare",
+      "updatedAt": 1791675788029,
+      "isClockRunning": true,
+      "clockUpdatedAt": 1791676333209,
+      "backupChannelName": "GolBolivia 24/7 Señal Alternativa HD",
+      "autoFailoverEnabled": true
     }
   ],
-  "updatedAt": 1791675190250
+  "updatedAt": 1791676333209
 }
