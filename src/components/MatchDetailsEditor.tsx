@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAutoSave } from '../hooks/useAutoSave';
+import { AutoSaveIndicator } from './AutoSaveIndicator';
 import {
   Trophy,
   MapPin,
@@ -316,8 +318,16 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     onUpdateStreamSettings({ period: p });
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const formKey = JSON.stringify([
+    title, tournamentName, homeClubId, awayClubId, stadiumName, altitudeMeters, officialAnnouncement,
+    isLiveMatch, period, localHomeScore, localAwayScore, localMinute,
+  ]);
+  const formKeyRef = useRef(formKey);
+  formKeyRef.current = formKey;
+
+  const handleSubmit = async (e?: React.FormEvent): Promise<boolean> => {
     if (e) e.preventDefault();
+    const savedFormKey = formKeyRef.current;
     setErrorMsg(null);
     setSaveSuccess(false);
 
@@ -331,11 +341,11 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     // Validations
     if (!cleanTitle || cleanTitle.length < 3) {
       setErrorMsg('El título del partido debe tener al menos 3 caracteres.');
-      return;
+      return false;
     }
     if (cleanHomeId === cleanAwayId) {
       setErrorMsg('El club local y visitante no pueden ser el mismo equipo.');
-      return;
+      return false;
     }
 
     setIsSaving(true);
@@ -414,16 +424,20 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         onUpdateLiveEvent(fullEventPayload);
       }
 
-      setIsDirty(false);
+      setIsDirty(formKeyRef.current !== savedFormKey);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 5000);
+      return true;
     } catch (err: any) {
       console.error('[MatchDetailsEditor] Error al guardar partido y marcador:', err);
       setErrorMsg(err.message || 'Error al guardar los datos en el servidor.');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
+
+  const autoSaveStatus = useAutoSave({ isDirty, changeKey: formKey, save: () => handleSubmit() });
 
   const homeClub = clubs[homeClubId] || { name: 'Local', badgeEmoji: '⚽', city: 'Bolivia', primaryColor: '#0284c7' };
   const awayClub = clubs[awayClubId] || { name: 'Visitante', badgeEmoji: '⚽', city: 'Bolivia', primaryColor: '#eab308' };
@@ -1078,7 +1092,11 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           </div>
 
           {/* Submit Action Button */}
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
+            <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+              <span>Los cambios se guardan solos al dejar de escribir.</span>
+              <AutoSaveIndicator status={autoSaveStatus} />
+            </div>
             <button
               type="submit"
               disabled={isSaving}
@@ -1092,7 +1110,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               ) : (
                 <>
                   <Save className="w-4 h-4 text-black" />
-                  <span>GUARDAR PARTIDO Y MARCADOR</span>
+                  <span>GUARDAR AHORA</span>
                 </>
               )}
             </button>

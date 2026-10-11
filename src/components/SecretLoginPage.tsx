@@ -580,91 +580,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
     }
   };
 
-  const [isSavingFirebase, setIsSavingFirebase] = useState(false);
-  const [firebaseSavedBanner, setFirebaseSavedBanner] = useState<string | null>(null);
-
-  const handleSaveAndConfirmAllToFirebase = async () => {
-    // 1. Strict validation of club IDs format and distinct clubs
-    const clubIdRegex = /^[a-z0-9_-]{2,32}$/;
-    const cleanHomeId = (streamSettings.homeClubId || '').trim().toLowerCase();
-    const cleanAwayId = (streamSettings.awayClubId || '').trim().toLowerCase();
-
-    if (!cleanHomeId || !clubIdRegex.test(cleanHomeId)) {
-      setFirebaseSavedBanner('❌ Error de validación: El ID del club local es inválido (debe tener entre 2 y 32 caracteres alfanuméricos).');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    if (!cleanAwayId || !clubIdRegex.test(cleanAwayId)) {
-      setFirebaseSavedBanner('❌ Error de validación: El ID del club visitante es inválido (debe tener entre 2 y 32 caracteres alfanuméricos).');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    if (cleanHomeId === cleanAwayId) {
-      setFirebaseSavedBanner('❌ Error: El club local y el club visitante no pueden ser el mismo equipo. Selecciona dos clubes distintos.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    // 2. Strict validation of scores (0 to 50)
-    if (typeof homeScore !== 'number' || isNaN(homeScore) || homeScore < 0 || homeScore > 50) {
-      setFirebaseSavedBanner('❌ Error de puntuación: Los goles del club local deben ser un número entre 0 y 50.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    if (typeof awayScore !== 'number' || isNaN(awayScore) || awayScore < 0 || awayScore > 50) {
-      setFirebaseSavedBanner('❌ Error de puntuación: Los goles del club visitante deben ser un número entre 0 y 50.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    // 3. Strict validation of match minute (0 to 130)
-    if (typeof matchMinute !== 'number' || isNaN(matchMinute) || matchMinute < 0 || matchMinute > 130) {
-      setFirebaseSavedBanner('❌ Error de tiempo: El minuto oficial debe estar entre 0 y 130 minutos.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    // 4. Validation of title length
-    const cleanTitle = (streamSettings.title || '').trim();
-    if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
-      setFirebaseSavedBanner('❌ Error: El título del partido debe tener entre 3 y 120 caracteres.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    setIsSavingFirebase(true);
-    try {
-      const res = await apiClient.confirmAndSaveAllData({
-        streamSettings: {
-          ...streamSettings,
-          homeClubId: cleanHomeId,
-          awayClubId: cleanAwayId,
-          title: cleanTitle,
-        },
-        scoreboard: {
-          homeScore: Math.round(homeScore),
-          awayScore: Math.round(awayScore),
-          matchMinute: Math.round(matchMinute),
-          period: streamSettings.period || '2T',
-          activeEventId: activeEventId || currentEvent?.id || 'partido-001',
-          eventId: activeEventId || currentEvent?.id || 'partido-001',
-          force: true,
-        },
-        operatorName: currentUser?.name,
-        operatorRole: currentUser?.role,
-      });
-      setFirebaseSavedBanner(res.message);
-      setTimeout(() => setFirebaseSavedBanner(null), 6000);
-    } catch (err: any) {
-      setFirebaseSavedBanner(`❌ Error al guardar datos oficiales: ${err.message || 'Error de conexión o permisos insuficientes en el servidor'}`);
-      setTimeout(() => setFirebaseSavedBanner(null), 7000);
-    } finally {
-      setIsSavingFirebase(false);
-    }
-  };
 
   const handleReloadPreview = () => {
     setIsRefreshingPreview(true);
@@ -806,34 +721,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <span>Minuto: <strong className="text-emerald-400">{matchMinute}&apos;</strong></span>
             </div>
 
-            {/* BOTÓN OFICIAL DE GUARDADO Y CONFIRMACIÓN EN FIREBASE */}
-            {allowedTabs.includes('stream') && (
-              <button
-                onClick={handleSaveAndConfirmAllToFirebase}
-                disabled={isSavingFirebase}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-950/60 transition-all cursor-pointer disabled:opacity-50"
-                title="Confirmar y persistir toda la página y señales en Google Firebase Firestore"
-              >
-                <Database className={`w-3.5 h-3.5 ${isSavingFirebase ? 'animate-spin' : 'text-black'}`} />
-                <span>{isSavingFirebase ? 'Guardando...' : 'Confirmar & Guardar en Firebase'}</span>
-              </button>
-            )}
           </div>
         </div>
-
-        {/* Banner de Confirmación y Persistencia en Firebase */}
-        {firebaseSavedBanner && (
-          <div className="bg-emerald-950/90 border-b border-emerald-500/50 px-4 sm:px-6 py-2.5 text-xs text-emerald-200 flex items-center justify-between shadow-xl animate-fadeIn">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span className="font-semibold">{firebaseSavedBanner}</span>
-            </div>
-            <div className="hidden sm:flex items-center gap-2 text-[10px] font-mono text-emerald-400/80">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span>Google Cloud Firestore · gen-lang-client-0595946513 (us-west1)</span>
-            </div>
-          </div>
-        )}
 
         {/* Main Body */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
