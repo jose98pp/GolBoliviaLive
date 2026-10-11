@@ -84,10 +84,10 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
             <div
               key={event.id}
               onClick={() => onSelectEvent(event)}
-              className={`relative overflow-hidden rounded-2xl border-2 transition-all duration-300 cursor-pointer p-4 sm:p-5 flex flex-col justify-between group ${
+              className={`relative overflow-hidden rounded-2xl transition-all duration-300 cursor-pointer p-4 sm:p-5 flex flex-col justify-between group ${
                 isSelected
-                  ? 'bg-gradient-to-br from-slate-900 via-slate-900/95 to-emerald-950/40 border-emerald-500 shadow-xl shadow-emerald-950/40 ring-1 ring-emerald-500/40'
-                  : 'bg-slate-900/80 hover:bg-slate-850 border-slate-800 hover:border-slate-700'
+                  ? 'liquid-glass-panel border-2 border-emerald-500/80 shadow-xl shadow-emerald-950/40 ring-1 ring-emerald-500/40'
+                  : 'liquid-glass-panel border border-white/10 hover:border-white/20'
               }`}
             >
               {/* Top Row: Provider Pill & Live Status */}

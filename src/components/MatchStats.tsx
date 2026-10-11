@@ -84,9 +84,9 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
   const hasApiLineups = Boolean(apiDetails?.homeLineup?.starting?.length && apiDetails?.awayLineup?.starting?.length);
 
   return (
-    <div className="bg-[#0a0f1d] border border-slate-800/80 rounded-2xl p-4 md:p-6 shadow-xl">
+    <div className="liquid-glass-panel rounded-2xl p-4 md:p-6 shadow-xl">
       {/* HEADER / MATCH SUMMARY SCORECARD */}
-      <div className="bg-gradient-to-r from-[#0d1627] via-[#091122] to-[#0d1627] border border-slate-700/60 rounded-xl p-4 md:p-5 mb-5 shadow-lg">
+      <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 md:p-5 mb-5 shadow-lg">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span className="font-bold text-white uppercase tracking-wider font-display">

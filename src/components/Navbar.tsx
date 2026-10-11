@@ -89,7 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     displayActive >= 1000 ? `${(displayActive / 1000).toFixed(1)}k` : `${displayActive}`;
 
   return (
-    <header className="sticky top-0 z-40 bg-[#080c14]/95 backdrop-blur-md border-b border-slate-800/80 px-3 sm:px-6 md:px-8 py-2.5 sm:py-3.5 transition-colors">
+    <header className="sticky top-0 z-40 liquid-glass-header px-3 sm:px-6 md:px-8 py-2.5 sm:py-3.5 transition-colors">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Zone 1: Brand Wordmark */}
         <div className="flex items-center gap-2 sm:gap-3">

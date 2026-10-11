@@ -30,6 +30,83 @@
   background: rgba(100, 116, 139, 1);
 }
 
+/* ─── DESIGN.md: Liquid Glass Material System ─── */
+
+/* Liquid Glass selection: soft lens glow */
+::selection {
+  background-color: rgba(56, 189, 248, 0.28);
+  color: #ffffff;
+  text-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+}
+
+/* Atmospheric depth field for glass refraction */
+.liquid-glass-background {
+  background-color: #060a14;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.08) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(99, 102, 241, 0.06) 0px, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Translucent floating panel with lens-like refraction and rim highlight */
+.liquid-glass-panel {
+  background: rgba(10, 15, 29, 0.68);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 16px 40px -8px rgba(0, 0, 0, 0.6),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.liquid-glass-panel:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 
+    0 20px 48px -8px rgba(0, 0, 0, 0.7),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Liquid refractive pill controls */
+.liquid-glass-pill {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 
+    0 4px 14px -2px rgba(0, 0, 0, 0.35),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.liquid-glass-pill:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 
+    0 6px 20px -2px rgba(0, 0, 0, 0.45),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.liquid-glass-pill-active {
+  background: rgba(14, 165, 233, 0.18);
+  border-color: rgba(56, 189, 248, 0.55);
+  box-shadow: 
+    0 0 24px rgba(56, 189, 248, 0.3),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+/* Floating header chrome */
+.liquid-glass-header {
+  background: rgba(7, 11, 20, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 10px 30px -5px rgba(0, 0, 0, 0.4),
+    inset 0 -1px 0 0 rgba(255, 255, 255, 0.04);
+}
+
 /* Stadium ambient pulse animation */
 @keyframes stadium-pulse {
   0%, 100% { opacity: 0.15; }

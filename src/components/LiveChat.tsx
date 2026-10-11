@@ -261,9 +261,9 @@ export const LiveChat: React.FC<LiveChatProps> = ({
   const bolivianEmotes = ['⚽', '🦙', '🏆', '🐯', '🦅', '⚡', '💥', '🇧🇴', '🟨', '🟥', '🥅', '🥁', '🔥', '👏'];
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0f1c] rounded-2xl border border-slate-800/90 shadow-xl overflow-hidden">
+    <div className="flex flex-col h-full liquid-glass-panel rounded-2xl overflow-hidden">
       {/* CHAT HEADER */}
-      <div className="p-3 border-b border-slate-800/80 bg-[#0d1424] flex items-center justify-between">
+      <div className="p-3 border-b border-white/10 bg-white/[0.02] backdrop-blur-md flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
           <h2 className="text-xs font-bold text-white tracking-wide uppercase font-display flex items-center gap-1.5">

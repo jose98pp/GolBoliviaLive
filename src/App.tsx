@@ -1048,7 +1048,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans pb-16 md:pb-0">
+    <div className="min-h-screen bg-[#070b14] liquid-glass-background text-slate-100 flex flex-col font-sans pb-16 md:pb-0">
       {/* Dynamic Floating Reactions Canvas */}
       <FloatingReactions reactions={floatingReactions} onRemove={removeReaction} />
 
@@ -1125,10 +1125,10 @@ export default function App() {
                         <button
                           key={evt.id}
                           onClick={() => handleSelectMatchEvent(evt)}
-                          className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
+                          className={`px-3 py-1.5 text-xs flex items-center gap-2 whitespace-nowrap cursor-pointer transition-all ${
                             isSelected
-                              ? 'bg-slate-800 text-white border-emerald-500/80 shadow-md ring-1 ring-emerald-500/40 font-bold'
-                              : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-850'
+                              ? 'liquid-glass-pill liquid-glass-pill-active text-white font-bold ring-1 ring-emerald-500/40'
+                              : 'liquid-glass-pill text-slate-300 hover:text-white'
                           }`}
                         >
                           <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
