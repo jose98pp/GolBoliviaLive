@@ -53,6 +53,37 @@ import { DonationQrAdminCard } from './DonationQrAdminCard';
 import { useClubs } from '../hooks/useClubs';
 import { verifyStreamLatency, LatencyTestResult } from '../services/latencyChecker';
 
+// ── Panel sections ──
+type AdminTab = 'stream' | 'match' | 'teams' | 'events_chat' | 'vip_analytics' | 'qr_donations';
+type AdminSection = 'live' | 'match' | 'settings';
+
+const ADMIN_SECTIONS: { id: AdminSection; label: string; tabs: AdminTab[] }[] = [
+  { id: 'live', label: 'En vivo', tabs: ['stream', 'events_chat'] },
+  { id: 'match', label: 'Partido', tabs: ['match', 'teams'] },
+  { id: 'settings', label: 'Ajustes', tabs: ['qr_donations', 'vip_analytics'] },
+];
+
+const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
+  stream: 'Señal',
+  events_chat: 'Eventos y chat',
+  match: 'Marcador',
+  teams: 'Equipos',
+  qr_donations: 'QR Apóyame',
+  vip_analytics: 'VIP y audiencia',
+};
+
+/** Mirrors the backend `requireRoles` checks so each role only sees the screens it can save. */
+const ADMIN_TAB_ROLES: Record<AdminTab, UserRole[]> = {
+  stream: ['ADMIN', 'TRANSMISOR'],
+  events_chat: ['ADMIN', 'TRANSMISOR', 'EDITOR', 'MODERADOR'],
+  match: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
+  teams: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
+  qr_donations: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
+  vip_analytics: ['ADMIN'],
+};
+
+const ADMIN_SECTION_ICONS: Record<AdminSection, React.ElementType> = { live: Radio, match: Trophy, settings: Sliders };
+
 interface SecretLoginPageProps {
   streamSettings: StreamSettings;
   onUpdateStreamSettings: (newSettings: Partial<StreamSettings>) => void;
@@ -184,7 +215,15 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const { clubs, saveClub, deleteClub } = useClubs();
 
   // Active section inside the private dashboard (Streamlined tabs with dedicated QR Apóyame console)
-  const [activeTab, setActiveTab] = useState<'stream' | 'match' | 'teams' | 'events_chat' | 'vip_analytics' | 'qr_donations'>('stream');
+  const [activeTab, setActiveTab] = useState<AdminTab>('stream');
+  const allowedTabs = (Object.keys(ADMIN_TAB_ROLES) as AdminTab[]).filter(
+    (tab) => !!currentUser && ADMIN_TAB_ROLES[tab].includes(currentUser.role)
+  );
+  const visibleSections = ADMIN_SECTIONS
+    .map((section) => ({ ...section, tabs: section.tabs.filter((tab) => allowedTabs.includes(tab)) }))
+    .filter((section) => section.tabs.length > 0);
+  const effectiveTab: AdminTab = allowedTabs.includes(activeTab) ? activeTab : allowedTabs[0] ?? 'stream';
+  const activeSection = visibleSections.find((section) => section.tabs.includes(effectiveTab));
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
@@ -712,76 +751,43 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           </div>
         </header>
 
-        {/* Sub-Header Navigation Tabs: 5 Pestañas Claras y Sin Opciones Repetidas */}
+        {/* ── Navegación: En vivo / Partido / Ajustes (según el rol) ── */}
         <div className="bg-[#090e1c] border-b border-slate-800/90 px-4 sm:px-6 py-2 flex items-center justify-between overflow-x-auto">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab('stream')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'stream'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Radio className="w-3.5 h-3.5 text-amber-400" />
-              <span>Transmisión & Señal</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('match')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'match'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Trophy className="w-3.5 h-3.5 text-amber-400" />
-              <span>Partido & Marcador</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('teams')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'teams'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5 text-amber-400" />
-              <span>Equipos ({Object.keys(clubs).length})</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('events_chat')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'events_chat'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
-              <span>Eventos & Moderación</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('vip_analytics')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'vip_analytics'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Crown className="w-3.5 h-3.5 text-amber-400" />
-              <span>VIP & Audiencia</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('qr_donations')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'qr_donations'
-                  ? 'bg-rose-500 text-white shadow-md shadow-rose-950/40 font-bold'
-                  : 'text-rose-300 hover:text-white hover:bg-rose-950/40 border border-rose-500/20'
-              }`}
-              title="Cambiar imagen de código QR y opciones para el botón Apóyame"
-            >
-              <Heart className={`w-3.5 h-3.5 ${activeTab === 'qr_donations' ? 'fill-white text-white' : 'fill-rose-500 text-rose-400'}`} />
-              <span>QR Apóyame</span>
-            </button>
+            {visibleSections.map((section) => {
+              const Icon = ADMIN_SECTION_ICONS[section.id];
+              const isActive = activeSection?.id === section.id;
+              return (
+                <button
+                  key={section.id}
+                  onClick={() => setActiveTab(section.tabs[0])}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{section.label}</span>
+                </button>
+              );
+            })}
+
+            {activeSection && activeSection.tabs.length > 1 && (
+              <div className="flex items-center gap-1 pl-2 ml-1 border-l border-slate-800">
+                {activeSection.tabs.map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                      effectiveTab === tab ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-200'
+                    }`}
+                  >
+                    {ADMIN_TAB_LABELS[tab]}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="hidden lg:flex items-center gap-2">
@@ -801,15 +807,17 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             </div>
 
             {/* BOTÓN OFICIAL DE GUARDADO Y CONFIRMACIÓN EN FIREBASE */}
-            <button
-              onClick={handleSaveAndConfirmAllToFirebase}
-              disabled={isSavingFirebase}
-              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-950/60 transition-all cursor-pointer disabled:opacity-50"
-              title="Confirmar y persistir toda la página y señales en Google Firebase Firestore"
-            >
-              <Database className={`w-3.5 h-3.5 ${isSavingFirebase ? 'animate-spin' : 'text-black'}`} />
-              <span>{isSavingFirebase ? 'Guardando...' : 'Confirmar & Guardar en Firebase'}</span>
-            </button>
+            {allowedTabs.includes('stream') && (
+              <button
+                onClick={handleSaveAndConfirmAllToFirebase}
+                disabled={isSavingFirebase}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-950/60 transition-all cursor-pointer disabled:opacity-50"
+                title="Confirmar y persistir toda la página y señales en Google Firebase Firestore"
+              >
+                <Database className={`w-3.5 h-3.5 ${isSavingFirebase ? 'animate-spin' : 'text-black'}`} />
+                <span>{isSavingFirebase ? 'Guardando...' : 'Confirmar & Guardar en Firebase'}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -829,7 +837,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
         {/* Main Body */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
-          {activeTab === 'stream' ? (
+          {effectiveTab === 'stream' ? (
             /* PESTAÑA 1: TRANSMISIÓN & SEÑALES M3U8 */
             <div className="space-y-6">
               {/* ACCESO RÁPIDO: GESTIÓN DEL QR DEL BOTÓN APÓYAME */}
@@ -843,7 +851,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                       ¿Deseas cambiar el Código QR del botón «Apóyame»?
                     </span>
                     <span className="text-[11px] text-slate-400">
-                      Puedes subir tu imagen de QR directamente en la nueva pestaña «QR Apóyame» o al final de esta página (Sección 6).
+                      Puedes subir tu imagen de QR directamente en Ajustes › QR Apóyame.
                     </span>
                   </div>
                 </div>
@@ -1985,11 +1993,11 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                       <div className="flex items-center gap-2">
                         <h4 className="text-sm font-bold text-white font-display">Código QR de Apoyo y Donaciones</h4>
                         <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                          Pestaña 6
+                          Ajustes
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        La configuración y subida del código QR para el botón «Apóyame» ahora se gestiona de forma centralizada en la <strong>Pestaña 6 (QR Apóyame)</strong>.
+                        La configuración y subida del código QR para el botón «Apóyame» ahora se gestiona de forma centralizada en la <strong>Ajustes › QR Apóyame</strong>.
                       </p>
                     </div>
                   </div>
@@ -1999,12 +2007,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-400 hover:to-pink-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-rose-950/40 shrink-0"
                   >
                     <Heart className="w-3.5 h-3.5 fill-white" />
-                    <span>Ir a Pestaña 6 (QR Apóyame)</span>
+                    <span>Ir a Ajustes › QR Apóyame</span>
                   </button>
                 </div>
               </div>
             </div>
-          ) : activeTab === 'match' ? (
+          ) : effectiveTab === 'match' ? (
             /* PESTAÑA 2: PARTIDO & MARCADOR (CENTRO OFICIAL DE PARTIDOS Y MARCADOR) */
             <div className="space-y-6">
               <MatchDetailsEditor
@@ -2029,7 +2037,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                 events={events}
               />
             </div>
-          ) : activeTab === 'teams' ? (
+          ) : effectiveTab === 'teams' ? (
             /* PESTAÑA 3: GESTIÓN DE EQUIPOS */
             <TeamsManager
               clubs={clubs}
@@ -2038,7 +2046,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               currentHomeClubId={streamSettings.homeClubId}
               currentAwayClubId={streamSettings.awayClubId}
             />
-          ) : activeTab === 'events_chat' ? (
+          ) : effectiveTab === 'events_chat' ? (
             /* PESTAÑA 4: EVENTOS DE LÍNEA DE TIEMPO & MODERACIÓN DE CHAT */
             <EventsAndChatModeration
               streamSettings={streamSettings}
@@ -2054,7 +2062,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               onClearChat={onClearChat}
               clubs={clubs}
             />
-          ) : activeTab === 'vip_analytics' ? (
+          ) : effectiveTab === 'vip_analytics' ? (
             /* PESTAÑA 5: SUSCRIPCIONES VIP & AUDIENCIA */
             <div className="space-y-6">
               <AdminVipManagement />
