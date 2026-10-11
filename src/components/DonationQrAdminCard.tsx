@@ -312,7 +312,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
                 Configuración del Código QR (Botón «Apóyame»)
               </h3>
               <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                PESTAÑA 6 DEDICADA
+                AJUSTES
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
                 <Database className="w-3 h-3 text-amber-400" />
