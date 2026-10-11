@@ -32,7 +32,6 @@ import {
   subscribeMatchEventsFirebase,
   subscribeStreamSettingsFirebase,
   getStreamSettingsFromFirebase,
-  DEFAULT_LIVE_EVENTS,
   subscribeDonationQrFirebase,
   getDonationQrFromFirebase,
 } from './services/firebase';
@@ -133,7 +132,9 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [DEFAULT_LIVE_EVENTS[0]];
+    // No utilizar datos predeterminados de demostración en modo de producción/estado inicial.
+    // Esperar a la carga del backend (API) y mostrar estado vacío si no existen partidos.
+    return [];
   });
   const [activeEventId, setActiveEventId] = useState<string>('partido-001');
   const activeEventIdRef = useRef(activeEventId);
@@ -168,7 +169,7 @@ export default function App() {
     altitudeMeters: 3600,
   };
 
-  const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || DEFAULT_LIVE_EVENTS[0];
+  const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || null;
   const currentHomeClub = (currentLiveEvent?.homeTeam && (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam]))
     || (streamSettings?.homeClubId && (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId]))
     || Object.values(clubs)[0]
@@ -182,7 +183,7 @@ export default function App() {
   const currentHomeScore = typeof currentLiveEvent?.homeScore === 'number' ? currentLiveEvent.homeScore : 0;
   const currentAwayScore = typeof currentLiveEvent?.awayScore === 'number' ? currentLiveEvent.awayScore : 0;
   const currentMatchMinute = typeof currentLiveEvent?.matchMinute === 'number' ? currentLiveEvent.matchMinute : 0;
-  const currentPeriod = currentLiveEvent?.period || streamSettings?.period || '1T';
+  const currentPeriod = (currentLiveEvent?.period || streamSettings?.period || '1T') as any;
 
   // Authoritative Backend Synchronization: Dedicated Match-Specific Stream Sync, GET /api/live & SSE /api/events
   useEffect(() => {
@@ -837,6 +838,16 @@ export default function App() {
   // Check if iframe real-time preview mode was requested
   const isPreviewOnly = typeof window !== 'undefined' && window.location.search.includes('preview=1');
   if (isPreviewOnly) {
+    if (!currentLiveEvent) {
+      return (
+        <div className="w-full h-full min-h-screen bg-[#060911] flex flex-col items-center justify-center p-6 text-center text-slate-400">
+          <div className="text-lg font-semibold text-white mb-2">Sin partido activo</div>
+          <div className="text-sm max-w-md">
+            No hay partidos disponibles en este momento. El administrador aún no ha creado o publicado partidos en vivo.
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="w-full h-full min-h-screen bg-[#060911] flex items-center justify-center p-0 m-0 overflow-hidden select-none">
         <UniversalStreamPlayer
@@ -1101,48 +1112,59 @@ export default function App() {
                 } w-full`}
               >
                 {/* Multi-Match Live Event Selector (Paso 10: partido-001, partido-002) */}
-                <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap hidden sm:inline">
-                    Partidos en vivo:
-                  </span>
-                  {liveEvents.map((evt) => {
-                    const isSelected = evt.id === activeEventId;
-                    const provider = evt.primaryProvider || 'cloudflare';
-                    const providerEmoji = provider === 'cloudflare' ? '⚡' : (provider === 'youtube' ? '🔴' : '🟢');
-                    return (
-                      <button
-                        key={evt.id}
-                        onClick={() => handleSelectMatchEvent(evt)}
-                        className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-slate-800 text-white border-emerald-500/80 shadow-md ring-1 ring-emerald-500/40 font-bold'
-                            : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-850'
-                        }`}
-                      >
-                        <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                        <span>{evt.title}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-300">
-                          {providerEmoji} {provider.toUpperCase()}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {liveEvents.length > 0 && (
+                  <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap hidden sm:inline">
+                      Partidos en vivo:
+                    </span>
+                    {liveEvents.map((evt) => {
+                      const isSelected = evt.id === activeEventId;
+                      const provider = evt.primaryProvider || 'cloudflare';
+                      const providerEmoji = provider === 'cloudflare' ? '⚡' : (provider === 'youtube' ? '🔴' : '🟢');
+                      return (
+                        <button
+                          key={evt.id}
+                          onClick={() => handleSelectMatchEvent(evt)}
+                          className={`px-3 py-1.5 rounded-xl border text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-slate-800 text-white border-emerald-500/80 shadow-md ring-1 ring-emerald-500/40 font-bold'
+                              : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-850'
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                          <span>{evt.title}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-300">
+                            {providerEmoji} {provider.toUpperCase()}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
-                <UniversalStreamPlayer
-                  event={currentLiveEvent}
-                  isTheaterMode={isTheaterMode}
-                  setIsTheaterMode={setIsTheaterMode}
-                  homeScore={currentHomeScore}
-                  awayScore={currentAwayScore}
-                  matchMinute={currentMatchMinute}
-                  viewerCount={liveViewerCount}
-                  onProviderChange={(newProv) => {
-                    setLiveEvents((prev) =>
-                      prev.map((e) => (e.id === (currentLiveEvent?.id || activeEventId) ? { ...e, primaryProvider: newProv } : e))
-                    );
-                  }}
-                />
+                {currentLiveEvent ? (
+                  <UniversalStreamPlayer
+                    event={currentLiveEvent}
+                    isTheaterMode={isTheaterMode}
+                    setIsTheaterMode={setIsTheaterMode}
+                    homeScore={currentHomeScore}
+                    awayScore={currentAwayScore}
+                    matchMinute={currentMatchMinute}
+                    viewerCount={liveViewerCount}
+                    onProviderChange={(newProv) => {
+                      setLiveEvents((prev) =>
+                        prev.map((e) => (e.id === (currentLiveEvent?.id || activeEventId) ? { ...e, primaryProvider: newProv } : e))
+                      );
+                    }}
+                  />
+                ) : (
+                  <div className="w-full aspect-video rounded-2xl bg-gradient-to-br from-[#0b1222] via-[#090f1d] to-[#060a14] border-2 border-slate-800 flex flex-col items-center justify-center text-center p-6">
+                    <div className="text-white font-semibold text-lg mb-2">Sin partido activo</div>
+                    <div className="text-slate-400 text-sm max-w-md">
+                      No hay partidos en vivo creados aún. Inicia sesión en el panel de administrador para crear y gestionar partidos.
+                    </div>
+                  </div>
+                )}
 
                 {/* Mobile View Toggle Buttons: Chat or Stats below the video player */}
                 <div className="lg:hidden mt-3 p-1 bg-slate-900/90 border border-slate-800 rounded-xl flex items-center gap-1">

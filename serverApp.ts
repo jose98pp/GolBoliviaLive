@@ -17,6 +17,7 @@ import {
   getLiveEventsFromFirebase,
   saveLiveEventToFirebase,
   deleteLiveEventFromFirebase,
+  logConfirmationToFirebase,
 } from './src/services/firebase';
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
@@ -657,6 +658,15 @@ function getPublicStreamPayload() {
   };
 }
 
+// Single-writer rule: el backend es el ÚNICO que persiste streamSettings en Firestore.
+// El frontend NUNCA llama a saveStreamSettingsToFirebase directamente, evitando escrituras
+// duplicadas donde la API y el navegador compiten por versionar la misma configuración.
+function persistStreamSettingsToFirestore(operator?: string): void {
+  saveStreamSettingsToFirebase(getPublicStreamPayload(), operator || 'admin').catch((err) => {
+    console.warn('[GolBolivia Server] Advertencia al persistir streamSettings en Firestore:', err);
+  });
+}
+
 // 4. Server-Sent Events (SSE) for Real-Time synchronization
 app.get(['/api/events', '/events'], (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -767,6 +777,8 @@ app.post(
       ...req.body,
     };
     persistState();
+    // Persistencia autoritativa en Firestore (la API autenticada es el único escritor)
+    persistStreamSettingsToFirestore((req as any).user?.username);
     broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
     res.json({ success: true, streamSettings: getPublicStreamPayload() });
   }
@@ -847,6 +859,8 @@ app.post(
     }
 
     persistState();
+    // Persistencia autoritativa en Firestore (la API autenticada es el único escritor)
+    persistStreamSettingsToFirestore((req as any).user?.username);
 
     // Broadcast instant update across all connected fans via SSE
     const payload = getPublicStreamPayload();
@@ -927,6 +941,8 @@ app.post(
     }
 
     persistState();
+    // Persistencia autoritativa en Firestore (la API autenticada es el único escritor)
+    persistStreamSettingsToFirestore((req as any).user?.username);
 
     const payload = {
       ...getPublicStreamPayload(),
@@ -1110,6 +1126,30 @@ app.post(
         code: isConflict ? 'VERSION_CONFLICT' : 'FIRESTORE_UNAVAILABLE',
       });
       return;
+    }
+
+    // Auditoría: force:true queda reservado a operaciones administrativas explícitas con rol autorizado.
+    // Cada sobrescritura forzada queda registrada en el log de confirmaciones de Firestore.
+    if (isForce) {
+      try {
+        await logConfirmationToFirebase({
+          action: 'FORCE_SAVE_LIVE_EVENT',
+          operator: (req as any).user?.username || operator,
+          role: (req as any).user?.role || 'ADMIN',
+          details: `Sobrescritura forzada (force) del partido "${cleanTitle}" (${cleanId}) a la versión v${safeEvent.version}.`,
+          payload: {
+            eventId: cleanId,
+            title: cleanTitle,
+            version: safeEvent.version,
+            updatedAt: safeEvent.updatedAt,
+            primaryProvider: safeEvent.primaryProvider,
+            force: true,
+          },
+          timestamp: now,
+        });
+      } catch (auditErr: any) {
+        console.warn('[GolBolivia Server] Advertencia al registrar auditoría de guardado forzado:', auditErr.message || auditErr);
+      }
     }
 
     if (existingIndex >= 0) {

@@ -586,6 +586,47 @@ function validateMinute(minute, defaultValue = 0) {
   }
   return Math.max(0, Math.min(130, Math.round(minute)));
 }
+async function saveStreamSettingsToFirebase(settings, operator) {
+  const ref = doc(db, "config", "stream_settings");
+  let nextVersion = (settings.version || 0) + 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      nextVersion = (snap.data()?.version || 0) + 1;
+    }
+  } catch {
+  }
+  const now = Date.now();
+  const payload = {
+    ...settings,
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || "admin"
+  };
+  if (settings.homeClubId) payload.homeClubId = sanitizeClubId(settings.homeClubId);
+  if (settings.awayClubId) payload.awayClubId = sanitizeClubId(settings.awayClubId);
+  if (settings.title) payload.title = settings.title.trim().slice(0, 120);
+  if (settings.tournamentName) payload.tournamentName = settings.tournamentName.trim().slice(0, 80);
+  if (settings.stadiumName) payload.stadiumName = settings.stadiumName.trim().slice(0, 80);
+  if (settings.altitudeMeters !== void 0) {
+    payload.altitudeMeters = Math.max(0, Math.min(6e3, Number(settings.altitudeMeters) || 0));
+  }
+  if (settings.donationQr) {
+    payload.donationQr = {
+      imageUrl: settings.donationQr.imageUrl || "",
+      instructions: settings.donationQr.instructions || "",
+      updatedAt: settings.donationQr.updatedAt || now
+    };
+  }
+  try {
+    await setDoc(ref, payload, { merge: true });
+  } catch (err) {
+    if (err?.code !== "permission-denied") {
+      console.warn("[Firebase] Advertencia al persistir configuraci\xF3n de se\xF1al en Firestore:", err);
+    }
+  }
+}
 async function getStreamSettingsFromFirebase() {
   try {
     const ref = doc(db, "config", "stream_settings");
@@ -652,6 +693,16 @@ async function getDonationQrFromFirebase() {
     console.warn("[Firebase] Error al leer donationQr de Firestore:", err);
   }
   return null;
+}
+async function logConfirmationToFirebase(log) {
+  const id = `conf_${Date.now()}`;
+  const ref = doc(db, "confirmations", id);
+  await setDoc(ref, {
+    ...log,
+    id,
+    timestamp: log.timestamp || Date.now()
+  });
+  return id;
 }
 async function getClubsFromFirebase() {
   try {
@@ -1306,6 +1357,11 @@ function getPublicStreamPayload() {
     donationQr: state.streamSettings.donationQr
   };
 }
+function persistStreamSettingsToFirestore(operator) {
+  saveStreamSettingsToFirebase(getPublicStreamPayload(), operator || "admin").catch((err) => {
+    console.warn("[GolBolivia Server] Advertencia al persistir streamSettings en Firestore:", err);
+  });
+}
 app2.get(["/api/events", "/events"], (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -1406,6 +1462,7 @@ app2.post(
       ...req.body
     };
     persistState();
+    persistStreamSettingsToFirestore(req.user?.username);
     broadcastSseEvent("STREAM_UPDATED", getPublicStreamPayload());
     res.json({ success: true, streamSettings: getPublicStreamPayload() });
   }
@@ -1474,6 +1531,7 @@ app2.post(
       state.streamSettings.autoFailoverEnabled = autoFailoverEnabled;
     }
     persistState();
+    persistStreamSettingsToFirestore(req.user?.username);
     const payload = getPublicStreamPayload();
     broadcastSseEvent("STREAM_UPDATED", payload);
     res.json({
@@ -1545,6 +1603,7 @@ app2.post(
       }
     }
     persistState();
+    persistStreamSettingsToFirestore(req.user?.username);
     const payload = {
       ...getPublicStreamPayload(),
       eventId: targetEventId
@@ -1704,6 +1763,27 @@ app2.post(
         code: isConflict ? "VERSION_CONFLICT" : "FIRESTORE_UNAVAILABLE"
       });
       return;
+    }
+    if (isForce) {
+      try {
+        await logConfirmationToFirebase({
+          action: "FORCE_SAVE_LIVE_EVENT",
+          operator: req.user?.username || operator,
+          role: req.user?.role || "ADMIN",
+          details: `Sobrescritura forzada (force) del partido "${cleanTitle}" (${cleanId}) a la versi\xF3n v${safeEvent.version}.`,
+          payload: {
+            eventId: cleanId,
+            title: cleanTitle,
+            version: safeEvent.version,
+            updatedAt: safeEvent.updatedAt,
+            primaryProvider: safeEvent.primaryProvider,
+            force: true
+          },
+          timestamp: now
+        });
+      } catch (auditErr) {
+        console.warn("[GolBolivia Server] Advertencia al registrar auditor\xEDa de guardado forzado:", auditErr.message || auditErr);
+      }
     }
     if (existingIndex >= 0) {
       state.liveEvents[existingIndex] = safeEvent;

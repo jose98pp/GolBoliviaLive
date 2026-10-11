@@ -51,7 +51,7 @@
   "scoreboard": {
     "homeScore": 0,
     "awayScore": 0,
-    "matchMinute": 122,
+    "matchMinute": 129,
     "period": "1T",
     "updatedAt": 1791676561776,
     "version": 155
@@ -542,7 +542,7 @@
       "isLive": true,
       "homeScore": 0,
       "awayScore": 0,
-      "matchMinute": 123,
+      "matchMinute": 130,
       "version": 155,
       "customVideoUrl": "https://switches-scanned-twin-tapes.trycloudflare.com/live/partido/index.m3u8",
       "backupVideoUrl": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
@@ -553,10 +553,10 @@
       "primaryProvider": "cloudflare",
       "updatedAt": 1791676561776,
       "isClockRunning": true,
-      "clockUpdatedAt": 1791677713431,
+      "clockUpdatedAt": 1791678133493,
       "backupChannelName": "GolBolivia 24/7 Señal Alternativa HD",
       "autoFailoverEnabled": true
     }
   ],
-  "updatedAt": 1791677713431
+  "updatedAt": 1791678133493
 }

@@ -253,6 +253,97 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
     }
   };
 
+  // Construye un LiveEvent seguro a partir del formulario (nunca stream keys), con validaciones de límites
+  const buildEventPayload = (overrides: Partial<LiveEvent> = {}): LiveEvent => {
+    const cleanTournament = (formData.tournamentName || '').trim();
+    const cleanStadium = (formData.stadiumName || '').trim();
+    return {
+      id: formData.id,
+      title: (formData.title || '').trim(),
+      homeTeam: sanitizeClubId(formData.homeTeam),
+      awayTeam: sanitizeClubId(formData.awayTeam),
+      isLive: formData.isLive,
+      primaryProvider: formData.primaryProvider,
+      cloudflare: {
+        liveInputId: formData.cloudflare?.liveInputId?.trim() || '',
+        playbackUrl: formData.cloudflare?.playbackUrl?.trim() || '',
+      },
+      youtube: {
+        videoId: formData.youtube?.videoId?.trim() || '',
+      },
+      kick: {
+        channel: formData.kick?.channel?.trim() || '',
+      },
+      fallbackOrder: formData.fallbackOrder || ['cloudflare', 'youtube', 'kick'],
+      tournamentName: cleanTournament ? cleanTournament.slice(0, 80) : undefined,
+      stadiumName: cleanStadium ? cleanStadium.slice(0, 80) : undefined,
+      period: formData.period || '1T',
+      homeScore: validateScore(formData.homeScore, 0),
+      awayScore: validateScore(formData.awayScore, 0),
+      matchMinute: validateMinute(formData.matchMinute, 0),
+      version: typeof formData.version === 'number' ? formData.version : undefined,
+      ...overrides,
+    };
+  };
+
+  // Auto-guardado inmediato al cambiar el proveedor principal (sin necesidad de pulsar "Guardar").
+  // Guardado PROTEGIDO: sin force, el servidor rechaza con 409 versiones anteriores a la confirmada.
+  const handleQuickSaveProvider = async (provider: StreamProvider) => {
+    updateFormData({ primaryProvider: provider });
+    setErrorMessage(null);
+    setSaveSuccessMessage(null);
+
+    // Mismas validaciones del formulario (título y equipos obligatorios y válidos)
+    const cleanTitle = (formData.title || '').trim();
+    const cleanHome = sanitizeClubId(formData.homeTeam);
+    const cleanAway = sanitizeClubId(formData.awayTeam);
+
+    if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
+      setErrorMessage('El título del partido debe tener entre 3 y 120 caracteres.');
+      return;
+    }
+    if (!CLUB_ID_REGEX.test(cleanHome)) {
+      setErrorMessage('ID del equipo local inválido. Debe contener entre 2 y 32 caracteres (solo minúsculas, números y guiones).');
+      return;
+    }
+    if (!CLUB_ID_REGEX.test(cleanAway)) {
+      setErrorMessage('ID del equipo visitante inválido. Debe contener entre 2 y 32 caracteres (solo minúsculas, números y guiones).');
+      return;
+    }
+    if (cleanHome === cleanAway) {
+      setErrorMessage('El equipo local y el equipo visitante no pueden ser el mismo club. Selecciona dos clubes distintos.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const sanitized: LiveEvent = buildEventPayload({ primaryProvider: provider });
+      const savedEvt = await apiClient.saveLiveEvent(sanitized);
+
+      isDirtyRef.current = false;
+      setEvents((prev) => {
+        const idx = prev.findIndex((ev) => ev.id === savedEvt.id);
+        const updated = idx >= 0
+          ? prev.map((ev) => (ev.id === savedEvt.id ? savedEvt : ev))
+          : [...prev, savedEvt];
+        try {
+          localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+      setFormData(savedEvt);
+
+      setSaveSuccessMessage(`¡Proveedor «${provider}» guardado como señal primaria de «${savedEvt.title}» (v${savedEvt.version || 1})!`);
+      if (onEventSelected) onEventSelected(savedEvt);
+      setTimeout(() => setSaveSuccessMessage(null), 4000);
+    } catch (err: any) {
+      setSaveSuccessMessage(null);
+      setErrorMessage('Error al guardar proveedor: ' + (err.message || 'No autorizado o error de guardado'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -261,8 +352,6 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
     const cleanTitle = (formData.title || '').trim();
     const cleanHome = sanitizeClubId(formData.homeTeam);
     const cleanAway = sanitizeClubId(formData.awayTeam);
-    const cleanTournament = (formData.tournamentName || '').trim();
-    const cleanStadium = (formData.stadiumName || '').trim();
 
     // Type and range validations
     if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
@@ -285,39 +374,13 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
       return;
     }
 
-    const homeScoreVal = validateScore(formData.homeScore, 0);
-    const awayScoreVal = validateScore(formData.awayScore, 0);
-    const minuteVal = validateMinute(formData.matchMinute, 0);
-
     setIsSaving(true);
 
     try {
-      // Ensure no stream keys ever exist
+      // Ensure no stream keys ever exist — botón "Guardar" explícito: operación administrativa con force:true
+      // (autorizada por rol ADMIN/TRANSMISOR y registrada en el log de auditoría del servidor)
       const sanitized: LiveEvent = {
-        id: formData.id,
-        title: cleanTitle,
-        homeTeam: cleanHome,
-        awayTeam: cleanAway,
-        isLive: formData.isLive,
-        primaryProvider: formData.primaryProvider,
-        cloudflare: {
-          liveInputId: formData.cloudflare?.liveInputId?.trim() || '',
-          playbackUrl: formData.cloudflare?.playbackUrl?.trim() || '',
-        },
-        youtube: {
-          videoId: formData.youtube?.videoId?.trim() || '',
-        },
-        kick: {
-          channel: formData.kick?.channel?.trim() || '',
-        },
-        fallbackOrder: formData.fallbackOrder || ['cloudflare', 'youtube', 'kick'],
-        tournamentName: cleanTournament ? cleanTournament.slice(0, 80) : undefined,
-        stadiumName: cleanStadium ? cleanStadium.slice(0, 80) : undefined,
-        period: formData.period || '1T',
-        homeScore: homeScoreVal,
-        awayScore: awayScoreVal,
-        matchMinute: minuteVal,
-        version: typeof formData.version === 'number' ? formData.version : undefined,
+        ...buildEventPayload(),
         force: true,
       };
 
@@ -694,11 +757,14 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
           <label className="block text-xs font-semibold text-slate-300 mb-1.5">
             Proveedor Principal de Transmisión (primaryProvider)
           </label>
+          <p className="text-[11px] text-slate-500 mb-1.5">
+            Al seleccionar un proveedor se guarda automáticamente en el partido activo (guardado protegido por versión). No necesitas pulsar «GUARDAR PARTIDO EN FIREBASE».
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             {/* Cloudflare */}
             <button
               type="button"
-              onClick={() => updateFormData({ primaryProvider: 'cloudflare' })}
+              onClick={() => handleQuickSaveProvider('cloudflare')}
               className={`p-3 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
                 formData.primaryProvider === 'cloudflare'
                   ? 'bg-sky-950/80 border-sky-400 ring-1 ring-sky-400 text-white'
@@ -715,7 +781,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             {/* YouTube */}
             <button
               type="button"
-              onClick={() => updateFormData({ primaryProvider: 'youtube' })}
+              onClick={() => handleQuickSaveProvider('youtube')}
               className={`p-3 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
                 formData.primaryProvider === 'youtube'
                   ? 'bg-red-950/80 border-red-400 ring-1 ring-red-400 text-white'
@@ -732,7 +798,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             {/* Kick (Paso 8) */}
             <button
               type="button"
-              onClick={() => updateFormData({ primaryProvider: 'kick' })}
+              onClick={() => handleQuickSaveProvider('kick')}
               className={`p-3 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
                 formData.primaryProvider === 'kick'
                   ? 'bg-emerald-950/80 border-emerald-400 ring-1 ring-emerald-400 text-white'

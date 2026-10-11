@@ -43,7 +43,7 @@ import { MediaMtxGuideModal } from './MediaMtxGuideModal';
 import { EventsAndChatModeration } from './EventsAndChatModeration';
 import { authService, AuthUser, UserRole } from '../services/auth';
 import { apiClient } from '../services/apiClient';
-import { StreamSettings, MatchEvent, LiveEvent, LivePoll, NotificationItem, PrivateIngestCredentials } from '../types/football';
+import { StreamSettings, MatchEvent, LiveEvent, LivePoll, NotificationItem, PrivateIngestCredentials, StreamProvider } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { RealPresenceStats } from '../hooks/useRealPresence';
 import { MatchDetailsEditor } from './MatchDetailsEditor';
@@ -315,6 +315,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
     }
   });
   const [backupSaveSuccess, setBackupSaveSuccess] = useState<boolean>(false);
+  const [isSavingProvider, setIsSavingProvider] = useState<boolean>(false);
+  const [providerSaveFeedback, setProviderSaveFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Sync if backupVideoUrl changes externally
   React.useEffect(() => {
@@ -472,6 +474,74 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const currentAwayId = currentEvent?.awayTeam || streamSettings.awayClubId || 'strongest';
   const homeClub = clubs[currentHomeId] || BOLIVIAN_CLUBS[currentHomeId] || BOLIVIAN_CLUBS.bolivar;
   const awayClub = clubs[currentAwayId] || BOLIVIAN_CLUBS[currentAwayId] || BOLIVIAN_CLUBS.strongest;
+
+  // Proveedor al aire efectivo: la fuente de verdad vive en el LiveEvent activo, NO en streamSettings global
+  const activeProvider: StreamProvider = currentEvent?.primaryProvider || streamSettings.primaryProvider || 'cloudflare';
+
+  // Auto-guardado inmediato y atómico del LiveEvent activo (servidor + Firestore) cada vez que el operador
+  // cambia el proveedor principal o los canales en la pestaña 1 (Transmisión).
+  const persistActiveLiveEvent = async (
+    patch: Partial<LiveEvent>,
+    feedbackSuffix?: string
+  ): Promise<LiveEvent | null> => {
+    const target = currentEvent;
+    if (!target) return null;
+
+    // Actualización optimista inmediata del partido activo en el estado local
+    if (onUpdateLiveEvent) onUpdateLiveEvent(patch);
+
+    try {
+      const payload: LiveEvent & { force?: boolean } = {
+        ...target,
+        ...patch,
+        homeScore: typeof (patch.homeScore ?? target.homeScore) === 'number' ? (patch.homeScore ?? target.homeScore) : homeScore,
+        awayScore: typeof (patch.awayScore ?? target.awayScore) === 'number' ? (patch.awayScore ?? target.awayScore) : awayScore,
+        matchMinute: typeof (patch.matchMinute ?? target.matchMinute) === 'number' ? (patch.matchMinute ?? target.matchMinute) : matchMinute,
+        period: patch.period || target.period || streamSettings.period || '1T',
+        // Guardado PROTEGIDO: sin force (queda en false) para que el servidor rechace con 409 si esta
+        // versión local es anterior a la confirmada en Firestore — nunca se sobrescribe data más reciente.
+        version: typeof target.version === 'number' ? target.version : undefined,
+        // Marca temporal fresca: evita falsos conflictos de timestamp con versiones idénticas
+        updatedAt: Date.now(),
+      };
+      const saved = await apiClient.saveLiveEvent(payload);
+      // Sincronizar la versión confirmada para reflejar el guardado y evitar conflictos
+      if (onUpdateLiveEvent) onUpdateLiveEvent({ version: saved.version, updatedAt: saved.updatedAt });
+      setProviderSaveFeedback({
+        ok: true,
+        text: feedbackSuffix
+          ? `Guardado automático: ${feedbackSuffix}`
+          : `Partido «${saved.title}» guardado en Firestore (v${saved.version || 1}).`,
+      });
+      window.setTimeout(() => setProviderSaveFeedback(null), 5000);
+      return saved;
+    } catch (err: any) {
+      setProviderSaveFeedback({ ok: false, text: err.message || 'No se pudo guardar el partido activo en el servidor.' });
+      return null;
+    }
+  };
+
+  const handleSelectPrimaryProvider = async (provider: StreamProvider) => {
+    // 1. Reflejo inmediato en el estado global (badge y consumidores que leen streamSettings)
+    onUpdateStreamSettings({ primaryProvider: provider });
+    setProviderSaveFeedback(null);
+
+    if (!currentEvent) {
+      setProviderSaveFeedback({ ok: false, text: 'No hay un partido activo seleccionado para guardar el proveedor.' });
+      return;
+    }
+
+    // 2. Guardado inmediato y atómico del LiveEvent activo con el nuevo primaryProvider
+    setIsSavingProvider(true);
+    try {
+      await persistActiveLiveEvent(
+        { primaryProvider: provider },
+        `proveedor «${provider}» ahora es la señal primaria de «${currentEvent.title}».`
+      );
+    } finally {
+      setIsSavingProvider(false);
+    }
+  };
 
   const [isSavingFirebase, setIsSavingFirebase] = useState(false);
   const [firebaseSavedBanner, setFirebaseSavedBanner] = useState<string | null>(null);
@@ -807,7 +877,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   </div>
 
                   <span className="text-[10px] px-2.5 py-1 rounded-full font-mono font-bold uppercase bg-slate-900 border border-slate-700 text-slate-300">
-                    Proveedor al Aire: <strong className="text-amber-400">{streamSettings.primaryProvider || 'cloudflare'}</strong>
+                    Proveedor al Aire: <strong className="text-amber-400">{activeProvider}</strong>
+                    {isSavingProvider && <span className="ml-1 text-sky-300 animate-pulse">· guardando</span>}
                   </span>
                 </div>
 
@@ -819,12 +890,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <button
                       type="button"
-                      onClick={() => {
-                        onUpdateStreamSettings({ primaryProvider: 'cloudflare' });
-                        apiClient.updateStreamSettings({ primaryProvider: 'cloudflare' }).catch(() => {});
-                      }}
-                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition cursor-pointer ${
-                        (streamSettings.primaryProvider || 'cloudflare') === 'cloudflare'
+                      onClick={() => handleSelectPrimaryProvider('cloudflare')}
+                      disabled={isSavingProvider}
+                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition cursor-pointer disabled:opacity-60 ${
+                        activeProvider === 'cloudflare'
                           ? 'bg-sky-950/80 border-sky-400 ring-1 ring-sky-400 text-white'
                           : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
                       }`}
@@ -838,12 +907,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        onUpdateStreamSettings({ primaryProvider: 'youtube' });
-                        apiClient.updateStreamSettings({ primaryProvider: 'youtube' }).catch(() => {});
-                      }}
-                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition cursor-pointer ${
-                        streamSettings.primaryProvider === 'youtube'
+                      onClick={() => handleSelectPrimaryProvider('youtube')}
+                      disabled={isSavingProvider}
+                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition cursor-pointer disabled:opacity-60 ${
+                        activeProvider === 'youtube'
                           ? 'bg-red-950/80 border-red-400 ring-1 ring-red-400 text-white'
                           : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
                       }`}
@@ -857,12 +924,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        onUpdateStreamSettings({ primaryProvider: 'kick' });
-                        apiClient.updateStreamSettings({ primaryProvider: 'kick' }).catch(() => {});
-                      }}
-                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition cursor-pointer ${
-                        streamSettings.primaryProvider === 'kick'
+                      onClick={() => handleSelectPrimaryProvider('kick')}
+                      disabled={isSavingProvider}
+                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition cursor-pointer disabled:opacity-60 ${
+                        activeProvider === 'kick'
                           ? 'bg-emerald-950/80 border-emerald-400 ring-1 ring-emerald-400 text-white'
                           : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
                       }`}
@@ -875,6 +940,22 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* Feedback de auto-guardado del proveedor en el LiveEvent activo */}
+                {providerSaveFeedback && (
+                  <div className={`p-3 rounded-xl border text-xs flex items-start gap-2 shadow-md ${
+                    providerSaveFeedback.ok
+                      ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-200'
+                      : 'bg-rose-950/80 border-rose-500/60 text-rose-200'
+                  }`}>
+                    {providerSaveFeedback.ok ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    )}
+                    <span className="font-semibold">{providerSaveFeedback.text}</span>
+                  </div>
+                )}
 
                 {/* Inputs de Canales */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
@@ -893,6 +974,13 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         else if (val.includes('youtu.be/')) id = val.split('youtu.be/')[1]?.split('?')[0] || val;
                         onUpdateStreamSettings({ youtube: { videoId: id } });
                       }}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        let id = val;
+                        if (val.includes('youtube.com/watch?v=')) id = val.split('v=')[1]?.split('&')[0] || val;
+                        else if (val.includes('youtu.be/')) id = val.split('youtu.be/')[1]?.split('?')[0] || val;
+                        persistActiveLiveEvent({ youtube: { videoId: id } }, `canal de YouTube sincronizado en el partido activo.`);
+                      }}
                       placeholder="jfKfPfyJRdk o https://youtube.com/watch?v=..."
                       className="w-full bg-[#060a14] border border-slate-750 focus:border-red-500 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
                     />
@@ -909,6 +997,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                       onChange={(e) => {
                         const val = e.target.value.trim().replace('https://kick.com/', '');
                         onUpdateStreamSettings({ kick: { channel: val } });
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim().replace('https://kick.com/', '');
+                        persistActiveLiveEvent({ kick: { channel: val } }, `canal de Kick sincronizado en el partido activo.`);
                       }}
                       placeholder="golbolivia"
                       className="w-full bg-[#060a14] border border-slate-750 focus:border-emerald-500 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"

@@ -3,7 +3,6 @@ import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
 import { authService, AuthUser, UserRole } from './auth';
 import { espnFootballApi } from './espnFootballApi';
 import {
-  saveStreamSettingsToFirebase,
   getStreamSettingsFromFirebase,
   saveDonationQrToFirebase,
   getDonationQrFromFirebase,
@@ -15,7 +14,6 @@ import {
   sendChatMessageToFirebase,
   deleteChatMessageFromFirebase,
   deleteConfirmationLogFromFirebase,
-  resetStreamSettingsInFirebase,
   saveSingleClubToFirebase,
   deleteClubFromFirebase,
   getClubsFromFirebase,
@@ -158,10 +156,8 @@ class GolBoliviaApiClient {
 
     const result = contentType.includes('application/json') ? await res.json() : { success: true, streamSettings: settings };
 
-    // 2. Persist to Firebase Firestore with versioning
-    await saveStreamSettingsToFirebase(settings).catch((err) => {
-      console.warn('[ApiClient] Advertencia al guardar configuración en Firestore:', err);
-    });
+    // 2. La API autenticada ya persistió en Firestore (único escritor). El frontend solo
+    //    guarda una copia local de lectura y devuelve el resultado confirmado por el servidor.
 
     // 3. Update local storage copy for reading only
     try {
@@ -186,9 +182,8 @@ class GolBoliviaApiClient {
     backupChannelName?: string;
     autoFailoverEnabled?: boolean;
   }): Promise<{ success: boolean; activeStreamSource: string; playbackUrl: string; streamSettings: any }> {
-    // Save to Firebase
-    saveStreamSettingsToFirebase(params).catch(() => {});
-
+    // La persistencia en Firestore la realiza la API autenticada (único escritor).
+    // El frontend no escribe directamente para evitar versiones de configuración en conflicto.
     const res = await fetch('/api/streams/failover', {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -315,8 +310,7 @@ class GolBoliviaApiClient {
 
     const json = await res.json();
 
-    // 2. Persist to Firebase Firestore
-    await saveStreamSettingsToFirebase(config).catch(() => {});
+    // 2. La API autenticada ya persistió en Firestore (único escritor). Solo copia local de lectura.
 
     // 3. Save locally for reading copy
     try {
@@ -407,9 +401,8 @@ class GolBoliviaApiClient {
     const operator = params.operatorName || authService.getUser()?.name || 'Administrador General';
     const role = params.operatorRole || authService.getUser()?.role || 'ADMIN';
 
-    // 1. Save stream settings to Firebase and backend
+    // 1. Save stream settings through the authenticated API only (backend = único escritor de Firestore)
     if (params.streamSettings) {
-      await saveStreamSettingsToFirebase(params.streamSettings).catch(() => {});
       if (params.streamSettings.donationQr) {
         await saveDonationQrToFirebase(params.streamSettings.donationQr, operator).catch(() => {});
       }
@@ -596,11 +589,16 @@ class GolBoliviaApiClient {
 
   // 8.3 Reset Stream Configuration (Reset / Clear in Backend + Firebase)
   async resetStreamSettings(): Promise<boolean> {
-    await resetStreamSettingsInFirebase().catch(() => {});
+    // El reset se envía por la API autenticada; el backend es el único que persiste en Firestore.
     await this.syncStreamConfig({
       customVideoUrl: '',
       backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
       activeStreamSource: 'obs',
+      backupChannelName: 'GolBolivia 24/7 Señal HD',
+      autoFailoverEnabled: true,
+      isLive: true,
+      broadcastMode: 'obs_custom',
+      title: 'Bolívar vs The Strongest — Fecha 22 Torneo Clausura',
     }).catch(() => {});
     return true;
   }
@@ -856,13 +854,20 @@ class GolBoliviaApiClient {
   public async saveLiveEvent(event: LiveEvent & { force?: boolean }): Promise<LiveEvent> {
     // 1. Single authoritative point of write: Server API with authentication headers
     // The server handles Firestore persistence and returns the confirmed event with definitive version
+    //
+    // Semántica de `force` (seguridad contra sobrescrituras):
+    //  - Por defecto es FALSE: el guardado es PROTEGIDO y el servidor rechaza con HTTP 409 si la
+    //    versión enviada es anterior a la versión confirmada en Firestore (nunca se pisará data más reciente).
+    //  - force: true se reserva EXCLUSIVAMENTE para operaciones administrativas explícitas del operador
+    //    (botón "Guardar"), que pasan por el middleware de autorización (ADMIN/TRANSMISOR) y quedan
+    //    registradas en el log de auditoría del servidor.
     const res = await fetch('/api/live-events', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...this.getAuthHeaders(),
       },
-      body: JSON.stringify({ ...event, force: event.force ?? true }),
+      body: JSON.stringify({ ...event, force: event.force ?? false }),
     });
 
     if (!res.ok) {
