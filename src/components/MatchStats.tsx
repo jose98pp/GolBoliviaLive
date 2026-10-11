@@ -31,6 +31,7 @@ interface MatchStatsProps {
   events?: MatchEvent[];
   isClockRunning?: boolean;
   onToggleMatchClock?: () => void;
+  showHeader?: boolean;
 }
 
 export const MatchStats: React.FC<MatchStatsProps> = ({
@@ -41,6 +42,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
   events: propEvents,
   isClockRunning = false,
   onToggleMatchClock,
+  showHeader = true,
 }) => {
   const [statsTab, setStatsTab] = useState<'timeline' | 'stats' | 'lineups' | 'table'>('timeline');
   const [matchStats] = useState<IMatchStats>(INITIAL_MATCH_STATS);
@@ -86,6 +88,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
   return (
     <div className="liquid-glass-panel rounded-2xl p-4 md:p-6 shadow-xl">
       {/* HEADER / MATCH SUMMARY SCORECARD */}
+      {showHeader && (
       <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 md:p-5 mb-5 shadow-lg">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
           <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -179,12 +182,13 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
           <span>Árbitro: Ivo Méndez</span>
         </div>
       </div>
+      )}
 
       {/* STATS TABS NAVIGATION */}
-      <div className="flex items-center gap-1.5 p-1 bg-[#070b15] border border-slate-800 rounded-xl mb-4 text-xs font-semibold">
+      <div className="flex items-center gap-1.5 p-1 bg-[#070b15] border border-slate-800 rounded-xl mb-4 text-xs font-semibold overflow-x-auto no-scrollbar">
         <button
           onClick={() => setStatsTab('timeline')}
-          className={`flex-1 py-2 px-3 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`flex-1 shrink-0 whitespace-nowrap py-2 px-3 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
             statsTab === 'timeline' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -193,7 +197,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
         </button>
         <button
           onClick={() => setStatsTab('stats')}
-          className={`flex-1 py-2 px-3 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`flex-1 shrink-0 whitespace-nowrap py-2 px-3 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
             statsTab === 'stats' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -202,7 +206,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
         </button>
         <button
           onClick={() => setStatsTab('lineups')}
-          className={`flex-1 py-2 px-3 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`flex-1 shrink-0 whitespace-nowrap py-2 px-3 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
             statsTab === 'lineups' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -211,7 +215,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
         </button>
         <button
           onClick={() => setStatsTab('table')}
-          className={`flex-1 py-2 px-3 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`flex-1 shrink-0 whitespace-nowrap py-2 px-3 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
             statsTab === 'table' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
           }`}
         >
