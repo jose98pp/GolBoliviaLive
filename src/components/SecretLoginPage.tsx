@@ -106,12 +106,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   onToggleMatchClock,
   onUpdatePeriod,
 }) => {
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => authService.getUser());
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated());
-  const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() => {
-    // If we already have stored credentials, don't show loading blocker, render dashboard immediately!
-    return !authService.isAuthenticated() && !!authService.getToken();
-  });
+  // The dashboard is only shown after the backend confirms the stored session (/api/auth/me).
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() => !!authService.getToken());
   const [usernameInput, setUsernameInput] = useState<string>('admin');
   const [pinInput, setPinInput] = useState('');
   const [showPin, setShowPin] = useState(false);

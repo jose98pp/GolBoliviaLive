@@ -148,7 +148,7 @@ class AuthService {
         }
       }
     } catch (err: any) {
-      if (err?.message) throw err;
+      if (err?.message && !(err instanceof TypeError)) throw err;
     }
 
     throw new Error('No se pudo conectar con el servidor de autenticación. Intenta nuevamente.');
@@ -185,8 +185,8 @@ class AuthService {
           this.clearSession();
           return null;
         }
-        // Temporary server error (500, 502, cold boot): preserve operator's active dashboard session!
-        return this.currentUser;
+        // Server unavailable: keep the stored token for a retry, but never trust it unverified.
+        return null;
       }
 
       const data = await res.json();
@@ -200,10 +200,10 @@ class AuthService {
         return data.user;
       }
 
-      return this.currentUser;
+      return null;
     } catch {
-      // Offline or network error: retain session so reload does NOT kick out operator
-      return this.currentUser;
+      // Offline: keep the stored token for a retry, but never trust it unverified.
+      return null;
     }
   }
 
