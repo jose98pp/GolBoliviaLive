@@ -35,6 +35,11 @@ import {
   getDonationQrFromFirebase,
 } from './services/firebase';
 
+// ── Stream config sync (debounced) ──
+const STREAM_SYNC_DEBOUNCE_MS = 800;
+let pendingStreamSync: Partial<StreamSettings> = {};
+let streamSyncTimer: ReturnType<typeof setTimeout> | undefined;
+
 export default function App() {
   const { clubs } = useClubs();
   const [activeTab, setActiveTab] = useState<'stream' | 'exclusive'>('stream');
@@ -729,10 +734,16 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       return updated;
     });
 
-    // Push authoritative match-specific update to dedicated backend endpoint & Firebase
-    apiClient.syncStreamConfig({ ...newSettings, activeEventId, eventId: activeEventId }).catch((err) => {
-      console.error('Error al sincronizar señal global:', err);
-    });
+    // Debounced so text inputs (YouTube ID, Kick channel) send one request instead of one per keystroke.
+    pendingStreamSync = { ...pendingStreamSync, ...newSettings };
+    clearTimeout(streamSyncTimer);
+    streamSyncTimer = setTimeout(() => {
+      const patch = pendingStreamSync;
+      pendingStreamSync = {};
+      apiClient.syncStreamConfig({ ...patch, activeEventId, eventId: activeEventId }).catch((err) => {
+        console.error('Error al sincronizar señal global:', err);
+      });
+    }, STREAM_SYNC_DEBOUNCE_MS);
   };
 
   const handleAddMatchEvent = (newEvent: Omit<MatchEvent, 'id'>) => {

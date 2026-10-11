@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAutoSave } from '../hooks/useAutoSave';
+import { AutoSaveIndicator } from './AutoSaveIndicator';
 import {
   QrCode,
   Upload,
@@ -121,6 +123,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isDirtyRef = useRef<boolean>(false);
+  const [editCount, setEditCount] = useState(0);
 
   // 1. Cargar datos iniciales desde Firebase Firestore si están disponibles
   useEffect(() => {
@@ -201,6 +204,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
       setImageUrl(optimized.dataUrl);
       setImageStats({ sizeKb: optimized.sizeKb, dimensions: `${optimized.width}x${optimized.height}` });
       isDirtyRef.current = true;
+      setEditCount((n) => n + 1);
       setStatusMsg({
         type: 'ok',
         text: `✅ Imagen QR optimizada con éxito (${optimized.sizeKb} KB, ${optimized.width}x${optimized.height} px). Presiona «GUARDAR CÓDIGO QR EN FIREBASE» para aplicar los cambios sin error 413.`,
@@ -215,6 +219,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
         const approxKb = Math.round((result.length * 0.75) / 1024);
         setImageStats({ sizeKb: approxKb });
         isDirtyRef.current = true;
+        setEditCount((n) => n + 1);
         setStatusMsg({
           type: 'ok',
           text: 'Imagen cargada en vista previa. Presiona «GUARDAR CÓDIGO QR EN FIREBASE» para aplicar los cambios permanentemente.',
@@ -225,7 +230,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMsg(null);
     try {
@@ -266,16 +271,25 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
 
       onQrUpdated?.(savedResult);
       setTimeout(() => setStatusMsg(null), 8000);
+      return true;
     } catch (err: any) {
       console.error('[DonationQR] Error al guardar:', err);
       setStatusMsg({
         type: 'error',
         text: `❌ Error al guardar: ${err.message || 'Error de red o permisos.'}`,
       });
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
+
+  const autoSaveStatus = useAutoSave({
+    isDirty: editCount > 0 && isDirtyRef.current,
+    changeKey: editCount,
+    save: handleSave,
+    delayMs: 2000,
+  });
 
   const handleDownloadPreview = () => {
     if (!imageUrl) return;
@@ -429,6 +443,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
                   onClick={() => {
                     setImageUrl('');
                     isDirtyRef.current = true;
+                    setEditCount((n) => n + 1);
                   }}
                   className="px-3.5 py-3 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold cursor-pointer transition"
                   title="Eliminar QR actual"
@@ -454,6 +469,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
               onChange={(e) => {
                 setImageUrl(e.target.value);
                 isDirtyRef.current = true;
+                setEditCount((n) => n + 1);
               }}
               placeholder="https://.../mi-codigo-qr.png"
               className="w-full bg-slate-900 border border-slate-750 focus:border-amber-500 rounded-xl p-2.5 text-white font-mono text-xs focus:outline-none transition-colors"
@@ -476,6 +492,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
               onChange={(e) => {
                 setInstructions(e.target.value);
                 isDirtyRef.current = true;
+                setEditCount((n) => n + 1);
               }}
               placeholder="Escanea o descarga este código QR desde tu aplicación bancaria móvil para realizar tu aporte..."
               className="w-full bg-slate-900 border border-slate-750 focus:border-amber-500 rounded-xl p-2.5 text-white font-medium text-xs focus:outline-none resize-none transition-colors"
@@ -483,7 +500,11 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
           </div>
 
           {/* Action Button: Guardar en Firebase */}
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
+            <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+              <span>Los cambios se guardan solos.</span>
+              <AutoSaveIndicator status={autoSaveStatus} />
+            </div>
             <button
               type="button"
               onClick={handleSave}
