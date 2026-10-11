@@ -918,8 +918,17 @@ app.post(
     if (typeof body.isLive === 'boolean') state.streamSettings.isLive = body.isLive;
     if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
 
+    const targetEventIdBody = body.eventId || body.activeEventId;
+    if (!targetEventIdBody || String(targetEventIdBody).trim() === '') {
+      res.status(400).json({
+        error: 'Se requiere eventId/activeEventId válido para la sincronización de configuración del partido.',
+        code: 'MISSING_EVENT_ID',
+      });
+      return;
+    }
+
+    const targetEventId = String(targetEventIdBody).trim();
     // Keep active liveEvent in sync with streamSettings
-    const targetEventId = body.eventId || body.activeEventId || 'partido-001';
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
       const targetEvt = state.liveEvents.find((e) => e.id === targetEventId) || state.liveEvents[0];
       if (targetEvt) {
@@ -1203,35 +1212,57 @@ app.delete(
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
   async (req: Request, res: Response) => {
     const id = req.params.id;
+    const found = state.liveEvents.find((e) => e.id === id);
+    if (!found) {
+      res.status(404).json({ error: 'Partido no encontrado.', deletedId: id });
+      return;
+    }
+
+    // Regla 1: Confirmar eliminación en Firestore antes de mutar estado local/servidor.
+    // Si Firestore no confirma, DEVOLVER ERROR (no seguir eliminando en memoria).
     try {
       await deleteLiveEventFromFirebase(id);
     } catch (fbErr: any) {
-      console.warn(`[GolBolivia Server] Advertencia al eliminar partido ${id} en Firestore:`, fbErr.message || fbErr);
+      console.error(`[GolBolivia Server] Error al eliminar partido ${id} en Firestore:`, fbErr.message || fbErr);
+      res.status(503).json({
+        error: fbErr.message || 'Error al eliminar partido en Firebase Firestore. La eliminación no fue confirmada.',
+        code: 'FIRESTORE_DELETE_FAILED',
+        deletedId: id,
+      });
+      return;
     }
 
     state.liveEvents = state.liveEvents.filter((e) => e.id !== id);
 
     // Si se eliminó el partido activo en streamSettings, cambiar al primer partido disponible
     if (state.liveEvents.length > 0) {
-      const activeMatchExists = state.liveEvents.some((e) => e.title === state.streamSettings.title || e.id === id);
-      if (activeMatchExists) {
-        const nextEvt = state.liveEvents[0];
-        state.streamSettings.title = nextEvt.title;
-        state.streamSettings.homeClubId = nextEvt.homeTeam;
-        state.streamSettings.awayClubId = nextEvt.awayTeam;
-        if (nextEvt.tournamentName) state.streamSettings.tournamentName = nextEvt.tournamentName;
-        if (nextEvt.stadiumName) state.streamSettings.stadiumName = nextEvt.stadiumName;
-        if (nextEvt.period) state.streamSettings.period = nextEvt.period as any;
-        if (nextEvt.homeScore !== undefined) state.scoreboard.homeScore = nextEvt.homeScore;
-        if (nextEvt.awayScore !== undefined) state.scoreboard.awayScore = nextEvt.awayScore;
-        if (nextEvt.matchMinute !== undefined) state.scoreboard.matchMinute = nextEvt.matchMinute;
+      const nextEvt = state.liveEvents[0];
+      state.streamSettings.title = nextEvt.title;
+      state.streamSettings.homeClubId = nextEvt.homeTeam;
+      state.streamSettings.awayClubId = nextEvt.awayTeam;
+      if (nextEvt.tournamentName) state.streamSettings.tournamentName = nextEvt.tournamentName;
+      if (nextEvt.stadiumName) state.streamSettings.stadiumName = nextEvt.stadiumName;
+      if (nextEvt.period) state.streamSettings.period = nextEvt.period as any;
+      if (nextEvt.homeScore !== undefined) state.scoreboard.homeScore = nextEvt.homeScore;
+      if (nextEvt.awayScore !== undefined) state.scoreboard.awayScore = nextEvt.awayScore;
+      if (nextEvt.matchMinute !== undefined) state.scoreboard.matchMinute = nextEvt.matchMinute;
+    }
+    // Regla 5: Si la lista quedó vacía, no forzamos un partido por defecto.
+    if (state.liveEvents.length === 0) {
+      // Limpiar streamSettings relacionados si no hay partidos
+      if (state.streamSettings.homeClubId || state.streamSettings.awayClubId || state.streamSettings.title) {
+        state.streamSettings.title = '';
+        state.streamSettings.homeClubId = '';
+        state.streamSettings.awayClubId = '';
+        state.streamSettings.tournamentName = '';
+        state.streamSettings.stadiumName = '';
       }
     }
 
     persistState();
     broadcastSseEvent('LIVE_EVENT_DELETED', { id });
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
-    res.json({ success: true, message: 'Partido eliminado.', events: state.liveEvents, deletedId: id });
+    res.json({ success: true, message: 'Partido eliminado correctamente.', events: state.liveEvents, deletedId: id });
   }
 );
 
@@ -1245,13 +1276,18 @@ app.post(
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
   async (req: Request, res: Response) => {
-    const { homeScore, awayScore, matchMinute, period, isClockRunning, force } = req.body;
-    const targetEventId = req.body.activeEventId || req.body.eventId || 'partido-001';
-
-    let activeEvt = state.liveEvents.find((e) => e.id === targetEventId);
-    if (!activeEvt && state.liveEvents.length > 0) {
-      activeEvt = state.liveEvents[0];
+    // Regla 3 & Problema 5: Exigir versión válida y rechazar actualizaciones desactualizadas
+    const targetEventIdBody = req.body.activeEventId || req.body.eventId;
+    if (!targetEventIdBody || String(targetEventIdBody).trim() === '') {
+      res.status(400).json({
+        error: 'Se requiere eventId/activeEventId válido para esta operación específica de partido.',
+        code: 'MISSING_EVENT_ID',
+      });
+      return;
     }
+
+    const targetEventId = String(targetEventIdBody).trim();
+    let activeEvt = state.liveEvents.find((e) => e.id === targetEventId);
 
     const isForce = Boolean(force);
     const sentVersion = req.body.version !== undefined ? Number(req.body.version) : undefined;

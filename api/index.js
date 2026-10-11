@@ -1582,7 +1582,15 @@ app2.post(
     if (typeof body.autoFailoverEnabled === "boolean") state.streamSettings.autoFailoverEnabled = body.autoFailoverEnabled;
     if (typeof body.isLive === "boolean") state.streamSettings.isLive = body.isLive;
     if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
-    const targetEventId = body.eventId || body.activeEventId || "partido-001";
+    const targetEventIdBody = body.eventId || body.activeEventId;
+    if (!targetEventIdBody || String(targetEventIdBody).trim() === "") {
+      res.status(400).json({
+        error: "Se requiere eventId/activeEventId v\xE1lido para la sincronizaci\xF3n de configuraci\xF3n del partido.",
+        code: "MISSING_EVENT_ID"
+      });
+      return;
+    }
+    const targetEventId = String(targetEventIdBody).trim();
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
       const targetEvt = state.liveEvents.find((e) => e.id === targetEventId) || state.liveEvents[0];
       if (targetEvt) {
@@ -1830,31 +1838,48 @@ app2.delete(
   requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
   async (req, res) => {
     const id = req.params.id;
+    const found = state.liveEvents.find((e) => e.id === id);
+    if (!found) {
+      res.status(404).json({ error: "Partido no encontrado.", deletedId: id });
+      return;
+    }
     try {
       await deleteLiveEventFromFirebase(id);
     } catch (fbErr) {
-      console.warn(`[GolBolivia Server] Advertencia al eliminar partido ${id} en Firestore:`, fbErr.message || fbErr);
+      console.error(`[GolBolivia Server] Error al eliminar partido ${id} en Firestore:`, fbErr.message || fbErr);
+      res.status(503).json({
+        error: fbErr.message || "Error al eliminar partido en Firebase Firestore. La eliminaci\xF3n no fue confirmada.",
+        code: "FIRESTORE_DELETE_FAILED",
+        deletedId: id
+      });
+      return;
     }
     state.liveEvents = state.liveEvents.filter((e) => e.id !== id);
     if (state.liveEvents.length > 0) {
-      const activeMatchExists = state.liveEvents.some((e) => e.title === state.streamSettings.title || e.id === id);
-      if (activeMatchExists) {
-        const nextEvt = state.liveEvents[0];
-        state.streamSettings.title = nextEvt.title;
-        state.streamSettings.homeClubId = nextEvt.homeTeam;
-        state.streamSettings.awayClubId = nextEvt.awayTeam;
-        if (nextEvt.tournamentName) state.streamSettings.tournamentName = nextEvt.tournamentName;
-        if (nextEvt.stadiumName) state.streamSettings.stadiumName = nextEvt.stadiumName;
-        if (nextEvt.period) state.streamSettings.period = nextEvt.period;
-        if (nextEvt.homeScore !== void 0) state.scoreboard.homeScore = nextEvt.homeScore;
-        if (nextEvt.awayScore !== void 0) state.scoreboard.awayScore = nextEvt.awayScore;
-        if (nextEvt.matchMinute !== void 0) state.scoreboard.matchMinute = nextEvt.matchMinute;
+      const nextEvt = state.liveEvents[0];
+      state.streamSettings.title = nextEvt.title;
+      state.streamSettings.homeClubId = nextEvt.homeTeam;
+      state.streamSettings.awayClubId = nextEvt.awayTeam;
+      if (nextEvt.tournamentName) state.streamSettings.tournamentName = nextEvt.tournamentName;
+      if (nextEvt.stadiumName) state.streamSettings.stadiumName = nextEvt.stadiumName;
+      if (nextEvt.period) state.streamSettings.period = nextEvt.period;
+      if (nextEvt.homeScore !== void 0) state.scoreboard.homeScore = nextEvt.homeScore;
+      if (nextEvt.awayScore !== void 0) state.scoreboard.awayScore = nextEvt.awayScore;
+      if (nextEvt.matchMinute !== void 0) state.scoreboard.matchMinute = nextEvt.matchMinute;
+    }
+    if (state.liveEvents.length === 0) {
+      if (state.streamSettings.homeClubId || state.streamSettings.awayClubId || state.streamSettings.title) {
+        state.streamSettings.title = "";
+        state.streamSettings.homeClubId = "";
+        state.streamSettings.awayClubId = "";
+        state.streamSettings.tournamentName = "";
+        state.streamSettings.stadiumName = "";
       }
     }
     persistState();
     broadcastSseEvent("LIVE_EVENT_DELETED", { id });
     broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
-    res.json({ success: true, message: "Partido eliminado.", events: state.liveEvents, deletedId: id });
+    res.json({ success: true, message: "Partido eliminado correctamente.", events: state.liveEvents, deletedId: id });
   }
 );
 app2.get(["/api/scoreboard", "/scoreboard"], (_req, res) => {
@@ -1865,12 +1890,16 @@ app2.post(
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
   async (req, res) => {
-    const { homeScore, awayScore, matchMinute, period, isClockRunning, force } = req.body;
-    const targetEventId = req.body.activeEventId || req.body.eventId || "partido-001";
-    let activeEvt = state.liveEvents.find((e) => e.id === targetEventId);
-    if (!activeEvt && state.liveEvents.length > 0) {
-      activeEvt = state.liveEvents[0];
+    const targetEventIdBody = req.body.activeEventId || req.body.eventId;
+    if (!targetEventIdBody || String(targetEventIdBody).trim() === "") {
+      res.status(400).json({
+        error: "Se requiere eventId/activeEventId v\xE1lido para esta operaci\xF3n espec\xEDfica de partido.",
+        code: "MISSING_EVENT_ID"
+      });
+      return;
     }
+    const targetEventId = String(targetEventIdBody).trim();
+    let activeEvt = state.liveEvents.find((e) => e.id === targetEventId);
     const isForce = Boolean(force);
     const sentVersion = req.body.version !== void 0 ? Number(req.body.version) : void 0;
     if (activeEvt && !isForce) {
