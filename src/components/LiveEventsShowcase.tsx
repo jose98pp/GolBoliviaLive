@@ -16,9 +16,13 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
   onSelectEvent,
 }) => {
   const { clubs } = useClubs();
-  // Paso 12: La portada consulta liveEvents where isLive == true
-  const liveMatches = events.filter((e) => e.isLive);
-  const displayMatches = liveMatches.length > 0 ? liveMatches : events;
+  // Estilo Fútbol Libre: Mostrar todos los partidos configurados con su estado
+  const validEvents = events.filter((e) => e && (e.id || e.title));
+  // Ordenar: primero los partidos EN VIVO, luego los programados
+  const displayMatches = [...validEvents].sort((a, b) => {
+    if (Boolean(a.isLive) === Boolean(b.isLive)) return 0;
+    return a.isLive ? -1 : 1;
+  });
 
   return (
     <section className="my-5 w-full">
@@ -30,9 +34,9 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
             <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
           </span>
           <h2 className="text-sm sm:text-base md:text-lg font-black tracking-wider text-white uppercase flex items-center gap-2 font-display">
-            <span>🔴 EN VIVO AHORA</span>
+            <span>🔴 EN VIVO & TRANSMISIONES</span>
             <span className="text-[11px] font-mono font-normal text-slate-400 lowercase px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 hidden sm:inline">
-              ({displayMatches.length} transmisiones independientes)
+              ({displayMatches.length} {displayMatches.length === 1 ? 'partido' : 'partidos'})
             </span>
           </h2>
         </div>
@@ -43,10 +47,11 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
 
       {/* Grid of match cards (Paso 12 design: Bolívar vs The Strongest / Blooming vs Oriente) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {displayMatches.map((event) => {
+        {displayMatches.map((event, idx) => {
           const isSelected = event.id === activeEventId;
           const homeClub = clubs[event.homeTeam] || BOLIVIAN_CLUBS[event.homeTeam];
           const awayClub = clubs[event.awayTeam] || BOLIVIAN_CLUBS[event.awayTeam];
+          const matchTitle = (event.title || '').trim() || (homeClub?.name && awayClub?.name ? `${homeClub.name} vs ${awayClub.name}` : `Partido ${idx + 1}`);
 
           // Provider info and styling
           const getProviderBadge = () => {
@@ -82,7 +87,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
 
           return (
             <div
-              key={event.id}
+              key={event.id || `showcase-evt-${idx}`}
               onClick={() => onSelectEvent(event)}
               className={`relative overflow-hidden rounded-2xl transition-all duration-300 cursor-pointer p-4 sm:p-5 flex flex-col justify-between group ${
                 isSelected
@@ -101,14 +106,14 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
 
                 <div className="flex items-center gap-2">
                   {event.isLive ? (
-                    <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                    <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1 shadow-sm">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                       <span>DIRECTO</span>
                       {event.matchMinute !== undefined && <span>· {event.matchMinute}&apos;</span>}
                     </span>
                   ) : (
-                    <span className="text-[11px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
-                      FINALIZADO
+                    <span className="text-[11px] font-mono text-slate-300 bg-slate-800/90 px-2.5 py-0.5 rounded-full border border-slate-700">
+                      PROGRAMADO
                     </span>
                   )}
                 </div>
@@ -117,7 +122,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
               {/* Middle Row: Match Title & Club Badges */}
               <div className="my-2 space-y-2">
                 <h3 className="text-base sm:text-lg font-black text-white font-display group-hover:text-emerald-300 transition-colors">
-                  {event.title}
+                  {matchTitle}
                 </h3>
 
                 {/* Team Lineup preview */}

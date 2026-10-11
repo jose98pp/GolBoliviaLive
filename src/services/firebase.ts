@@ -816,6 +816,7 @@ export async function saveMatchScoreboardFirebase(
     }
 
     const sanitized: any = {
+      id: safeId,
       version: nextVersion,
       updatedAt: now,
       updatedAtIso: new Date(now).toISOString(),
@@ -837,13 +838,52 @@ export async function saveMatchScoreboardFirebase(
   });
 }
 
+function hydrateLiveEventDoc(d: any): LiveEvent {
+  const raw = d.data() as Partial<LiveEvent>;
+  const docId = d.id;
+  const safeId = raw.id || docId;
+  const home = raw.homeTeam || (docId === 'partido-002' ? 'blooming' : 'bolivar');
+  const away = raw.awayTeam || (docId === 'partido-002' ? 'oriente' : 'strongest');
+  const defaultTitle = docId === 'partido-002' ? 'Blooming vs Oriente Petrolero' : 'Bolívar vs The Strongest';
+  const title = (raw.title && raw.title.trim()) || defaultTitle;
+
+  return {
+    id: safeId,
+    title,
+    homeTeam: home,
+    awayTeam: away,
+    isLive: raw.isLive !== undefined ? Boolean(raw.isLive) : true,
+    primaryProvider: raw.primaryProvider || 'cloudflare',
+    fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ['cloudflare', 'youtube', 'kick'],
+    tournamentName: raw.tournamentName || 'Liga Tigo División Profesional - Torneo Clausura',
+    stadiumName: raw.stadiumName || (docId === 'partido-002' ? 'Estadio Ramón Tahuichi Aguilera' : 'Estadio Hernando Siles - La Paz'),
+    period: raw.period || '1T',
+    homeScore: typeof raw.homeScore === 'number' ? raw.homeScore : 0,
+    awayScore: typeof raw.awayScore === 'number' ? raw.awayScore : 0,
+    matchMinute: typeof raw.matchMinute === 'number' ? raw.matchMinute : 0,
+    isClockRunning: Boolean(raw.isClockRunning),
+    customVideoUrl: raw.customVideoUrl || raw.cloudflare?.playbackUrl || '',
+    backupVideoUrl: raw.backupVideoUrl || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    backupChannelName: raw.backupChannelName || 'GolBolivia HD',
+    activeStreamSource: raw.activeStreamSource || 'obs',
+    autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
+    cloudflare: raw.cloudflare,
+    youtube: raw.youtube,
+    kick: raw.kick,
+    version: typeof raw.version === 'number' ? raw.version : 1,
+    updatedAt: raw.updatedAt || Date.now(),
+    updatedAtIso: raw.updatedAtIso || new Date().toISOString(),
+    updatedBy: raw.updatedBy || 'admin',
+  };
+}
+
 export async function getLiveEventsFromFirebase(): Promise<LiveEvent[]> {
   try {
     const colRef = collection(db, 'liveEvents');
     const snap = await getDocs(colRef);
     if (!snap.empty) {
       const list: LiveEvent[] = [];
-      snap.forEach((d) => list.push(d.data() as LiveEvent));
+      snap.forEach((d) => list.push(hydrateLiveEventDoc(d)));
       return list;
     }
   } catch (err) {
@@ -862,7 +902,7 @@ export function subscribeLiveEventsFirebase(
       (snap) => {
         if (!snap.empty) {
           const list: LiveEvent[] = [];
-          snap.forEach((d) => list.push(d.data() as LiveEvent));
+          snap.forEach((d) => list.push(hydrateLiveEventDoc(d)));
           callback(list);
         } else {
           callback([]);

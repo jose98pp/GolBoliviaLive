@@ -447,7 +447,21 @@ function loadPersistedState(): void {
           state.clubs = { ...BOLIVIAN_CLUBS, ...saved.clubs };
         }
         if (Array.isArray(saved.liveEvents) && saved.liveEvents.length > 0) {
-          state.liveEvents = saved.liveEvents;
+          state.liveEvents = saved.liveEvents.map((ev: any, idx: number) => {
+            const docId = ev.id || `partido-00${idx + 1}`;
+            const home = ev.homeTeam || (docId === 'partido-002' ? 'blooming' : 'bolivar');
+            const away = ev.awayTeam || (docId === 'partido-002' ? 'oriente' : 'strongest');
+            const defaultTitle = docId === 'partido-002' ? 'Blooming vs Oriente Petrolero' : 'Bolívar vs The Strongest';
+            return {
+              ...ev,
+              id: docId,
+              title: (typeof ev.title === 'string' && ev.title.trim()) || defaultTitle,
+              homeTeam: home,
+              awayTeam: away,
+              isLive: ev.isLive !== undefined ? Boolean(ev.isLive) : true,
+              primaryProvider: ev.primaryProvider || 'cloudflare',
+            };
+          });
         }
         console.log(`[GolBolivia Backend] Estado persistido cargado con éxito desde ${STATE_FILE}`);
         console.log(`[GolBolivia Backend] Señal activa: ${state.streamSettings.customVideoUrl || '(simulación)'}`);

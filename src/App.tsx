@@ -123,13 +123,34 @@ export default function App() {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
+function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
+  const docId = e?.id || `partido-00${idx + 1}`;
+  const home = e?.homeTeam || (docId === 'partido-002' ? 'blooming' : 'bolivar');
+  const away = e?.awayTeam || (docId === 'partido-002' ? 'oriente' : 'strongest');
+  const defaultTitle = docId === 'partido-002' ? 'Blooming vs Oriente Petrolero' : 'Bolívar vs The Strongest';
+  const title = (typeof e?.title === 'string' && e.title.trim()) || defaultTitle;
+
+  return {
+    ...e,
+    id: docId,
+    title,
+    homeTeam: home,
+    awayTeam: away,
+    isLive: e?.isLive !== undefined ? Boolean(e.isLive) : true,
+    primaryProvider: e?.primaryProvider || 'cloudflare',
+    fallbackOrder: Array.isArray(e?.fallbackOrder) && e.fallbackOrder.length > 0 ? e.fallbackOrder : ['cloudflare', 'youtube', 'kick'],
+  };
+}
+
   // Multi-Provider Live Events (Cloudflare, YouTube, Kick)
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>(() => {
     try {
       const saved = localStorage.getItem('golbolivia_live_events');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item, idx) => sanitizeClientEvent(item, idx));
+        }
       }
     } catch {}
     // No utilizar datos predeterminados de demostración en modo de producción/estado inicial.
@@ -257,8 +278,9 @@ export default function App() {
 
     // Helper para Regla 3: Rechazar datos antiguos usando versión o marca de actualización
     const mergeConfirmedEvents = (prevList: LiveEvent[], incomingList: LiveEvent[]): LiveEvent[] => {
+      const sanitizedIncoming = incomingList.map((e, idx) => sanitizeClientEvent(e, idx));
       const result = [...prevList];
-      for (const inc of incomingList) {
+      for (const inc of sanitizedIncoming) {
         const idx = result.findIndex((e) => e.id === inc.id);
         if (idx >= 0) {
           const current = result[idx];
@@ -268,9 +290,9 @@ export default function App() {
           const incUp = inc.updatedAt || 0;
           // Regla 3 & Problema 5: Rechazar datos antiguos por versión o fecha
           if (incVer > curVer) {
-            result[idx] = { ...current, ...inc };
+            result[idx] = sanitizeClientEvent({ ...current, ...inc }, idx);
           } else if (incVer === curVer && incUp >= curUp) {
-            result[idx] = { ...current, ...inc };
+            result[idx] = sanitizeClientEvent({ ...current, ...inc }, idx);
           }
         } else {
           result.push(inc);
@@ -1111,19 +1133,73 @@ export default function App() {
                     : 'lg:col-span-8'
                 } w-full`}
               >
-                {/* Multi-Match Live Event Selector (Paso 10: partido-001, partido-002) */}
-                {liveEvents.length > 0 && (
+                {/* Fútbol Libre Style: Barra del Partido Activo y Opciones de Señal (Cloudflare, YouTube, Kick) */}
+                {currentLiveEvent && (
+                  <div className="mb-3 p-3 rounded-2xl liquid-glass-panel border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="relative flex h-2.5 w-2.5 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                      </span>
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                          Transmitiendo en Directo
+                        </span>
+                        <h3 className="text-sm sm:text-base font-black text-white font-display truncate">
+                          {currentLiveEvent.title || `${currentHomeClub?.name} vs ${currentAwayClub?.name}`}
+                        </h3>
+                      </div>
+                    </div>
+
+                    {/* Canales / Opciones de Señal estilo Fútbol Libre */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar shrink-0">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden md:inline">
+                        Señal:
+                      </span>
+                      {[
+                        { id: 'cloudflare', name: 'Opción 1 (Cloudflare)', emoji: '⚡' },
+                        { id: 'youtube', name: 'Opción 2 (YouTube)', emoji: '▶' },
+                        { id: 'kick', name: 'Opción 3 (Kick)', emoji: '🟢' },
+                      ].map((prov) => {
+                        const isCurrent = (currentLiveEvent.primaryProvider || 'cloudflare') === prov.id;
+                        return (
+                          <button
+                            key={prov.id}
+                            type="button"
+                            onClick={() => {
+                              const updated: LiveEvent = { ...currentLiveEvent, primaryProvider: prov.id as StreamProvider };
+                              handleSelectMatchEvent(updated);
+                            }}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                              isCurrent
+                                ? 'bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-black ring-1 ring-emerald-300'
+                                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
+                            }`}
+                          >
+                            <span>{prov.emoji}</span>
+                            <span>{prov.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Multi-Match Switcher si existen 2 o más partidos configurados */}
+                {liveEvents.length > 1 && (
                   <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap hidden sm:inline">
-                      Partidos en vivo:
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap shrink-0">
+                      Cambiar partido:
                     </span>
-                    {liveEvents.map((evt) => {
+                    {liveEvents.map((evt, idx) => {
                       const isSelected = evt.id === activeEventId;
                       const provider = evt.primaryProvider || 'cloudflare';
-                      const providerEmoji = provider === 'cloudflare' ? '⚡' : (provider === 'youtube' ? '🔴' : '🟢');
+                      const homeClub = clubs[evt.homeTeam] || BOLIVIAN_CLUBS[evt.homeTeam];
+                      const awayClub = clubs[evt.awayTeam] || BOLIVIAN_CLUBS[evt.awayTeam];
+                      const evtTitle = (evt.title || '').trim() || (homeClub?.name && awayClub?.name ? `${homeClub.name} vs ${awayClub.name}` : `Partido ${idx + 1}`);
                       return (
                         <button
-                          key={evt.id}
+                          key={evt.id || `live-match-pill-${idx}`}
                           onClick={() => handleSelectMatchEvent(evt)}
                           className={`px-3 py-1.5 text-xs flex items-center gap-2 whitespace-nowrap cursor-pointer transition-all ${
                             isSelected
@@ -1132,9 +1208,9 @@ export default function App() {
                           }`}
                         >
                           <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                          <span>{evt.title}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-300">
-                            {providerEmoji} {provider.toUpperCase()}
+                          <span>{evtTitle}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-400">
+                            {provider.toUpperCase()}
                           </span>
                         </button>
                       );

@@ -835,6 +835,7 @@ async function saveMatchScoreboardFirebase(eventId, data, operator) {
       nextVersion = typeof data.version === "number" && data.version > 0 ? data.version : 1;
     }
     const sanitized = {
+      id: safeId,
       version: nextVersion,
       updatedAt: now,
       updatedAtIso: new Date(now).toISOString(),
@@ -854,13 +855,50 @@ async function saveMatchScoreboardFirebase(eventId, data, operator) {
     return { success: true, version: nextVersion, updatedAt: now };
   });
 }
+function hydrateLiveEventDoc(d) {
+  const raw = d.data();
+  const docId = d.id;
+  const safeId = raw.id || docId;
+  const home = raw.homeTeam || (docId === "partido-002" ? "blooming" : "bolivar");
+  const away = raw.awayTeam || (docId === "partido-002" ? "oriente" : "strongest");
+  const defaultTitle = docId === "partido-002" ? "Blooming vs Oriente Petrolero" : "Bol\xEDvar vs The Strongest";
+  const title = raw.title && raw.title.trim() || defaultTitle;
+  return {
+    id: safeId,
+    title,
+    homeTeam: home,
+    awayTeam: away,
+    isLive: raw.isLive !== void 0 ? Boolean(raw.isLive) : true,
+    primaryProvider: raw.primaryProvider || "cloudflare",
+    fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ["cloudflare", "youtube", "kick"],
+    tournamentName: raw.tournamentName || "Liga Tigo Divisi\xF3n Profesional - Torneo Clausura",
+    stadiumName: raw.stadiumName || (docId === "partido-002" ? "Estadio Ram\xF3n Tahuichi Aguilera" : "Estadio Hernando Siles - La Paz"),
+    period: raw.period || "1T",
+    homeScore: typeof raw.homeScore === "number" ? raw.homeScore : 0,
+    awayScore: typeof raw.awayScore === "number" ? raw.awayScore : 0,
+    matchMinute: typeof raw.matchMinute === "number" ? raw.matchMinute : 0,
+    isClockRunning: Boolean(raw.isClockRunning),
+    customVideoUrl: raw.customVideoUrl || raw.cloudflare?.playbackUrl || "",
+    backupVideoUrl: raw.backupVideoUrl || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    backupChannelName: raw.backupChannelName || "GolBolivia HD",
+    activeStreamSource: raw.activeStreamSource || "obs",
+    autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
+    cloudflare: raw.cloudflare,
+    youtube: raw.youtube,
+    kick: raw.kick,
+    version: typeof raw.version === "number" ? raw.version : 1,
+    updatedAt: raw.updatedAt || Date.now(),
+    updatedAtIso: raw.updatedAtIso || (/* @__PURE__ */ new Date()).toISOString(),
+    updatedBy: raw.updatedBy || "admin"
+  };
+}
 async function getLiveEventsFromFirebase() {
   try {
     const colRef = collection(db, "liveEvents");
     const snap = await getDocs(colRef);
     if (!snap.empty) {
       const list = [];
-      snap.forEach((d) => list.push(d.data()));
+      snap.forEach((d) => list.push(hydrateLiveEventDoc(d)));
       return list;
     }
   } catch (err) {
@@ -1181,7 +1219,21 @@ function loadPersistedState() {
           state.clubs = { ...BOLIVIAN_CLUBS, ...saved.clubs };
         }
         if (Array.isArray(saved.liveEvents) && saved.liveEvents.length > 0) {
-          state.liveEvents = saved.liveEvents;
+          state.liveEvents = saved.liveEvents.map((ev, idx) => {
+            const docId = ev.id || `partido-00${idx + 1}`;
+            const home = ev.homeTeam || (docId === "partido-002" ? "blooming" : "bolivar");
+            const away = ev.awayTeam || (docId === "partido-002" ? "oriente" : "strongest");
+            const defaultTitle = docId === "partido-002" ? "Blooming vs Oriente Petrolero" : "Bol\xEDvar vs The Strongest";
+            return {
+              ...ev,
+              id: docId,
+              title: typeof ev.title === "string" && ev.title.trim() || defaultTitle,
+              homeTeam: home,
+              awayTeam: away,
+              isLive: ev.isLive !== void 0 ? Boolean(ev.isLive) : true,
+              primaryProvider: ev.primaryProvider || "cloudflare"
+            };
+          });
         }
         console.log(`[GolBolivia Backend] Estado persistido cargado con \xE9xito desde ${STATE_FILE}`);
         console.log(`[GolBolivia Backend] Se\xF1al activa: ${state.streamSettings.customVideoUrl || "(simulaci\xF3n)"}`);

@@ -4,29 +4,44 @@
 import { LiveEvent } from '../types/football';
 
 export function getMatchSlug(event: LiveEvent): string {
+  if (!event) return 'partido';
   if (event.id === 'partido-001') return 'bolivar-the-strongest';
   if (event.id === 'partido-002') return 'blooming-oriente';
 
-  // Slugify title
-  return event.title
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // remove accents
-    .replace(/[^a-z0-9]+/g, '-') // non-alphanumeric to hyphens
-    .replace(/^-+|-+$/g, '') || event.id;
+  // Slugify title safely
+  const rawTitle = typeof event.title === 'string' ? event.title.trim() : '';
+  if (!rawTitle) {
+    const home = typeof event.homeTeam === 'string' ? event.homeTeam.trim() : '';
+    const away = typeof event.awayTeam === 'string' ? event.awayTeam.trim() : '';
+    if (home && away) return `${home}-${away}`;
+    return event.id || 'partido';
+  }
+
+  return (
+    rawTitle
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // remove accents
+      .replace(/[^a-z0-9]+/g, '-') // non-alphanumeric to hyphens
+      .replace(/^-+|-+$/g, '') ||
+    event.id ||
+    'partido'
+  );
 }
 
 export function findEventBySlug(events: LiveEvent[], slug: string): LiveEvent | undefined {
+  if (!Array.isArray(events) || typeof slug !== 'string') return undefined;
   const clean = slug.toLowerCase().trim().replace(/^\/live\//, '').replace(/^\//, '');
   if (!clean) return undefined;
 
   return events.find((e) => {
+    if (!e) return false;
     const eventSlug = getMatchSlug(e);
     return (
       e.id === clean ||
       eventSlug === clean ||
-      clean.includes(eventSlug) ||
-      eventSlug.includes(clean)
+      (eventSlug && clean.includes(eventSlug)) ||
+      (clean && eventSlug.includes(clean))
     );
   });
 }
