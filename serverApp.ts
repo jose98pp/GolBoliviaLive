@@ -482,66 +482,17 @@ function loadPersistedState(): void {
       state.liveEvents = fbEvents;
       console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase (fuente única): ${fbEvents.length} partidos`);
     } else {
-      console.log('[GolBolivia Backend] Ningún partido encontrado en Firebase Firestore. Esperando configuración de producción.');
-    }
-
-    if (state.liveEvents.length === 0 && state.streamSettings.title) {
-      state.liveEvents = [
-        {
-          id: 'partido-001',
-          title: state.streamSettings.title,
-          homeTeam: state.streamSettings.homeClubId || 'oriente',
-          awayTeam: state.streamSettings.awayClubId || 'abb',
-          tournamentName: state.streamSettings.tournamentName || 'Liga Tigo División Profesional',
-          stadiumName: state.streamSettings.stadiumName || 'Estadio Departamental',
-          period: (state.streamSettings.period as any) || '1T',
-          isLive: state.streamSettings.isLive ?? true,
-          homeScore: state.scoreboard.homeScore ?? 0,
-          awayScore: state.scoreboard.awayScore ?? 0,
-          matchMinute: state.scoreboard.matchMinute ?? 0,
-          version: state.scoreboard.version || 1,
-          customVideoUrl: state.streamSettings.customVideoUrl || '',
-          backupVideoUrl: state.streamSettings.backupVideoUrl || '',
-          activeStreamSource: state.streamSettings.activeStreamSource || 'obs',
-          cloudflare: {
-            liveInputId: '',
-            playbackUrl: state.streamSettings.customVideoUrl || '',
-          },
-          primaryProvider: 'cloudflare',
-          fallbackOrder: ['cloudflare', 'youtube', 'kick'],
-        },
-      ];
-      persistState();
+      // Regla 2: NO crear partidos ficticios por defecto. Si Firebase no tiene partidos,
+      // el sistema espera configuración real desde el panel de administración.
+      console.log('[GolBolivia Backend] Ningún partido encontrado en Firebase Firestore. El sistema esperará configuración de producción (sin creación automática de partido-001).');
+      state.liveEvents = [];
     }
   }).catch((err) => {
-    console.warn('[GolBolivia Backend] Error conectando con Firebase en inicio:', err);
-    if (state.liveEvents.length === 0 && state.streamSettings.title) {
-      state.liveEvents = [
-        {
-          id: 'partido-001',
-          title: state.streamSettings.title,
-          homeTeam: state.streamSettings.homeClubId || 'oriente',
-          awayTeam: state.streamSettings.awayClubId || 'abb',
-          tournamentName: state.streamSettings.tournamentName || 'Liga Tigo División Profesional',
-          stadiumName: state.streamSettings.stadiumName || 'Estadio Departamental',
-          period: (state.streamSettings.period as any) || '1T',
-          isLive: state.streamSettings.isLive ?? true,
-          homeScore: state.scoreboard.homeScore ?? 0,
-          awayScore: state.scoreboard.awayScore ?? 0,
-          matchMinute: state.scoreboard.matchMinute ?? 0,
-          version: state.scoreboard.version || 1,
-          customVideoUrl: state.streamSettings.customVideoUrl || '',
-          backupVideoUrl: state.streamSettings.backupVideoUrl || '',
-          activeStreamSource: state.streamSettings.activeStreamSource || 'obs',
-          cloudflare: {
-            liveInputId: '',
-            playbackUrl: state.streamSettings.customVideoUrl || '',
-          },
-          primaryProvider: 'cloudflare',
-          fallbackOrder: ['cloudflare', 'youtube', 'kick'],
-        },
-      ];
-      persistState();
+    // Regla 2: En caso de error de Firebase al inicio, NO crear partidos ficticios.
+    // El servidor arranca en estado vacío y listo para recibir datos reales.
+    console.warn('[GolBolivia Backend] Error conectando con Firebase en inicio. El servidor arranca con lista de partidos vacía:', err.message || err);
+    if (state.liveEvents.length === 0) {
+      console.log('[GolBolivia Backend] Lista de partidos vacía tras fallo de Firebase. Use el panel admin para crear partidos reales.');
     }
   });
 }
@@ -1146,20 +1097,19 @@ app.post(
     }
 
     // Regla 4: Persistir primero a Cloud Firestore (Fuente única de datos reales por partido)
+    // Regla 1: Cualquier fallo de Firestore se retorna como error HTTP — NO continuar con estado local.
     try {
       const fbResult = await saveLiveEventToFirebase(safeEvent, operator);
       safeEvent.version = fbResult.version;
       safeEvent.updatedAt = fbResult.updatedAt;
     } catch (fbErr: any) {
-      console.warn('[GolBolivia Server] Error persistiendo evento en Firestore:', fbErr);
-      if (fbErr.message?.includes('superior') || fbErr.message?.includes('Conflicto')) {
-        res.status(409).json({
-          error: fbErr.message || 'Error al persistir evento en Firebase Firestore.',
-          code: 'FIRESTORE_WRITE_ERROR',
-        });
-        return;
-      }
-      safeEvent.updatedAt = Date.now();
+      console.error('[GolBolivia Server] Error crítico persistiendo evento en Firestore:', fbErr);
+      const isConflict = fbErr.message?.includes('superior') || fbErr.message?.includes('Conflicto');
+      res.status(isConflict ? 409 : 503).json({
+        error: fbErr.message || 'Error al persistir evento en Firebase Firestore.',
+        code: isConflict ? 'VERSION_CONFLICT' : 'FIRESTORE_UNAVAILABLE',
+      });
+      return;
     }
 
     if (existingIndex >= 0) {

@@ -282,7 +282,18 @@ export default function App() {
     const unsubscribeEvents = apiClient.subscribeLiveEvents((type, data) => {
       if (type === 'INITIAL_STATE') {
         if (Array.isArray(data.liveEvents) && data.liveEvents.length > 0) {
-          setLiveEvents((prev) => (data.liveEvents.length < prev.length ? data.liveEvents : mergeConfirmedEvents(prev, data.liveEvents)));
+          // Regla 3 + soporte de eliminaciones: INITIAL_STATE es la vista autoritativa del servidor.
+          // 1. Fusionamos con validación de versiones (los items existentes no retroceden).
+          // 2. Eliminamos items locales que el servidor ya no tiene (eliminados mientras offline).
+          setLiveEvents((prev) => {
+            const serverIds = new Set(data.liveEvents.map((e: any) => e.id));
+            const prevFiltered = prev.filter((p) => serverIds.has(p.id));
+            return mergeConfirmedEvents(prevFiltered, data.liveEvents);
+          });
+        } else if (Array.isArray(data.liveEvents) && data.liveEvents.length === 0) {
+          // Servidor confirmó lista vacía (todos eliminados)
+          setLiveEvents([]);
+          try { localStorage.setItem('golbolivia_live_events', '[]'); } catch {}
         }
         if (data.events) setEvents(data.events);
         if (data.stream?.donationQr) {
@@ -348,7 +359,9 @@ export default function App() {
       } else if (type === 'LIVE_EVENTS_UPDATED') {
         if (Array.isArray(data)) {
           setLiveEvents((prev) => {
-            const merged = (data.length < prev.length) ? data : mergeConfirmedEvents(prev, data);
+            // Regla 3: SIEMPRE fusionar con validación de versiones. Nunca sustituir lista completa.
+            // Las eliminaciones se procesan mediante LIVE_EVENT_DELETED, no aquí.
+            const merged = mergeConfirmedEvents(prev, data);
             try {
               localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
             } catch {}
@@ -368,7 +381,8 @@ export default function App() {
     const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((fbEvents) => {
       if (fbEvents && Array.isArray(fbEvents) && fbEvents.length > 0) {
         setLiveEvents((prev) => {
-          const merged = fbEvents.length < prev.length ? fbEvents : mergeConfirmedEvents(prev, fbEvents);
+          // Regla 3: Firebase es fuente de verdad. Siempre fusionar con validación de versiones.
+          const merged = mergeConfirmedEvents(prev, fbEvents);
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
           } catch {}
@@ -381,7 +395,8 @@ export default function App() {
     apiClient.getLiveEvents().then((evts) => {
       if (evts && Array.isArray(evts) && evts.length > 0) {
         setLiveEvents((prev) => {
-          const merged = evts.length < prev.length ? evts : mergeConfirmedEvents(prev, evts);
+          // Regla 3: Siempre fusionar con validación de versiones en la carga inicial.
+          const merged = mergeConfirmedEvents(prev, evts);
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
           } catch {}

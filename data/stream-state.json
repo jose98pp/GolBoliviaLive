@@ -51,10 +51,10 @@
   "scoreboard": {
     "homeScore": 0,
     "awayScore": 0,
-    "matchMinute": 99,
+    "matchMinute": 122,
     "period": "1T",
-    "updatedAt": 1791675788029,
-    "version": 117
+    "updatedAt": 1791676561776,
+    "version": 155
   },
   "clubs": {
     "bolivar": {
@@ -542,8 +542,8 @@
       "isLive": true,
       "homeScore": 0,
       "awayScore": 0,
-      "matchMinute": 100,
-      "version": 117,
+      "matchMinute": 123,
+      "version": 155,
       "customVideoUrl": "https://switches-scanned-twin-tapes.trycloudflare.com/live/partido/index.m3u8",
       "backupVideoUrl": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
       "activeStreamSource": "obs",
@@ -551,12 +551,12 @@
         "playbackUrl": "https://switches-scanned-twin-tapes.trycloudflare.com/live/partido/index.m3u8"
       },
       "primaryProvider": "cloudflare",
-      "updatedAt": 1791675788029,
+      "updatedAt": 1791676561776,
       "isClockRunning": true,
-      "clockUpdatedAt": 1791676333209,
+      "clockUpdatedAt": 1791677713431,
       "backupChannelName": "GolBolivia 24/7 Señal Alternativa HD",
       "autoFailoverEnabled": true
     }
   ],
-  "updatedAt": 1791676333209
+  "updatedAt": 1791677713431
 }

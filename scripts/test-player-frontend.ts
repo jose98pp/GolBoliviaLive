@@ -471,7 +471,7 @@ async function runTests() {
     'utf-8'
   );
   assert(appSource.includes('onDeleteLiveEvent={handleDeleteLiveEvent}'), 'Eliminación: App.tsx pasa onDeleteLiveEvent a SecretLoginPage');
-  assert(appSource.includes('data.liveEvents.length < prev.length ? data.liveEvents'), 'Eliminación: App.tsx reduce lista en INITIAL_STATE sin revivir eliminados');
+  assert(appSource.includes('const serverIds = new Set(data.liveEvents.map') || appSource.includes('data.liveEvents.length < prev.length ? data.liveEvents'), 'Eliminación: App.tsx reduce lista en INITIAL_STATE sin revivir eliminados');
 
   // Simular eliminación de partido-002 de la lista de eventos
   const initialEventsList: LiveEvent[] = [
