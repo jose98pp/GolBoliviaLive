@@ -1281,6 +1281,7 @@ app.post(
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
   async (req: Request, res: Response) => {
+    const { homeScore, awayScore, matchMinute, period, isClockRunning, force } = req.body;
     // Regla 3 & Problema 5: Exigir versión válida y rechazar actualizaciones desactualizadas
     const targetEventIdBody = req.body.activeEventId || req.body.eventId;
     if (!targetEventIdBody || String(targetEventIdBody).trim() === '') {

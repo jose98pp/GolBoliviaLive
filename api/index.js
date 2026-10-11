@@ -1896,6 +1896,7 @@ app2.post(
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
   async (req, res) => {
+    const { homeScore, awayScore, matchMinute, period, isClockRunning, force } = req.body;
     const targetEventIdBody = req.body.activeEventId || req.body.eventId;
     if (!targetEventIdBody || String(targetEventIdBody).trim() === "") {
       res.status(400).json({
