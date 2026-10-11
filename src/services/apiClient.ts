@@ -4,18 +4,10 @@ import { authService, AuthUser, UserRole } from './auth';
 import { espnFootballApi } from './espnFootballApi';
 import {
   getStreamSettingsFromFirebase,
-  saveDonationQrToFirebase,
   getDonationQrFromFirebase,
   subscribeDonationQrFirebase,
-  saveScoreboardToFirebase,
-  addMatchEventToFirebase,
-  updateMatchEventInFirebase,
-  deleteMatchEventFromFirebase,
   sendChatMessageToFirebase,
-  deleteChatMessageFromFirebase,
   deleteConfirmationLogFromFirebase,
-  saveSingleClubToFirebase,
-  deleteClubFromFirebase,
   getClubsFromFirebase,
   subscribeClubsFirebase,
   subscribeStreamSettingsFirebase,
@@ -235,17 +227,8 @@ class GolBoliviaApiClient {
   }
 
   async saveDonationQr(data: DonationQrInfo): Promise<{ success: boolean; donationQr?: DonationQrInfo }> {
-    // 1. Persistir directamente en Google Firebase Firestore (/config/donation_qr)
-    let firebaseSuccess = false;
-    try {
-      await saveDonationQrToFirebase(data);
-      firebaseSuccess = true;
-    } catch (err) {
-      console.warn('[Firebase] Advertencia guardando donationQr en Firestore desde apiClient:', err);
-    }
-
-    // 2. Persistir en el servidor Node.js Express para difusión en tiempo real vía SSE
-    try {
+    // El backend valida el rol, persiste en Firestore y difunde vía SSE
+    {
       const res = await fetch('/api/donation-qr', {
         method: 'POST',
         headers: this.getAuthHeaders(),
@@ -263,15 +246,6 @@ class GolBoliviaApiClient {
           }
         }
 
-        // Si Firebase se guardó correctamente en la nube, consideramos el guardado exitoso
-        if (firebaseSuccess) {
-          console.warn('[apiClient] Servidor respondió con aviso pero Firebase guardó el QR exitosamente:', errorMsg);
-          try {
-            localStorage.setItem('golbolivia_donation_qr', JSON.stringify(data));
-          } catch {}
-          return { success: true, donationQr: data };
-        }
-
         throw new Error(errorMsg);
       }
 
@@ -280,15 +254,6 @@ class GolBoliviaApiClient {
         localStorage.setItem('golbolivia_donation_qr', JSON.stringify(json.donationQr || data));
       } catch {}
       return json;
-    } catch (fetchErr: any) {
-      if (firebaseSuccess) {
-        console.warn('[apiClient] Servidor no disponible pero Firebase guardó el QR exitosamente:', fetchErr);
-        try {
-          localStorage.setItem('golbolivia_donation_qr', JSON.stringify(data));
-        } catch {}
-        return { success: true, donationQr: data };
-      }
-      throw fetchErr;
     }
   }
 
@@ -404,14 +369,13 @@ class GolBoliviaApiClient {
     // 1. Save stream settings through the authenticated API only (backend = único escritor de Firestore)
     if (params.streamSettings) {
       if (params.streamSettings.donationQr) {
-        await saveDonationQrToFirebase(params.streamSettings.donationQr, operator).catch(() => {});
+        await this.saveDonationQr(params.streamSettings.donationQr).catch(() => {});
       }
       await this.syncStreamConfig(params.streamSettings).catch(() => {});
     }
 
     // 2. Save scoreboard to Firebase and backend
     if (params.scoreboard) {
-      await saveScoreboardToFirebase(params.scoreboard).catch(() => {});
       await this.updateScoreboard({ ...params.scoreboard, force: true }).catch(() => {});
     }
 
@@ -449,9 +413,6 @@ class GolBoliviaApiClient {
 
   // 7. Add Match Event (Goal, Card, Substitution)
   async addMatchEvent(event: Partial<MatchEvent>): Promise<MatchEvent> {
-    // Mirror to Firebase
-    addMatchEventToFirebase(event as any).catch(() => {});
-
     const res = await fetch('/api/matches/events', {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -466,9 +427,6 @@ class GolBoliviaApiClient {
 
   // 7.1 Update Match Event (Edit event in Backend + Firebase)
   async updateMatchEvent(id: string, updates: Partial<MatchEvent>): Promise<MatchEvent> {
-    // Mirror to Firebase
-    updateMatchEventInFirebase(id, updates).catch(() => {});
-
     const res = await fetch(`/api/matches/events/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: this.getAuthHeaders(),
@@ -483,9 +441,6 @@ class GolBoliviaApiClient {
 
   // 7.2 Delete Match Event (Delete event in Backend + Firebase)
   async deleteMatchEvent(id: string): Promise<boolean> {
-    // Mirror to Firebase
-    deleteMatchEventFromFirebase(id).catch(() => {});
-
     const res = await fetch(`/api/matches/events/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
@@ -524,9 +479,6 @@ class GolBoliviaApiClient {
 
   // 8.1 Delete Chat Message (Moderation in Backend + Firebase)
   async deleteChatMessage(id: string): Promise<boolean> {
-    // Mirror to Firebase
-    deleteChatMessageFromFirebase(id).catch(() => {});
-
     const res = await fetch(`/api/chat/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
@@ -629,10 +581,7 @@ class GolBoliviaApiClient {
 
   // 8.5 Add or Update a Club (Save to Firebase Firestore & Backend)
   async saveClub(club: Club): Promise<{ success: boolean; club: Club; clubs: Record<string, Club> }> {
-    // 1. Mirror to Firebase Firestore instantly
-    saveSingleClubToFirebase(club).catch(() => {});
-
-    // 2. Post to backend
+    // Backend validates the role and persists to Firestore
     const res = await fetch('/api/clubs', {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -657,10 +606,7 @@ class GolBoliviaApiClient {
 
   // 8.6 Delete a Club (Delete from Firebase Firestore & Backend)
   async deleteClub(clubId: string): Promise<{ success: boolean; clubs: Record<string, Club> }> {
-    // 1. Mirror to Firebase Firestore
-    deleteClubFromFirebase(clubId).catch(() => {});
-
-    // 2. Delete on backend
+    // Backend validates the role and persists to Firestore
     const res = await fetch(`/api/clubs/${encodeURIComponent(clubId)}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),

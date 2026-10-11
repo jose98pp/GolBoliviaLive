@@ -18,7 +18,18 @@ import {
   saveLiveEventToFirebase,
   deleteLiveEventFromFirebase,
   logConfirmationToFirebase,
+  addMatchEventToFirebase,
+  updateMatchEventInFirebase,
+  deleteMatchEventFromFirebase,
+  clearMatchEventsInFirebase,
+  deleteChatMessageFromFirebase,
+  clearChatInFirebase,
+  saveSingleClubToFirebase,
+  deleteClubFromFirebase,
+  firebaseApp,
+  setFirestoreWriteGate,
 } from './src/services/firebase';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
@@ -60,8 +71,18 @@ app.use((_req, res, next) => {
   next();
 });
 
-// Server Secret Key for signing HMAC session tokens
-const SERVER_SECRET = process.env.SERVER_SECRET || 'golbolivia_secure_secret_key_2026_lapaz';
+// ── Secrets & operator accounts (configured via environment variables) ──
+const isDeployed = isProduction || Boolean(process.env.VERCEL);
+const SERVER_SECRET: string = (() => {
+  const fromEnv = (process.env.SERVER_SECRET || '').trim();
+  if (fromEnv.length >= 32) return fromEnv;
+  if (isDeployed) {
+    console.error('[GolBolivia Backend] SERVER_SECRET ausente o menor a 32 caracteres. El login queda deshabilitado.');
+    return '';
+  }
+  console.warn('[GolBolivia Backend] SERVER_SECRET no configurado: usando secreto aleatorio solo para desarrollo local.');
+  return crypto.randomBytes(48).toString('hex');
+})();
 
 // Role definitions
 export type UserRole = 'ADMIN' | 'TRANSMISOR' | 'MODERADOR' | 'EDITOR';
@@ -74,37 +95,76 @@ interface AuthUser {
   pin: string;
 }
 
-// Server-side authoritative accounts database (NEVER exposed to frontend!)
-const SYSTEM_USERS: AuthUser[] = [
-  {
-    id: 'usr-admin-1',
-    username: 'admin',
-    name: 'Director General de Transmisión',
-    role: 'ADMIN',
-    pin: '1925', // Bolívar foundation year / master pin
-  },
-  {
-    id: 'usr-trans-1',
-    username: 'transmisor',
-    name: 'Operador OBS & MediaMTX',
-    role: 'TRANSMISOR',
-    pin: '7788',
-  },
-  {
-    id: 'usr-mod-1',
-    username: 'moderador',
-    name: 'Moderador Oficial de Chat',
-    role: 'MODERADOR',
-    pin: '4455',
-  },
-  {
-    id: 'usr-edit-1',
-    username: 'editor',
-    name: 'Estadígrafo & Cronista',
-    role: 'EDITOR',
-    pin: '2233',
+const MIN_PIN_LENGTH = 6;
+
+function readPin(envName: string): string {
+  const pin = (process.env[envName] || '').trim();
+  if (!pin) return '';
+  if (pin.length < MIN_PIN_LENGTH) {
+    console.error(`[GolBolivia Backend] ${envName} debe tener al menos ${MIN_PIN_LENGTH} caracteres. Usuario deshabilitado.`);
+    return '';
   }
+  return pin;
+}
+
+// Server-side authoritative accounts. Users without a configured PIN cannot log in.
+const SYSTEM_USERS: AuthUser[] = [
+  { id: 'usr-admin-1', username: 'admin', name: 'Director General de Transmisión', role: 'ADMIN', pin: readPin('ADMIN_PIN') },
+  { id: 'usr-trans-1', username: 'transmisor', name: 'Operador OBS & MediaMTX', role: 'TRANSMISOR', pin: readPin('TRANSMISOR_PIN') },
+  { id: 'usr-mod-1', username: 'moderador', name: 'Moderador Oficial de Chat', role: 'MODERADOR', pin: readPin('MODERADOR_PIN') },
+  { id: 'usr-edit-1', username: 'editor', name: 'Estadígrafo & Cronista', role: 'EDITOR', pin: readPin('EDITOR_PIN') },
 ];
+
+function safeEqual(a: string, b: string): boolean {
+  const ha = crypto.createHash('sha256').update(a).digest();
+  const hb = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+// ── Login brute-force protection (per instance, in-memory) ──
+const LOGIN_MAX_FAILURES = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const loginFailures = new Map<string, { count: number; firstAt: number }>();
+
+function getClientIp(req: Request): string {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.socket.remoteAddress || 'unknown';
+}
+
+function isLoginLocked(ip: string): boolean {
+  const entry = loginFailures.get(ip);
+  if (!entry) return false;
+  if (Date.now() - entry.firstAt > LOGIN_LOCK_MS) {
+    loginFailures.delete(ip);
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_FAILURES;
+}
+
+function registerLoginFailure(ip: string): void {
+  const entry = loginFailures.get(ip);
+  if (!entry || Date.now() - entry.firstAt > LOGIN_LOCK_MS) {
+    loginFailures.set(ip, { count: 1, firstAt: Date.now() });
+  } else {
+    entry.count += 1;
+  }
+}
+
+// ── Firestore writer identity: the backend signs in to Firebase Auth so rules can restrict writes ──
+const FIREBASE_SERVER_EMAIL = (process.env.FIREBASE_SERVER_EMAIL || '').trim();
+const FIREBASE_SERVER_PASSWORD = process.env.FIREBASE_SERVER_PASSWORD || '';
+if (FIREBASE_SERVER_EMAIL && FIREBASE_SERVER_PASSWORD) {
+  const signIn = signInWithEmailAndPassword(getAuth(firebaseApp), FIREBASE_SERVER_EMAIL, FIREBASE_SERVER_PASSWORD)
+    .then((cred) => console.log(`[GolBolivia Backend] Firestore: sesión de servidor iniciada (uid ${cred.user.uid}).`))
+    .catch((err) => console.error('[GolBolivia Backend] Firestore: no se pudo iniciar sesión de servidor:', err?.code || err));
+  setFirestoreWriteGate(signIn);
+} else {
+  console.warn('[GolBolivia Backend] FIREBASE_SERVER_EMAIL/FIREBASE_SERVER_PASSWORD no configurados: las escrituras a Firestore serán rechazadas por las reglas.');
+}
+
+function logFirestoreWarning(action: string) {
+  return (err: any) => console.warn(`[Firebase] Advertencia al ${action}:`, err?.code || err?.message || err);
+}
 
 // Active sessions: token -> { user: AuthUser, expiresAt: number }
 interface SessionData {
@@ -114,6 +174,7 @@ interface SessionData {
 const activeSessions = new Map<string, SessionData>();
 
 function createToken(user: AuthUser): string {
+  if (!SERVER_SECRET) throw new Error('SERVER_SECRET no configurado');
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const now = Date.now();
   const payload = Buffer.from(JSON.stringify({
@@ -145,7 +206,7 @@ function createToken(user: AuthUser): string {
 }
 
 function verifyToken(token: string): SessionData['user'] | null {
-  if (!token) return null;
+  if (!token || !SERVER_SECRET) return null;
 
   // 1. Check in-memory active sessions
   const session = activeSessions.get(token);
@@ -159,7 +220,7 @@ function verifyToken(token: string): SessionData['user'] | null {
   if (parts.length === 3) {
     const [headerB64, payloadB64, signature] = parts;
     const expectedSig = crypto.createHmac('sha256', SERVER_SECRET).update(`${headerB64}.${payloadB64}`).digest('base64url');
-    if (signature !== expectedSig) return null;
+    if (!safeEqual(signature, expectedSig)) return null;
 
     try {
       const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8'));
@@ -176,27 +237,6 @@ function verifyToken(token: string): SessionData['user'] | null {
         id: payload.userId,
         username: payload.username,
         name: payload.name || systemUser?.name || 'Operador GolBolivia',
-        role: payload.role,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  // Backward compatibility with legacy 2-part tokens
-  if (parts.length === 2) {
-    const [data, signature] = parts;
-    const expectedSig = crypto.createHmac('sha256', SERVER_SECRET).update(data).digest('base64url');
-    if (signature !== expectedSig) return null;
-
-    try {
-      const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
-      if (!payload || !payload.userId || !payload.role) return null;
-      const systemUser = SYSTEM_USERS.find((u) => u.id === payload.userId || u.username === payload.username);
-      return {
-        id: payload.userId,
-        username: payload.username,
-        name: systemUser?.name || 'Operador GolBolivia',
         role: payload.role,
       };
     } catch {
@@ -576,32 +616,36 @@ function broadcastSseEvent(eventType: string, data: any): void {
 // 1. Auth Login: Backend verifies credentials and issues signed role session
 app.post(['/api/auth/login', '/auth/login'], (req: Request, res: Response) => {
   const { pin, username } = req.body;
-  if (!pin) {
-    res.status(400).json({ error: 'PIN o clave requerida' });
+  if (!pin || !username) {
+    res.status(400).json({ error: 'Usuario y PIN requeridos' });
+    return;
+  }
+
+  if (!SERVER_SECRET) {
+    res.status(503).json({ error: 'El servidor no tiene configurado SERVER_SECRET. Contacta al administrador.' });
+    return;
+  }
+
+  const ip = getClientIp(req);
+  if (isLoginLocked(ip)) {
+    res.status(429).json({ error: 'Demasiados intentos fallidos. Intenta nuevamente en 15 minutos.' });
     return;
   }
 
   const cleanPin = String(pin).trim();
-  const cleanUsername = username ? String(username).trim().toLowerCase() : '';
-
-  // Look for match by username & PIN or by PIN alone, supporting master passwords for admin
-  const matchedUser = SYSTEM_USERS.find((u) => {
-    if (cleanUsername) {
-      if (cleanUsername === 'admin' && (cleanPin === '1925' || cleanPin === 'admin' || cleanPin === 'admin123' || cleanPin === '1234' || cleanPin === 'golbolivia')) {
-        return u.username === 'admin';
-      }
-      return u.username.toLowerCase() === cleanUsername && (u.pin === cleanPin || (u.username === 'admin' && cleanPin === '1925'));
-    }
-    return u.pin === cleanPin || (cleanPin === '1925' && u.username === 'admin') || (cleanPin === 'admin' && u.username === 'admin');
-  });
+  const cleanUsername = String(username).trim().toLowerCase();
+  const candidate = SYSTEM_USERS.find((u) => u.username === cleanUsername);
+  const matchedUser = candidate && candidate.pin && safeEqual(candidate.pin, cleanPin) ? candidate : undefined;
 
   if (!matchedUser) {
+    registerLoginFailure(ip);
     res.status(401).json({
-      error: 'Credenciales inválidas. Verifica tu PIN de operador o contraseña.',
+      error: 'Credenciales inválidas. Verifica tu usuario y PIN.',
     });
     return;
   }
 
+  loginFailures.delete(ip);
   const token = createToken(matchedUser);
   res.json({
     token,
@@ -1390,6 +1434,15 @@ app.post(
     state.scoreboard.updatedAt = scorePayload.updatedAt;
 
     persistState();
+    saveScoreboardToFirebase(
+      {
+        homeScore: scorePayload.homeScore,
+        awayScore: scorePayload.awayScore,
+        matchMinute: scorePayload.matchMinute,
+        period: scorePayload.period,
+      },
+      (req as any).user?.username
+    ).catch(logFirestoreWarning('guardar marcador'));
 
     broadcastSseEvent('SCOREBOARD_UPDATED', scorePayload);
     broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
@@ -1421,6 +1474,7 @@ app.post(
       scoreAfter: req.body.scoreAfter,
     };
     state.events.unshift(newEvent);
+    addMatchEventToFirebase(newEvent as any).catch(logFirestoreWarning('guardar evento'));
     broadcastSseEvent('MATCH_EVENT_ADDED', newEvent);
     res.json({ success: true, event: newEvent });
   }
@@ -1435,13 +1489,15 @@ app.put(
     const id = req.params.id;
     const index = state.events.findIndex((e) => e.id === id);
     if (index === -1) {
-      res.status(404).json({ error: 'Evento no encontrado' });
+      updateMatchEventInFirebase(id, req.body).catch(logFirestoreWarning('actualizar evento'));
+      res.json({ success: true, event: { ...req.body, id } });
       return;
     }
     state.events[index] = {
       ...state.events[index],
       ...req.body,
     };
+    updateMatchEventInFirebase(id, req.body).catch(logFirestoreWarning('actualizar evento'));
     broadcastSseEvent('MATCH_EVENT_UPDATED', state.events[index]);
     res.json({ success: true, event: state.events[index] });
   }
@@ -1456,8 +1512,10 @@ app.delete(
     const id = req.params.id;
     const initialLen = state.events.length;
     state.events = state.events.filter((e) => e.id !== id);
+    deleteMatchEventFromFirebase(id).catch(logFirestoreWarning('eliminar evento'));
     if (state.events.length === initialLen) {
-      res.status(404).json({ error: 'Evento no encontrado' });
+      broadcastSseEvent('MATCH_EVENT_DELETED', { id });
+      res.json({ success: true, message: `Evento ${id} eliminado.` });
       return;
     }
     broadcastSseEvent('MATCH_EVENT_DELETED', { id });
@@ -1472,6 +1530,7 @@ app.post(
   requireRoles(['ADMIN', 'EDITOR']),
   (_req: Request, res: Response) => {
     state.events = [];
+    clearMatchEventsInFirebase().catch(logFirestoreWarning('limpiar eventos'));
     broadcastSseEvent('MATCH_EVENTS_CLEARED', {});
     res.json({ success: true, message: 'Cronología de eventos limpiada correctamente.' });
   }
@@ -1519,6 +1578,7 @@ app.delete(
   (req: Request, res: Response) => {
     const id = req.params.id;
     state.chatMessages = state.chatMessages.filter((m) => m.id !== id);
+    deleteChatMessageFromFirebase(id).catch(logFirestoreWarning('eliminar mensaje'));
     broadcastSseEvent('CHAT_MESSAGE_DELETED', { id });
     res.json({ success: true });
   }
@@ -1531,6 +1591,7 @@ app.post(
   requireRoles(['ADMIN', 'MODERADOR']),
   (_req: Request, res: Response) => {
     state.chatMessages = [];
+    clearChatInFirebase().catch(logFirestoreWarning('limpiar chat'));
     broadcastSseEvent('CHAT_CLEARED', {});
     res.json({ success: true, message: 'Chat en vivo limpiado correctamente.' });
   }
@@ -1586,6 +1647,7 @@ app.post(
 
     state.clubs[cleanId] = updatedClub;
     persistState();
+    saveSingleClubToFirebase(updatedClub).catch(logFirestoreWarning('guardar equipo'));
     broadcastSseEvent('CLUBS_UPDATED', state.clubs);
     res.json({ success: true, club: updatedClub, clubs: state.clubs });
   }
@@ -1607,6 +1669,7 @@ app.delete(
     }
     delete state.clubs[id];
     persistState();
+    deleteClubFromFirebase(id).catch(logFirestoreWarning('eliminar equipo'));
     broadcastSseEvent('CLUBS_UPDATED', state.clubs);
     res.json({ success: true, message: `Equipo ${id} eliminado correctamente.`, clubs: state.clubs });
   }

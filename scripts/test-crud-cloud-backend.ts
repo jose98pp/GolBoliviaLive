@@ -162,7 +162,7 @@ async function runTestSuite() {
   console.log('----------------------------------------------------');
 
   // 2.1 Login como ADMIN para obtener token de sesión
-  const loginRes = await backendRequest('/api/auth/login', 'POST', { 'content-type': 'application/json' }, { username: 'admin', pin: '1925' });
+  const loginRes = await backendRequest('/api/auth/login', 'POST', { 'content-type': 'application/json' }, { username: 'admin', pin: process.env.ADMIN_PIN || '' });
   assert(loginRes.status === 200 && Boolean(loginRes.data.token), 'Backend: Autenticación de Administrador (PIN)');
   const adminToken = loginRes.data.token;
   const authHeaders = { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' };

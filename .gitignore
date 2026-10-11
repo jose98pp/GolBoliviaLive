@@ -11,3 +11,6 @@ coverage/
 .vscode/
 .agents/
 
+
+# Estado local del servidor (contiene stream key y URLs privadas)
+data/

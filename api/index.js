@@ -564,8 +564,13 @@ try {
   dbInstance = getFirestore(app, firebase_applet_config_default.firestoreDatabaseId);
 }
 var db = dbInstance;
+var firebaseApp = app;
 var FIREBASE_PROJECT_ID = firebase_applet_config_default.projectId;
 var FIRESTORE_DATABASE_ID = firebase_applet_config_default.firestoreDatabaseId;
+var writeGate = Promise.resolve();
+function setFirestoreWriteGate(gate) {
+  writeGate = gate.catch(() => void 0);
+}
 function sanitizeClubId(raw) {
   if (!raw) return "";
   return raw.toLowerCase().trim().replace(/[^a-z0-9_-]/g, "").slice(0, 32);
@@ -587,6 +592,7 @@ function validateMinute(minute, defaultValue = 0) {
   return Math.max(0, Math.min(130, Math.round(minute)));
 }
 async function saveStreamSettingsToFirebase(settings, operator) {
+  await writeGate;
   const ref = doc(db, "config", "stream_settings");
   let nextVersion = (settings.version || 0) + 1;
   try {
@@ -640,6 +646,7 @@ async function getStreamSettingsFromFirebase() {
   return null;
 }
 async function saveDonationQrToFirebase(qr, operator = "admin") {
+  await writeGate;
   const now = Date.now();
   const cleanPayload = {
     imageUrl: typeof qr.imageUrl === "string" ? qr.imageUrl.trim() : "",
@@ -694,7 +701,52 @@ async function getDonationQrFromFirebase() {
   }
   return null;
 }
+async function saveScoreboardToFirebase(data, operator) {
+  await writeGate;
+  const ref = doc(db, "match", "scoreboard");
+  let nextVersion = 1;
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      nextVersion = (snap.data()?.version || 0) + 1;
+    }
+  } catch {
+  }
+  const now = Date.now();
+  const sanitized = {
+    version: nextVersion,
+    updatedAt: now,
+    updatedAtIso: new Date(now).toISOString(),
+    updatedBy: operator || "admin"
+  };
+  if (data.homeScore !== void 0) {
+    sanitized.homeScore = validateScore(data.homeScore);
+  }
+  if (data.awayScore !== void 0) {
+    sanitized.awayScore = validateScore(data.awayScore);
+  }
+  if (data.matchMinute !== void 0) {
+    sanitized.matchMinute = validateMinute(data.matchMinute);
+  }
+  if (data.period && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(data.period)) {
+    sanitized.period = data.period;
+  }
+  await setDoc(ref, sanitized, { merge: true });
+}
+async function addMatchEventToFirebase(event) {
+  await writeGate;
+  const colRef = collection(db, "events");
+  const eventId = event.id || `evt_${Date.now()}`;
+  const ref = doc(db, "events", eventId);
+  await setDoc(ref, {
+    ...event,
+    id: eventId,
+    createdAt: Date.now()
+  });
+  return eventId;
+}
 async function logConfirmationToFirebase(log) {
+  await writeGate;
   const id = `conf_${Date.now()}`;
   const ref = doc(db, "confirmations", id);
   await setDoc(ref, {
@@ -703,6 +755,28 @@ async function logConfirmationToFirebase(log) {
     timestamp: log.timestamp || Date.now()
   });
   return id;
+}
+async function updateMatchEventInFirebase(eventId, updates) {
+  await writeGate;
+  const ref = doc(db, "events", eventId);
+  await setDoc(
+    ref,
+    {
+      ...updates,
+      updatedAt: Date.now()
+    },
+    { merge: true }
+  );
+}
+async function deleteMatchEventFromFirebase(eventId) {
+  await writeGate;
+  const ref = doc(db, "events", eventId);
+  await deleteDoc(ref);
+}
+async function deleteChatMessageFromFirebase(messageId) {
+  await writeGate;
+  const ref = doc(db, "chat", messageId);
+  await deleteDoc(ref);
 }
 async function getClubsFromFirebase() {
   try {
@@ -716,7 +790,32 @@ async function getClubsFromFirebase() {
   }
   return null;
 }
+async function saveSingleClubToFirebase(club) {
+  await writeGate;
+  const ref = doc(db, "config", "clubs");
+  const snap = await getDoc(ref);
+  const currentClubs = snap.exists() && snap.data()?.clubs ? snap.data().clubs : {};
+  currentClubs[club.id] = club;
+  await setDoc(ref, {
+    clubs: currentClubs,
+    updatedAt: Date.now()
+  });
+}
+async function deleteClubFromFirebase(clubId) {
+  await writeGate;
+  const ref = doc(db, "config", "clubs");
+  const snap = await getDoc(ref);
+  if (snap.exists() && snap.data()?.clubs) {
+    const currentClubs = { ...snap.data().clubs };
+    delete currentClubs[clubId];
+    await setDoc(ref, {
+      clubs: currentClubs,
+      updatedAt: Date.now()
+    });
+  }
+}
 async function saveLiveEventToFirebase(event, operator) {
+  await writeGate;
   const safeId = sanitizeClubId(event.id);
   if (!safeId) {
     throw new Error("ID de partido inv\xE1lido o no especificado.");
@@ -811,6 +910,7 @@ async function saveLiveEventToFirebase(event, operator) {
   });
 }
 async function saveMatchScoreboardFirebase(eventId, data, operator) {
+  await writeGate;
   const safeId = sanitizeClubId(eventId);
   if (!safeId) {
     throw new Error("Identificador de partido inv\xE1lido para marcador.");
@@ -907,6 +1007,7 @@ async function getLiveEventsFromFirebase() {
   return [];
 }
 async function deleteLiveEventFromFirebase(eventId) {
+  await writeGate;
   try {
     const ref = doc(db, "liveEvents", eventId);
     await deleteDoc(ref);
@@ -915,8 +1016,19 @@ async function deleteLiveEventFromFirebase(eventId) {
     throw err;
   }
 }
+async function clearMatchEventsInFirebase() {
+  await writeGate;
+  const snap = await getDocs(collection(db, "events"));
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+}
+async function clearChatInFirebase() {
+  await writeGate;
+  const snap = await getDocs(collection(db, "chat"));
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+}
 
 // serverApp.ts
+import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 var appDirname = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 var app2 = express();
 var server = http.createServer(app2);
@@ -950,40 +1062,76 @@ app2.use((_req, res, next) => {
   }
   next();
 });
-var SERVER_SECRET = process.env.SERVER_SECRET || "golbolivia_secure_secret_key_2026_lapaz";
-var SYSTEM_USERS = [
-  {
-    id: "usr-admin-1",
-    username: "admin",
-    name: "Director General de Transmisi\xF3n",
-    role: "ADMIN",
-    pin: "1925"
-    // Bolívar foundation year / master pin
-  },
-  {
-    id: "usr-trans-1",
-    username: "transmisor",
-    name: "Operador OBS & MediaMTX",
-    role: "TRANSMISOR",
-    pin: "7788"
-  },
-  {
-    id: "usr-mod-1",
-    username: "moderador",
-    name: "Moderador Oficial de Chat",
-    role: "MODERADOR",
-    pin: "4455"
-  },
-  {
-    id: "usr-edit-1",
-    username: "editor",
-    name: "Estad\xEDgrafo & Cronista",
-    role: "EDITOR",
-    pin: "2233"
+var isDeployed = isProduction || Boolean(process.env.VERCEL);
+var SERVER_SECRET = (() => {
+  const fromEnv = (process.env.SERVER_SECRET || "").trim();
+  if (fromEnv.length >= 32) return fromEnv;
+  if (isDeployed) {
+    console.error("[GolBolivia Backend] SERVER_SECRET ausente o menor a 32 caracteres. El login queda deshabilitado.");
+    return "";
   }
+  console.warn("[GolBolivia Backend] SERVER_SECRET no configurado: usando secreto aleatorio solo para desarrollo local.");
+  return crypto.randomBytes(48).toString("hex");
+})();
+var MIN_PIN_LENGTH = 6;
+function readPin(envName) {
+  const pin = (process.env[envName] || "").trim();
+  if (!pin) return "";
+  if (pin.length < MIN_PIN_LENGTH) {
+    console.error(`[GolBolivia Backend] ${envName} debe tener al menos ${MIN_PIN_LENGTH} caracteres. Usuario deshabilitado.`);
+    return "";
+  }
+  return pin;
+}
+var SYSTEM_USERS = [
+  { id: "usr-admin-1", username: "admin", name: "Director General de Transmisi\xF3n", role: "ADMIN", pin: readPin("ADMIN_PIN") },
+  { id: "usr-trans-1", username: "transmisor", name: "Operador OBS & MediaMTX", role: "TRANSMISOR", pin: readPin("TRANSMISOR_PIN") },
+  { id: "usr-mod-1", username: "moderador", name: "Moderador Oficial de Chat", role: "MODERADOR", pin: readPin("MODERADOR_PIN") },
+  { id: "usr-edit-1", username: "editor", name: "Estad\xEDgrafo & Cronista", role: "EDITOR", pin: readPin("EDITOR_PIN") }
 ];
+function safeEqual(a, b) {
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+var LOGIN_MAX_FAILURES = 5;
+var LOGIN_LOCK_MS = 15 * 60 * 1e3;
+var loginFailures = /* @__PURE__ */ new Map();
+function getClientIp(req) {
+  const fwd = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return fwd || req.socket.remoteAddress || "unknown";
+}
+function isLoginLocked(ip) {
+  const entry = loginFailures.get(ip);
+  if (!entry) return false;
+  if (Date.now() - entry.firstAt > LOGIN_LOCK_MS) {
+    loginFailures.delete(ip);
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_FAILURES;
+}
+function registerLoginFailure(ip) {
+  const entry = loginFailures.get(ip);
+  if (!entry || Date.now() - entry.firstAt > LOGIN_LOCK_MS) {
+    loginFailures.set(ip, { count: 1, firstAt: Date.now() });
+  } else {
+    entry.count += 1;
+  }
+}
+var FIREBASE_SERVER_EMAIL = (process.env.FIREBASE_SERVER_EMAIL || "").trim();
+var FIREBASE_SERVER_PASSWORD = process.env.FIREBASE_SERVER_PASSWORD || "";
+if (FIREBASE_SERVER_EMAIL && FIREBASE_SERVER_PASSWORD) {
+  const signIn = signInWithEmailAndPassword(getAuth(firebaseApp), FIREBASE_SERVER_EMAIL, FIREBASE_SERVER_PASSWORD).then((cred) => console.log(`[GolBolivia Backend] Firestore: sesi\xF3n de servidor iniciada (uid ${cred.user.uid}).`)).catch((err) => console.error("[GolBolivia Backend] Firestore: no se pudo iniciar sesi\xF3n de servidor:", err?.code || err));
+  setFirestoreWriteGate(signIn);
+} else {
+  console.warn("[GolBolivia Backend] FIREBASE_SERVER_EMAIL/FIREBASE_SERVER_PASSWORD no configurados: las escrituras a Firestore ser\xE1n rechazadas por las reglas.");
+}
+function logFirestoreWarning(action) {
+  return (err) => console.warn(`[Firebase] Advertencia al ${action}:`, err?.code || err?.message || err);
+}
 var activeSessions = /* @__PURE__ */ new Map();
 function createToken(user) {
+  if (!SERVER_SECRET) throw new Error("SERVER_SECRET no configurado");
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const now = Date.now();
   const payload = Buffer.from(JSON.stringify({
@@ -1011,7 +1159,7 @@ function createToken(user) {
   return token;
 }
 function verifyToken(token) {
-  if (!token) return null;
+  if (!token || !SERVER_SECRET) return null;
   const session = activeSessions.get(token);
   if (session && session.expiresAt > Date.now()) {
     return session.user;
@@ -1020,7 +1168,7 @@ function verifyToken(token) {
   if (parts.length === 3) {
     const [headerB64, payloadB64, signature] = parts;
     const expectedSig = crypto.createHmac("sha256", SERVER_SECRET).update(`${headerB64}.${payloadB64}`).digest("base64url");
-    if (signature !== expectedSig) return null;
+    if (!safeEqual(signature, expectedSig)) return null;
     try {
       const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf-8"));
       if (!payload || !payload.userId || !payload.role) return null;
@@ -1033,24 +1181,6 @@ function verifyToken(token) {
         id: payload.userId,
         username: payload.username,
         name: payload.name || systemUser?.name || "Operador GolBolivia",
-        role: payload.role
-      };
-    } catch {
-      return null;
-    }
-  }
-  if (parts.length === 2) {
-    const [data, signature] = parts;
-    const expectedSig = crypto.createHmac("sha256", SERVER_SECRET).update(data).digest("base64url");
-    if (signature !== expectedSig) return null;
-    try {
-      const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf-8"));
-      if (!payload || !payload.userId || !payload.role) return null;
-      const systemUser = SYSTEM_USERS.find((u) => u.id === payload.userId || u.username === payload.username);
-      return {
-        id: payload.userId,
-        username: payload.username,
-        name: systemUser?.name || "Operador GolBolivia",
         role: payload.role
       };
     } catch {
@@ -1327,27 +1457,31 @@ data: ${JSON.stringify(data)}
 }
 app2.post(["/api/auth/login", "/auth/login"], (req, res) => {
   const { pin, username } = req.body;
-  if (!pin) {
-    res.status(400).json({ error: "PIN o clave requerida" });
+  if (!pin || !username) {
+    res.status(400).json({ error: "Usuario y PIN requeridos" });
+    return;
+  }
+  if (!SERVER_SECRET) {
+    res.status(503).json({ error: "El servidor no tiene configurado SERVER_SECRET. Contacta al administrador." });
+    return;
+  }
+  const ip = getClientIp(req);
+  if (isLoginLocked(ip)) {
+    res.status(429).json({ error: "Demasiados intentos fallidos. Intenta nuevamente en 15 minutos." });
     return;
   }
   const cleanPin = String(pin).trim();
-  const cleanUsername = username ? String(username).trim().toLowerCase() : "";
-  const matchedUser = SYSTEM_USERS.find((u) => {
-    if (cleanUsername) {
-      if (cleanUsername === "admin" && (cleanPin === "1925" || cleanPin === "admin" || cleanPin === "admin123" || cleanPin === "1234" || cleanPin === "golbolivia")) {
-        return u.username === "admin";
-      }
-      return u.username.toLowerCase() === cleanUsername && (u.pin === cleanPin || u.username === "admin" && cleanPin === "1925");
-    }
-    return u.pin === cleanPin || cleanPin === "1925" && u.username === "admin" || cleanPin === "admin" && u.username === "admin";
-  });
+  const cleanUsername = String(username).trim().toLowerCase();
+  const candidate = SYSTEM_USERS.find((u) => u.username === cleanUsername);
+  const matchedUser = candidate && candidate.pin && safeEqual(candidate.pin, cleanPin) ? candidate : void 0;
   if (!matchedUser) {
+    registerLoginFailure(ip);
     res.status(401).json({
-      error: "Credenciales inv\xE1lidas. Verifica tu PIN de operador o contrase\xF1a."
+      error: "Credenciales inv\xE1lidas. Verifica tu usuario y PIN."
     });
     return;
   }
+  loginFailures.delete(ip);
   const token = createToken(matchedUser);
   res.json({
     token,
@@ -2031,6 +2165,15 @@ app2.post(
     }
     state.scoreboard.updatedAt = scorePayload.updatedAt;
     persistState();
+    saveScoreboardToFirebase(
+      {
+        homeScore: scorePayload.homeScore,
+        awayScore: scorePayload.awayScore,
+        matchMinute: scorePayload.matchMinute,
+        period: scorePayload.period
+      },
+      req.user?.username
+    ).catch(logFirestoreWarning("guardar marcador"));
     broadcastSseEvent("SCOREBOARD_UPDATED", scorePayload);
     broadcastSseEvent("LIVE_EVENTS_UPDATED", state.liveEvents);
     res.json({ success: true, scoreboard: scorePayload, liveEvents: state.liveEvents });
@@ -2058,6 +2201,7 @@ app2.post(
       scoreAfter: req.body.scoreAfter
     };
     state.events.unshift(newEvent);
+    addMatchEventToFirebase(newEvent).catch(logFirestoreWarning("guardar evento"));
     broadcastSseEvent("MATCH_EVENT_ADDED", newEvent);
     res.json({ success: true, event: newEvent });
   }
@@ -2070,13 +2214,15 @@ app2.put(
     const id = req.params.id;
     const index = state.events.findIndex((e) => e.id === id);
     if (index === -1) {
-      res.status(404).json({ error: "Evento no encontrado" });
+      updateMatchEventInFirebase(id, req.body).catch(logFirestoreWarning("actualizar evento"));
+      res.json({ success: true, event: { ...req.body, id } });
       return;
     }
     state.events[index] = {
       ...state.events[index],
       ...req.body
     };
+    updateMatchEventInFirebase(id, req.body).catch(logFirestoreWarning("actualizar evento"));
     broadcastSseEvent("MATCH_EVENT_UPDATED", state.events[index]);
     res.json({ success: true, event: state.events[index] });
   }
@@ -2089,8 +2235,10 @@ app2.delete(
     const id = req.params.id;
     const initialLen = state.events.length;
     state.events = state.events.filter((e) => e.id !== id);
+    deleteMatchEventFromFirebase(id).catch(logFirestoreWarning("eliminar evento"));
     if (state.events.length === initialLen) {
-      res.status(404).json({ error: "Evento no encontrado" });
+      broadcastSseEvent("MATCH_EVENT_DELETED", { id });
+      res.json({ success: true, message: `Evento ${id} eliminado.` });
       return;
     }
     broadcastSseEvent("MATCH_EVENT_DELETED", { id });
@@ -2103,6 +2251,7 @@ app2.post(
   requireRoles(["ADMIN", "EDITOR"]),
   (_req, res) => {
     state.events = [];
+    clearMatchEventsInFirebase().catch(logFirestoreWarning("limpiar eventos"));
     broadcastSseEvent("MATCH_EVENTS_CLEARED", {});
     res.json({ success: true, message: "Cronolog\xEDa de eventos limpiada correctamente." });
   }
@@ -2141,6 +2290,7 @@ app2.delete(
   (req, res) => {
     const id = req.params.id;
     state.chatMessages = state.chatMessages.filter((m) => m.id !== id);
+    deleteChatMessageFromFirebase(id).catch(logFirestoreWarning("eliminar mensaje"));
     broadcastSseEvent("CHAT_MESSAGE_DELETED", { id });
     res.json({ success: true });
   }
@@ -2151,6 +2301,7 @@ app2.post(
   requireRoles(["ADMIN", "MODERADOR"]),
   (_req, res) => {
     state.chatMessages = [];
+    clearChatInFirebase().catch(logFirestoreWarning("limpiar chat"));
     broadcastSseEvent("CHAT_CLEARED", {});
     res.json({ success: true, message: "Chat en vivo limpiado correctamente." });
   }
@@ -2199,6 +2350,7 @@ app2.post(
     };
     state.clubs[cleanId] = updatedClub;
     persistState();
+    saveSingleClubToFirebase(updatedClub).catch(logFirestoreWarning("guardar equipo"));
     broadcastSseEvent("CLUBS_UPDATED", state.clubs);
     res.json({ success: true, club: updatedClub, clubs: state.clubs });
   }
@@ -2219,6 +2371,7 @@ app2.delete(
     }
     delete state.clubs[id];
     persistState();
+    deleteClubFromFirebase(id).catch(logFirestoreWarning("eliminar equipo"));
     broadcastSseEvent("CLUBS_UPDATED", state.clubs);
     res.json({ success: true, message: `Equipo ${id} eliminado correctamente.`, clubs: state.clubs });
   }

@@ -147,79 +147,11 @@ class AuthService {
           throw new Error(errData.error);
         }
       }
-    } catch (networkOrServerError: any) {
-      if (networkOrServerError.message && networkOrServerError.message.includes('Credenciales')) {
-        throw networkOrServerError;
-      }
+    } catch (err: any) {
+      if (err?.message) throw err;
     }
 
-    // Emergency client-side credentials validator (prevents locking out broadcaster if Vercel serverless function is in cold boot)
-    const fallbackUsers: Array<{ id: string; username: string; name: string; role: UserRole; validPins: string[] }> = [
-      {
-        id: 'usr-admin-1',
-        username: 'admin',
-        name: 'Director General de Transmisión',
-        role: 'ADMIN',
-        validPins: ['1925', 'admin', 'admin123', '1234', 'golbolivia'],
-      },
-      {
-        id: 'usr-trans-1',
-        username: 'transmisor',
-        name: 'Operador OBS & MediaMTX',
-        role: 'TRANSMISOR',
-        validPins: ['7788', 'obs'],
-      },
-      {
-        id: 'usr-mod-1',
-        username: 'moderador',
-        name: 'Moderador Oficial de Chat',
-        role: 'MODERADOR',
-        validPins: ['4455'],
-      },
-      {
-        id: 'usr-edit-1',
-        username: 'editor',
-        name: 'Estadígrafo & Cronista',
-        role: 'EDITOR',
-        validPins: ['2233'],
-      },
-    ];
-
-    const matched = fallbackUsers.find((u) => {
-      if (cleanUsername) {
-        return u.username === cleanUsername && u.validPins.includes(cleanPin);
-      }
-      return u.validPins.includes(cleanPin);
-    });
-
-    if (matched) {
-      const fallbackToken = `session_${matched.role.toLowerCase()}_${Date.now()}`;
-      const userObj: AuthUser = {
-        id: matched.id,
-        username: matched.username,
-        name: matched.name,
-        role: matched.role,
-      };
-
-      this.token = fallbackToken;
-      this.currentUser = userObj;
-
-      try {
-        sessionStorage.setItem(TOKEN_KEY, fallbackToken);
-        sessionStorage.setItem(USER_KEY, JSON.stringify(userObj));
-        localStorage.setItem(TOKEN_KEY, fallbackToken);
-        localStorage.setItem(USER_KEY, JSON.stringify(userObj));
-      } catch {}
-
-      this.notify();
-      return {
-        token: fallbackToken,
-        user: userObj,
-        message: `Autenticación exitosa. Bienvenido, ${matched.name} (${matched.role})`,
-      };
-    }
-
-    throw new Error('Credenciales inválidas. Verifica tu PIN de operador o contraseña.');
+    throw new Error('No se pudo conectar con el servidor de autenticación. Intenta nuevamente.');
   }
 
   /**

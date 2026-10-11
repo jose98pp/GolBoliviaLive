@@ -43,6 +43,12 @@ export const firebaseApp = app;
 export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
 export const FIRESTORE_DATABASE_ID = firebaseConfig.firestoreDatabaseId;
 
+// Writes wait for the backend's Firebase Auth sign-in so Firestore rules see an authenticated writer.
+let writeGate: Promise<unknown> = Promise.resolve();
+export function setFirestoreWriteGate(gate: Promise<unknown>): void {
+  writeGate = gate.catch(() => undefined);
+}
+
 /**
  * VALIDATION & BOUNDS LIMITS FOR FIRESTORE SYNCHRONIZATION
  */
@@ -75,6 +81,7 @@ export function validateMinute(minute: any, defaultValue = 0): number {
  * 1. STREAM SETTINGS & M3U8 SIGNALS
  */
 export async function saveStreamSettingsToFirebase(settings: Partial<StreamSettings>, operator?: string): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'config', 'stream_settings');
   let nextVersion = (settings.version || 0) + 1;
   try {
@@ -157,6 +164,7 @@ export async function saveDonationQrToFirebase(
   qr: DonationQrInfo,
   operator = 'admin'
 ): Promise<DonationQrInfo> {
+  await writeGate;
   const now = Date.now();
   const cleanPayload: DonationQrInfo = {
     imageUrl: typeof qr.imageUrl === 'string' ? qr.imageUrl.trim() : '',
@@ -255,6 +263,7 @@ export async function saveScoreboardToFirebase(data: {
   matchMinute?: number;
   period?: string;
 }, operator?: string): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'match', 'scoreboard');
   let nextVersion = 1;
   try {
@@ -311,6 +320,7 @@ export function subscribeScoreboardFirebase(
  * 3. MATCH EVENTS TIMELINE
  */
 export async function addMatchEventToFirebase(event: Omit<MatchEvent, 'id'> & { id?: string }): Promise<string> {
+  await writeGate;
   const colRef = collection(db, 'events');
   const eventId = event.id || `evt_${Date.now()}`;
   const ref = doc(db, 'events', eventId);
@@ -348,6 +358,7 @@ export function subscribeMatchEventsFirebase(
  * 4. LIVE CHAT
  */
 export async function sendChatMessageToFirebase(message: Omit<ChatMessage, 'id'>): Promise<string> {
+  await writeGate;
   const colRef = collection(db, 'chat');
   const id = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const ref = doc(db, 'chat', id);
@@ -387,6 +398,7 @@ export function subscribeChatMessagesFirebase(
  * 5. LIVE POLL
  */
 export async function savePollToFirebase(poll: LivePoll): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'polls', 'current');
   await setDoc(ref, {
     ...poll,
@@ -427,6 +439,7 @@ export interface ConfirmationLog {
 }
 
 export async function logConfirmationToFirebase(log: ConfirmationLog): Promise<string> {
+  await writeGate;
   const id = `conf_${Date.now()}`;
   const ref = doc(db, 'confirmations', id);
   await setDoc(ref, {
@@ -466,6 +479,7 @@ export async function updateMatchEventInFirebase(
   eventId: string,
   updates: Partial<MatchEvent>
 ): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'events', eventId);
   await setDoc(
     ref,
@@ -478,26 +492,31 @@ export async function updateMatchEventInFirebase(
 }
 
 export async function deleteMatchEventFromFirebase(eventId: string): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'events', eventId);
   await deleteDoc(ref);
 }
 
 export async function deleteChatMessageFromFirebase(messageId: string): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'chat', messageId);
   await deleteDoc(ref);
 }
 
 export async function deleteConfirmationLogFromFirebase(confirmId: string): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'confirmations', confirmId);
   await deleteDoc(ref);
 }
 
 export async function deletePollFromFirebase(): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'polls', 'current');
   await deleteDoc(ref);
 }
 
 export async function resetStreamSettingsInFirebase(): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'config', 'stream_settings');
   await setDoc(ref, {
     customVideoUrl: '',
@@ -516,6 +535,7 @@ export async function resetStreamSettingsInFirebase(): Promise<void> {
  * 8. CUSTOMIZABLE CLUBS & TEAMS MANAGEMENT (CLOUDFIRESTORE CRUD)
  */
 export async function saveClubsToFirebase(clubs: Record<string, Club>): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'config', 'clubs');
   await setDoc(ref, {
     clubs,
@@ -558,6 +578,7 @@ export function subscribeClubsFirebase(
 }
 
 export async function saveSingleClubToFirebase(club: Club): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'config', 'clubs');
   const snap = await getDoc(ref);
   const currentClubs = snap.exists() && snap.data()?.clubs ? snap.data().clubs : {};
@@ -569,6 +590,7 @@ export async function saveSingleClubToFirebase(club: Club): Promise<void> {
 }
 
 export async function deleteClubFromFirebase(clubId: string): Promise<void> {
+  await writeGate;
   const ref = doc(db, 'config', 'clubs');
   const snap = await getDoc(ref);
   if (snap.exists() && snap.data()?.clubs) {
@@ -585,6 +607,7 @@ export async function deleteClubFromFirebase(clubId: string): Promise<void> {
  * 9. PURGE NON-REAL / TEST CONFIRMATIONS
  */
 export async function purgeTestConfirmations(): Promise<void> {
+  await writeGate;
   try {
     const colRef = collection(db, 'confirmations');
     const q = query(colRef);
@@ -676,6 +699,7 @@ export const DEFAULT_LIVE_EVENTS: LiveEvent[] = [
 ];
 
 export async function saveLiveEventToFirebase(event: LiveEvent, operator?: string): Promise<{ success: boolean; version: number; updatedAt: number }> {
+  await writeGate;
   const safeId = sanitizeClubId(event.id);
   if (!safeId) {
     throw new Error('ID de partido inválido o no especificado.');
@@ -790,6 +814,7 @@ export async function saveMatchScoreboardFirebase(
   },
   operator?: string
 ): Promise<{ success: boolean; version: number; updatedAt: number }> {
+  await writeGate;
   const safeId = sanitizeClubId(eventId);
   if (!safeId) {
     throw new Error('Identificador de partido inválido para marcador.');
@@ -918,6 +943,7 @@ export function subscribeLiveEventsFirebase(
 }
 
 export async function deleteLiveEventFromFirebase(eventId: string): Promise<void> {
+  await writeGate;
   try {
     const ref = doc(db, 'liveEvents', eventId);
     await deleteDoc(ref);
@@ -927,3 +953,15 @@ export async function deleteLiveEventFromFirebase(eventId: string): Promise<void
   }
 }
 
+
+export async function clearMatchEventsInFirebase(): Promise<void> {
+  await writeGate;
+  const snap = await getDocs(collection(db, 'events'));
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+}
+
+export async function clearChatInFirebase(): Promise<void> {
+  await writeGate;
+  const snap = await getDocs(collection(db, 'chat'));
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+}

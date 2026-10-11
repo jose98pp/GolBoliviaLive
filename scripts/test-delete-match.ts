@@ -3,7 +3,7 @@ async function main() {
     const loginRes = await fetch('http://localhost:3000/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin: '1925', username: 'admin' }),
+      body: JSON.stringify({ pin: process.env.ADMIN_PIN || '', username: 'admin' }),
     });
     const loginData = await loginRes.json();
     console.log('[1] Login status:', loginRes.status, 'token exists:', !!loginData.token);

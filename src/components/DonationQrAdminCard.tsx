@@ -19,7 +19,6 @@ import {
 import { DonationQrInfo } from '../types/football';
 import { apiClient } from '../services/apiClient';
 import {
-  saveDonationQrToFirebase,
   getDonationQrFromFirebase,
   subscribeDonationQrFirebase,
 } from '../services/firebase';
@@ -252,10 +251,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
         updatedAt: now,
       };
 
-      // 1. Guardar de forma autoritativa en Google Firebase Firestore
-      await saveDonationQrToFirebase(payload);
-
-      // 2. Sincronizar simultáneamente con el servidor backend y difusión en vivo
+      // El backend valida el rol y persiste en Firestore
       const res = await apiClient.saveDonationQr(payload);
       const savedResult = res.donationQr || payload;
 

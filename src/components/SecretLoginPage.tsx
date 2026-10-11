@@ -2131,7 +2131,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           <div className="grid grid-cols-2 gap-1.5 text-xs">
             <button
               type="button"
-              onClick={() => { setUsernameInput('admin'); setPinInput('1925'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('admin'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'admin'
                   ? 'bg-red-500/20 border-red-500 text-red-300 font-bold'
@@ -2144,7 +2144,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('transmisor'); setPinInput('7788'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('transmisor'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'transmisor'
                   ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
@@ -2157,7 +2157,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('moderador'); setPinInput('4455'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('moderador'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'moderador'
                   ? 'bg-blue-500/20 border-blue-500 text-blue-300 font-bold'
@@ -2170,7 +2170,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('editor'); setPinInput('2233'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('editor'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'editor'
                   ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
@@ -2203,14 +2203,13 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <label className="text-xs font-semibold text-slate-300">
                 PIN / Clave de Acceso (Validado en Servidor)
               </label>
-              <span className="text-[10px] text-slate-500 font-mono">PIN: {usernameInput === 'admin' ? '1925' : usernameInput === 'transmisor' ? '7788' : usernameInput === 'moderador' ? '4455' : '2233'}</span>
             </div>
             <div className="relative">
               <input
                 type={showPin ? 'text' : 'password'}
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                maxLength={12}
+                maxLength={64}
                 className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono tracking-widest text-slate-100 focus:outline-none focus:border-amber-500"
                 placeholder="••••"
                 required
