@@ -874,6 +874,7 @@ async function deleteLiveEventFromFirebase(eventId) {
     await deleteDoc(ref);
   } catch (err) {
     console.warn("[Firebase] Error al borrar liveEvent:", err);
+    throw err;
   }
 }
 
@@ -1357,10 +1358,13 @@ function getPublicStreamPayload() {
     donationQr: state.streamSettings.donationQr
   };
 }
-function persistStreamSettingsToFirestore(operator) {
-  saveStreamSettingsToFirebase(getPublicStreamPayload(), operator || "admin").catch((err) => {
-    console.warn("[GolBolivia Server] Advertencia al persistir streamSettings en Firestore:", err);
-  });
+async function persistStreamSettingsToFirestore(operator) {
+  try {
+    await saveStreamSettingsToFirebase(getPublicStreamPayload(), operator || "admin");
+  } catch (err) {
+    console.error("[GolBolivia Server] Error al persistir streamSettings en Firestore:", err);
+    throw err;
+  }
 }
 app2.get(["/api/events", "/events"], (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
@@ -1456,13 +1460,13 @@ app2.post(
   ["/api/streams", "/streams"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR"]),
-  (req, res) => {
+  async (req, res) => {
     state.streamSettings = {
       ...state.streamSettings,
       ...req.body
     };
     persistState();
-    persistStreamSettingsToFirestore(req.user?.username);
+    await persistStreamSettingsToFirestore(req.user?.username);
     broadcastSseEvent("STREAM_UPDATED", getPublicStreamPayload());
     res.json({ success: true, streamSettings: getPublicStreamPayload() });
   }
@@ -1516,7 +1520,7 @@ app2.post(
   ["/api/streams/failover", "/streams/failover"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR"]),
-  (req, res) => {
+  async (req, res) => {
     const { activeStreamSource, backupVideoUrl, backupChannelName, autoFailoverEnabled } = req.body;
     if (activeStreamSource && ["obs", "backup", "simulation"].includes(activeStreamSource)) {
       state.streamSettings.activeStreamSource = activeStreamSource;
@@ -1531,7 +1535,7 @@ app2.post(
       state.streamSettings.autoFailoverEnabled = autoFailoverEnabled;
     }
     persistState();
-    persistStreamSettingsToFirestore(req.user?.username);
+    await persistStreamSettingsToFirestore(req.user?.username);
     const payload = getPublicStreamPayload();
     broadcastSseEvent("STREAM_UPDATED", payload);
     res.json({
@@ -1556,7 +1560,7 @@ app2.post(
   ["/api/streams/config", "/streams/config"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR"]),
-  (req, res) => {
+  async (req, res) => {
     const body = req.body || {};
     state.streamSettings = {
       ...state.streamSettings,
@@ -1592,26 +1596,28 @@ app2.post(
     }
     const targetEventId = String(targetEventIdBody).trim();
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
-      const targetEvt = state.liveEvents.find((e) => e.id === targetEventId) || state.liveEvents[0];
-      if (targetEvt) {
-        if (state.streamSettings.title) targetEvt.title = state.streamSettings.title;
-        if (state.streamSettings.homeClubId) targetEvt.homeTeam = state.streamSettings.homeClubId;
-        if (state.streamSettings.awayClubId) targetEvt.awayTeam = state.streamSettings.awayClubId;
-        if (state.streamSettings.tournamentName) targetEvt.tournamentName = state.streamSettings.tournamentName;
-        if (state.streamSettings.stadiumName) targetEvt.stadiumName = state.streamSettings.stadiumName;
-        if (state.streamSettings.period) targetEvt.period = state.streamSettings.period;
-        if (body.customVideoUrl) {
-          targetEvt.customVideoUrl = body.customVideoUrl;
-          if (targetEvt.cloudflare) targetEvt.cloudflare.playbackUrl = body.customVideoUrl;
-        }
-        if (body.backupVideoUrl) targetEvt.backupVideoUrl = body.backupVideoUrl;
-        if (body.backupChannelName) targetEvt.backupChannelName = body.backupChannelName;
-        if (body.activeStreamSource) targetEvt.activeStreamSource = body.activeStreamSource;
-        if (typeof body.autoFailoverEnabled === "boolean") targetEvt.autoFailoverEnabled = body.autoFailoverEnabled;
+      const targetEvt = state.liveEvents.find((e) => e.id === targetEventId);
+      if (!targetEvt) {
+        res.status(404).json({ error: `Partido con eventId "${targetEventId}" no encontrado.`, code: "EVENT_NOT_FOUND" });
+        return;
       }
+      if (state.streamSettings.title) targetEvt.title = state.streamSettings.title;
+      if (state.streamSettings.homeClubId) targetEvt.homeTeam = state.streamSettings.homeClubId;
+      if (state.streamSettings.awayClubId) targetEvt.awayTeam = state.streamSettings.awayClubId;
+      if (state.streamSettings.tournamentName) targetEvt.tournamentName = state.streamSettings.tournamentName;
+      if (state.streamSettings.stadiumName) targetEvt.stadiumName = state.streamSettings.stadiumName;
+      if (state.streamSettings.period) targetEvt.period = state.streamSettings.period;
+      if (body.customVideoUrl) {
+        targetEvt.customVideoUrl = body.customVideoUrl;
+        if (targetEvt.cloudflare) targetEvt.cloudflare.playbackUrl = body.customVideoUrl;
+      }
+      if (body.backupVideoUrl) targetEvt.backupVideoUrl = body.backupVideoUrl;
+      if (body.backupChannelName) targetEvt.backupChannelName = body.backupChannelName;
+      if (body.activeStreamSource) targetEvt.activeStreamSource = body.activeStreamSource;
+      if (typeof body.autoFailoverEnabled === "boolean") targetEvt.autoFailoverEnabled = body.autoFailoverEnabled;
     }
     persistState();
-    persistStreamSettingsToFirestore(req.user?.username);
+    await persistStreamSettingsToFirestore(req.user?.username);
     const payload = {
       ...getPublicStreamPayload(),
       eventId: targetEventId

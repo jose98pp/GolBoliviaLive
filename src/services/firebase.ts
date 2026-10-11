@@ -883,6 +883,7 @@ export async function deleteLiveEventFromFirebase(eventId: string): Promise<void
     await deleteDoc(ref);
   } catch (err) {
     console.warn('[Firebase] Error al borrar liveEvent:', err);
+    throw err;
   }
 }
 
