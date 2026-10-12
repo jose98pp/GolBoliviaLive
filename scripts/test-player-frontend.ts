@@ -489,6 +489,30 @@ async function runTests() {
   const safeProvider = (dummyEventWithoutProvider.primaryProvider || 'cloudflare').toUpperCase();
   assert(safeProvider === 'CLOUDFLARE', 'Resiliencia: fallback produce CLOUDFLARE en mayúsculas sin errores');
 
+  // 35. MEJORA 1: SELECTOR RÁPIDO DE SEÑALES Y RECARGA
+  assert(appSource.includes("id: 'cloudflare',"), 'Señales: Opción 1 Cloudflare configurada');
+  assert(appSource.includes("id: 'youtube',"), 'Señales: Opción 2 YouTube configurada');
+  assert(appSource.includes("id: 'kick',"), 'Señales: Opción 3 Kick configurada');
+  assert(appSource.includes('handleReloadCurrentSignal'), 'Señales: Función handleReloadCurrentSignal activa');
+  assert(appSource.includes('Recargar Señal'), 'Señales: Botón Recargar Señal presente en el reproductor');
+  assert(appSource.includes('signalReloadKey'), 'Señales: Clave dinámica signalReloadKey para reinicio limpio de stream');
+
+  // 36. MEJORA 2: OCULTAR / MOSTRAR CHAT CON 1 CLIC (PRESERVACIÓN TOTAL DE BASE DE DATOS)
+  const chatSource = await fs.promises.readFile(
+    path.join(__dirname, '../src/components/LiveChat.tsx'),
+    'utf-8'
+  );
+  assert(chatSource.includes('onToggleChat?: () => void;'), 'Chat: LiveChatProps incluye prop onToggleChat');
+  assert(chatSource.includes('onToggleChat && ('), 'Chat: Cabecera de LiveChat incluye botón para ocultar');
+  assert(appSource.includes('isChatVisible'), 'Chat: Estado isChatVisible gestionado en App.tsx');
+  assert(appSource.includes('handleToggleChat'), 'Chat: Función handleToggleChat activa');
+  assert(appSource.includes('Ocultar Chat'), 'Chat: Botón Ocultar Chat disponible en barra de control');
+  assert(appSource.includes('Abrir Chat'), 'Chat: Botón flotante para restaurar chat cuando está oculto');
+  assert(appSource.includes('isTheaterMode || !isChatVisible'), 'Chat: Video se expande a ancho completo cuando el chat está oculto');
+
+  // Verificación estricta: NO invocar borrado de base de datos en toggle
+  assert(!appSource.includes('clearChatInFirebase') || !appSource.includes('handleToggleChat = () => { clearChatInFirebase'), 'Chat DB: Alternar chat NO borra mensajes de la base de datos');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);
   console.log('====================================================\n');

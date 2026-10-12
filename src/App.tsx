@@ -16,7 +16,7 @@ import { ToastNotification } from './components/ToastNotification';
 import { FloatingReactions, FloatingItem } from './components/FloatingReactions';
 import { NotificationItem, StreamSettings, MatchEvent, LivePoll, ChatMessage, LiveEvent, StreamProvider, DonationQrInfo } from './types/football';
 import { BOLIVIAN_CLUBS, INITIAL_EVENTS, INITIAL_POLL } from './data/bolivianFootballData';
-import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin } from 'lucide-react';
+import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin, RefreshCw } from 'lucide-react';
 import { SecretLoginPage } from './components/SecretLoginPage';
 import { DonationQrModal } from './components/DonationQrModal';
 import { PWAInstallButton } from './components/PWAInstallButton';
@@ -47,6 +47,35 @@ export default function App() {
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
   const [isAudienceModalOpen, setIsAudienceModalOpen] = useState(false);
+  const [isChatVisible, setIsChatVisible] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const saved = localStorage.getItem('golbolivia_chat_visible');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+  const [signalReloadKey, setSignalReloadKey] = useState<number>(0);
+  const [isReloadingSignal, setIsReloadingSignal] = useState<boolean>(false);
+
+  const handleToggleChat = () => {
+    setIsChatVisible((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('golbolivia_chat_visible', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleReloadCurrentSignal = () => {
+    setIsReloadingSignal(true);
+    setSignalReloadKey((k) => k + 1);
+    setTimeout(() => {
+      setIsReloadingSignal(false);
+    }, 600);
+  };
 
   // Real-time live connected presence exclusively on this web & app
   const presence = useRealPresence(true);
@@ -1157,7 +1186,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
             {/* Split Grid for Stream & Chat */}
             <div
               className={`grid gap-5 ${
-                isTheaterMode
+                isTheaterMode || !isChatVisible
                   ? 'grid-cols-1'
                   : 'grid-cols-1 lg:grid-cols-12 items-start'
               }`}
@@ -1165,10 +1194,10 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
               {/* VIDEO PLAYER COLUMN - ALWAYS ACTIVE & VISIBLE ON MOBILE & DESKTOP */}
               <div
                 className={`${
-                  isTheaterMode
+                  isTheaterMode || !isChatVisible
                     ? 'w-full'
                     : 'lg:col-span-8'
-                } w-full`}
+                } w-full transition-all duration-200`}
               >
                 {/* Fútbol Libre Style: Barra del Partido Activo y Opciones de Señal (Cloudflare, YouTube, Kick) */}
                 {currentLiveEvent && (
@@ -1196,36 +1225,98 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                       </div>
                     </div>
 
-                    {/* Canales / Opciones de Señal estilo Fútbol Libre */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar shrink-0">
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden md:inline">
-                        Señal:
-                      </span>
-                      {[
-                        { id: 'cloudflare', name: 'Opción 1 (Cloudflare)', emoji: '⚡' },
-                        { id: 'youtube', name: 'Opción 2 (YouTube)', emoji: '▶' },
-                        { id: 'kick', name: 'Opción 3 (Kick)', emoji: '🟢' },
-                      ].map((prov) => {
-                        const isCurrent = (currentLiveEvent.primaryProvider || 'cloudflare') === prov.id;
-                        return (
-                          <button
-                            key={prov.id}
-                            type="button"
-                            onClick={() => {
-                              const updated: LiveEvent = { ...currentLiveEvent, primaryProvider: prov.id as StreamProvider };
-                              handleSelectMatchEvent(updated);
-                            }}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                              isCurrent
-                                ? 'bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-black ring-1 ring-emerald-300'
-                                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
-                            }`}
-                          >
-                            <span>{prov.emoji}</span>
-                            <span>{prov.name}</span>
-                          </button>
-                        );
-                      })}
+                    {/* Canales / Opciones de Señal estilo Fútbol Libre + Recarga y Toggle de Chat */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5">
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar shrink-0 max-w-full">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">
+                          Señal:
+                        </span>
+                        {[
+                          {
+                            id: 'cloudflare',
+                            name: 'Opción 1 (Cloudflare)',
+                            shortName: 'Opción 1',
+                            badge: 'HD',
+                            emoji: '⚡',
+                            isConfigured: Boolean(currentLiveEvent.cloudflare?.playbackUrl?.trim()),
+                          },
+                          {
+                            id: 'youtube',
+                            name: 'Opción 2 (YouTube)',
+                            shortName: 'Opción 2',
+                            badge: 'YT',
+                            emoji: '▶',
+                            isConfigured: Boolean(currentLiveEvent.youtube?.videoId?.trim()),
+                          },
+                          {
+                            id: 'kick',
+                            name: 'Opción 3 (Kick)',
+                            shortName: 'Opción 3',
+                            badge: 'Kick',
+                            emoji: '🟢',
+                            isConfigured: Boolean(currentLiveEvent.kick?.channel?.trim()),
+                          },
+                        ].map((prov) => {
+                          const isCurrent = (currentLiveEvent.primaryProvider || 'cloudflare') === prov.id;
+                          return (
+                            <button
+                              key={prov.id}
+                              type="button"
+                              onClick={() => {
+                                const updated: LiveEvent = { ...currentLiveEvent, primaryProvider: prov.id as StreamProvider };
+                                handleSelectMatchEvent(updated);
+                              }}
+                              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                                isCurrent
+                                  ? 'bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-black ring-1 ring-emerald-300'
+                                  : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
+                              }`}
+                            >
+                              <span>{prov.emoji}</span>
+                              <span className="hidden md:inline">{prov.name}</span>
+                              <span className="md:hidden">{prov.shortName}</span>
+                              {prov.isConfigured && !isCurrent && (
+                                <span className="text-[9px] px-1 py-0.2 rounded font-bold uppercase bg-slate-800 text-emerald-400 border border-slate-700">
+                                  {prov.badge}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+
+                        {/* Botón de Recargar Señal rápida */}
+                        <button
+                          type="button"
+                          onClick={handleReloadCurrentSignal}
+                          disabled={isReloadingSignal}
+                          className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap border border-slate-700/60 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white ${
+                            isReloadingSignal ? 'opacity-70 pointer-events-none' : ''
+                          }`}
+                          title="Si la transmisión se congela o tiene búfer, haz clic para recargar la señal"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isReloadingSignal ? 'animate-spin' : ''}`} />
+                          <span className="text-[11px] hidden sm:inline">
+                            {isReloadingSignal ? 'Reconectando...' : 'Recargar Señal'}
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* Botón de Ocultar / Mostrar Chat (Desktop & Tablet) */}
+                      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                        <button
+                          type="button"
+                          onClick={handleToggleChat}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border shadow-sm ${
+                            isChatVisible
+                              ? 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700/60'
+                              : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/50 ring-1 ring-emerald-400/30'
+                          }`}
+                          title={isChatVisible ? 'Ocultar chat para ver en pantalla ancha' : 'Mostrar chat en vivo'}
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>{isChatVisible ? 'Ocultar Chat' : 'Mostrar Chat'}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1265,6 +1356,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
                 {currentLiveEvent ? (
                   <UniversalStreamPlayer
+                    key={`${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${signalReloadKey}`}
                     event={currentLiveEvent}
                     isTheaterMode={isTheaterMode}
                     setIsTheaterMode={setIsTheaterMode}
@@ -1290,16 +1382,21 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                 {/* Mobile View Toggle Buttons: Chat or Stats below the video player */}
                 <div className="lg:hidden mt-3 p-1 bg-slate-900/90 border border-slate-800 rounded-xl flex items-center gap-1">
                   <button
-                    onClick={() => setMobileViewMode('chat')}
+                    onClick={() => {
+                      setMobileViewMode('chat');
+                      setIsChatVisible(true);
+                    }}
                     className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      mobileViewMode === 'chat' ? 'bg-slate-800 text-emerald-400 font-bold shadow-sm' : 'text-slate-400'
+                      mobileViewMode === 'chat' && isChatVisible ? 'bg-slate-800 text-emerald-400 font-bold shadow-sm' : 'text-slate-400'
                     }`}
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                     <span>Chat en Directo</span>
                   </button>
                   <button
-                    onClick={() => setMobileViewMode('stream')}
+                    onClick={() => {
+                      setMobileViewMode('stream');
+                    }}
                     className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       mobileViewMode === 'stream' ? 'bg-slate-800 text-emerald-400 font-bold shadow-sm' : 'text-slate-400'
                     }`}
@@ -1312,24 +1409,44 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
               </div>
 
               {/* LIVE CHAT COLUMN */}
-              <div
-                className={`${
-                  isTheaterMode
-                    ? 'w-full h-[520px]'
-                    : 'lg:col-span-4'
-                } ${mobileViewMode === 'stream' ? 'hidden lg:block lg:h-[620px]' : 'block h-[420px] sm:h-[480px] lg:h-[620px]'}`}
-              >
-                <LiveChat
-                  onTriggerFloatingReaction={triggerReaction}
-                  isVipMember={isVipMember}
-                  chatMode={streamSettings.chatMode}
-                  officialAnnouncement={streamSettings.officialAnnouncement}
-                  activePoll={activePoll}
-                  onVotePoll={handleUpdatePoll}
-                  viewerCount={liveViewerCount}
-                />
-              </div>
+              {isChatVisible && (
+                <div
+                  className={`${
+                    isTheaterMode
+                      ? 'w-full h-[520px]'
+                      : 'lg:col-span-4'
+                  } ${mobileViewMode === 'stream' ? 'hidden lg:block lg:h-[620px]' : 'block h-[420px] sm:h-[480px] lg:h-[620px]'} transition-all duration-200`}
+                >
+                  <LiveChat
+                    onTriggerFloatingReaction={triggerReaction}
+                    isVipMember={isVipMember}
+                    chatMode={streamSettings.chatMode}
+                    officialAnnouncement={streamSettings.officialAnnouncement}
+                    activePoll={activePoll}
+                    onVotePoll={handleUpdatePoll}
+                    viewerCount={liveViewerCount}
+                    onToggleChat={handleToggleChat}
+                    isChatVisible={isChatVisible}
+                  />
+                </div>
+              )}
             </div>
+
+            {/* Floating Button to Reopen Chat when collapsed on wide screen */}
+            {!isChatVisible && (
+              <button
+                type="button"
+                onClick={handleToggleChat}
+                className="fixed bottom-6 right-6 z-40 bg-slate-900/95 hover:bg-slate-800 text-emerald-400 border border-emerald-500/50 px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2 font-bold text-xs transition-all cursor-pointer backdrop-blur-md hover:scale-105 ring-1 ring-emerald-400/20"
+                title="Abrir Chat en Directo"
+              >
+                <MessageSquare className="w-4 h-4 text-emerald-400 animate-pulse" />
+                <span>Abrir Chat</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                  {liveViewerCount >= 1000 ? `${(liveViewerCount / 1000).toFixed(1)}k` : liveViewerCount}
+                </span>
+              </button>
+            )}
 
             {/* Minuto a minuto / Estadísticas / Alineaciones */}
             <div className="pt-2 sm:pt-4">

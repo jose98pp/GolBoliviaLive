@@ -13,6 +13,8 @@ interface LiveChatProps {
   activePoll?: LivePoll;
   onVotePoll?: (poll: LivePoll) => void;
   viewerCount?: number;
+  onToggleChat?: () => void;
+  isChatVisible?: boolean;
 }
 
 export const LiveChat: React.FC<LiveChatProps> = ({
@@ -23,6 +25,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
   activePoll,
   onVotePoll,
   viewerCount = 14820,
+  onToggleChat,
 }) => {
   // Solo mensajes reales de usuarios que entran a la página (sin generador simulado)
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -295,6 +298,16 @@ export const LiveChat: React.FC<LiveChatProps> = ({
             <DollarSign className="w-3 h-3 stroke-[3]" />
             <span>Super Gol</span>
           </button>
+
+          {onToggleChat && (
+            <button
+              onClick={onToggleChat}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Ocultar chat (modo pantalla ancha)"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
