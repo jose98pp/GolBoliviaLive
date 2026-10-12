@@ -53,6 +53,37 @@ import { DonationQrAdminCard } from './DonationQrAdminCard';
 import { useClubs } from '../hooks/useClubs';
 import { verifyStreamLatency, LatencyTestResult } from '../services/latencyChecker';
 
+// ── Panel sections ──
+type AdminTab = 'stream' | 'match' | 'teams' | 'events_chat' | 'vip_analytics' | 'qr_donations';
+type AdminSection = 'live' | 'match' | 'settings';
+
+const ADMIN_SECTIONS: { id: AdminSection; label: string; tabs: AdminTab[] }[] = [
+  { id: 'live', label: 'En vivo', tabs: ['stream', 'events_chat'] },
+  { id: 'match', label: 'Partido', tabs: ['match', 'teams'] },
+  { id: 'settings', label: 'Ajustes', tabs: ['qr_donations', 'vip_analytics'] },
+];
+
+const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
+  stream: 'Señal',
+  events_chat: 'Eventos y chat',
+  match: 'Marcador',
+  teams: 'Equipos',
+  qr_donations: 'QR Apóyame',
+  vip_analytics: 'VIP y audiencia',
+};
+
+/** Mirrors the backend `requireRoles` checks so each role only sees the screens it can save. */
+const ADMIN_TAB_ROLES: Record<AdminTab, UserRole[]> = {
+  stream: ['ADMIN', 'TRANSMISOR'],
+  events_chat: ['ADMIN', 'TRANSMISOR', 'EDITOR', 'MODERADOR'],
+  match: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
+  teams: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
+  qr_donations: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
+  vip_analytics: ['ADMIN'],
+};
+
+const ADMIN_SECTION_ICONS: Record<AdminSection, React.ElementType> = { live: Radio, match: Trophy, settings: Sliders };
+
 interface SecretLoginPageProps {
   streamSettings: StreamSettings;
   onUpdateStreamSettings: (newSettings: Partial<StreamSettings>) => void;
@@ -106,12 +137,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   onToggleMatchClock,
   onUpdatePeriod,
 }) => {
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => authService.getUser());
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated());
-  const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() => {
-    // If we already have stored credentials, don't show loading blocker, render dashboard immediately!
-    return !authService.isAuthenticated() && !!authService.getToken();
-  });
+  // The dashboard is only shown after the backend confirms the stored session (/api/auth/me).
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() => !!authService.getToken());
   const [usernameInput, setUsernameInput] = useState<string>('admin');
   const [pinInput, setPinInput] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -186,7 +215,15 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const { clubs, saveClub, deleteClub } = useClubs();
 
   // Active section inside the private dashboard (Streamlined tabs with dedicated QR Apóyame console)
-  const [activeTab, setActiveTab] = useState<'stream' | 'match' | 'teams' | 'events_chat' | 'vip_analytics' | 'qr_donations'>('stream');
+  const [activeTab, setActiveTab] = useState<AdminTab>('stream');
+  const allowedTabs = (Object.keys(ADMIN_TAB_ROLES) as AdminTab[]).filter(
+    (tab) => !!currentUser && ADMIN_TAB_ROLES[tab].includes(currentUser.role)
+  );
+  const visibleSections = ADMIN_SECTIONS
+    .map((section) => ({ ...section, tabs: section.tabs.filter((tab) => allowedTabs.includes(tab)) }))
+    .filter((section) => section.tabs.length > 0);
+  const effectiveTab: AdminTab = allowedTabs.includes(activeTab) ? activeTab : allowedTabs[0] ?? 'stream';
+  const activeSection = visibleSections.find((section) => section.tabs.includes(effectiveTab));
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Video stream URL input state
@@ -543,91 +580,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
     }
   };
 
-  const [isSavingFirebase, setIsSavingFirebase] = useState(false);
-  const [firebaseSavedBanner, setFirebaseSavedBanner] = useState<string | null>(null);
-
-  const handleSaveAndConfirmAllToFirebase = async () => {
-    // 1. Strict validation of club IDs format and distinct clubs
-    const clubIdRegex = /^[a-z0-9_-]{2,32}$/;
-    const cleanHomeId = (streamSettings.homeClubId || '').trim().toLowerCase();
-    const cleanAwayId = (streamSettings.awayClubId || '').trim().toLowerCase();
-
-    if (!cleanHomeId || !clubIdRegex.test(cleanHomeId)) {
-      setFirebaseSavedBanner('❌ Error de validación: El ID del club local es inválido (debe tener entre 2 y 32 caracteres alfanuméricos).');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    if (!cleanAwayId || !clubIdRegex.test(cleanAwayId)) {
-      setFirebaseSavedBanner('❌ Error de validación: El ID del club visitante es inválido (debe tener entre 2 y 32 caracteres alfanuméricos).');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    if (cleanHomeId === cleanAwayId) {
-      setFirebaseSavedBanner('❌ Error: El club local y el club visitante no pueden ser el mismo equipo. Selecciona dos clubes distintos.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    // 2. Strict validation of scores (0 to 50)
-    if (typeof homeScore !== 'number' || isNaN(homeScore) || homeScore < 0 || homeScore > 50) {
-      setFirebaseSavedBanner('❌ Error de puntuación: Los goles del club local deben ser un número entre 0 y 50.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    if (typeof awayScore !== 'number' || isNaN(awayScore) || awayScore < 0 || awayScore > 50) {
-      setFirebaseSavedBanner('❌ Error de puntuación: Los goles del club visitante deben ser un número entre 0 y 50.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    // 3. Strict validation of match minute (0 to 130)
-    if (typeof matchMinute !== 'number' || isNaN(matchMinute) || matchMinute < 0 || matchMinute > 130) {
-      setFirebaseSavedBanner('❌ Error de tiempo: El minuto oficial debe estar entre 0 y 130 minutos.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    // 4. Validation of title length
-    const cleanTitle = (streamSettings.title || '').trim();
-    if (!cleanTitle || cleanTitle.length < 3 || cleanTitle.length > 120) {
-      setFirebaseSavedBanner('❌ Error: El título del partido debe tener entre 3 y 120 caracteres.');
-      setTimeout(() => setFirebaseSavedBanner(null), 5000);
-      return;
-    }
-
-    setIsSavingFirebase(true);
-    try {
-      const res = await apiClient.confirmAndSaveAllData({
-        streamSettings: {
-          ...streamSettings,
-          homeClubId: cleanHomeId,
-          awayClubId: cleanAwayId,
-          title: cleanTitle,
-        },
-        scoreboard: {
-          homeScore: Math.round(homeScore),
-          awayScore: Math.round(awayScore),
-          matchMinute: Math.round(matchMinute),
-          period: streamSettings.period || '2T',
-          activeEventId: activeEventId || currentEvent?.id || 'partido-001',
-          eventId: activeEventId || currentEvent?.id || 'partido-001',
-          force: true,
-        },
-        operatorName: currentUser?.name,
-        operatorRole: currentUser?.role,
-      });
-      setFirebaseSavedBanner(res.message);
-      setTimeout(() => setFirebaseSavedBanner(null), 6000);
-    } catch (err: any) {
-      setFirebaseSavedBanner(`❌ Error al guardar datos oficiales: ${err.message || 'Error de conexión o permisos insuficientes en el servidor'}`);
-      setTimeout(() => setFirebaseSavedBanner(null), 7000);
-    } finally {
-      setIsSavingFirebase(false);
-    }
-  };
 
   const handleReloadPreview = () => {
     setIsRefreshingPreview(true);
@@ -714,76 +666,43 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           </div>
         </header>
 
-        {/* Sub-Header Navigation Tabs: 5 Pestañas Claras y Sin Opciones Repetidas */}
+        {/* ── Navegación: En vivo / Partido / Ajustes (según el rol) ── */}
         <div className="bg-[#090e1c] border-b border-slate-800/90 px-4 sm:px-6 py-2 flex items-center justify-between overflow-x-auto">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab('stream')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'stream'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Radio className="w-3.5 h-3.5 text-amber-400" />
-              <span>Transmisión & Señal</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('match')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'match'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Trophy className="w-3.5 h-3.5 text-amber-400" />
-              <span>Partido & Marcador</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('teams')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'teams'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5 text-amber-400" />
-              <span>Equipos ({Object.keys(clubs).length})</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('events_chat')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'events_chat'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
-              <span>Eventos & Moderación</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('vip_analytics')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'vip_analytics'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-950/40 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Crown className="w-3.5 h-3.5 text-amber-400" />
-              <span>VIP & Audiencia</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('qr_donations')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'qr_donations'
-                  ? 'bg-rose-500 text-white shadow-md shadow-rose-950/40 font-bold'
-                  : 'text-rose-300 hover:text-white hover:bg-rose-950/40 border border-rose-500/20'
-              }`}
-              title="Cambiar imagen de código QR y opciones para el botón Apóyame"
-            >
-              <Heart className={`w-3.5 h-3.5 ${activeTab === 'qr_donations' ? 'fill-white text-white' : 'fill-rose-500 text-rose-400'}`} />
-              <span>QR Apóyame</span>
-            </button>
+            {visibleSections.map((section) => {
+              const Icon = ADMIN_SECTION_ICONS[section.id];
+              const isActive = activeSection?.id === section.id;
+              return (
+                <button
+                  key={section.id}
+                  onClick={() => setActiveTab(section.tabs[0])}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{section.label}</span>
+                </button>
+              );
+            })}
+
+            {activeSection && activeSection.tabs.length > 1 && (
+              <div className="flex items-center gap-1 pl-2 ml-1 border-l border-slate-800">
+                {activeSection.tabs.map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                      effectiveTab === tab ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-200'
+                    }`}
+                  >
+                    {ADMIN_TAB_LABELS[tab]}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="hidden lg:flex items-center gap-2">
@@ -802,36 +721,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <span>Minuto: <strong className="text-emerald-400">{matchMinute}&apos;</strong></span>
             </div>
 
-            {/* BOTÓN OFICIAL DE GUARDADO Y CONFIRMACIÓN EN FIREBASE */}
-            <button
-              onClick={handleSaveAndConfirmAllToFirebase}
-              disabled={isSavingFirebase}
-              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-950/60 transition-all cursor-pointer disabled:opacity-50"
-              title="Confirmar y persistir toda la página y señales en Google Firebase Firestore"
-            >
-              <Database className={`w-3.5 h-3.5 ${isSavingFirebase ? 'animate-spin' : 'text-black'}`} />
-              <span>{isSavingFirebase ? 'Guardando...' : 'Confirmar & Guardar en Firebase'}</span>
-            </button>
           </div>
         </div>
 
-        {/* Banner de Confirmación y Persistencia en Firebase */}
-        {firebaseSavedBanner && (
-          <div className="bg-emerald-950/90 border-b border-emerald-500/50 px-4 sm:px-6 py-2.5 text-xs text-emerald-200 flex items-center justify-between shadow-xl animate-fadeIn">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span className="font-semibold">{firebaseSavedBanner}</span>
-            </div>
-            <div className="hidden sm:flex items-center gap-2 text-[10px] font-mono text-emerald-400/80">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span>Google Cloud Firestore · gen-lang-client-0595946513 (us-west1)</span>
-            </div>
-          </div>
-        )}
-
         {/* Main Body */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
-          {activeTab === 'stream' ? (
+          {effectiveTab === 'stream' ? (
             /* PESTAÑA 1: TRANSMISIÓN & SEÑALES M3U8 */
             <div className="space-y-6">
               {/* ACCESO RÁPIDO: GESTIÓN DEL QR DEL BOTÓN APÓYAME */}
@@ -845,7 +740,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                       ¿Deseas cambiar el Código QR del botón «Apóyame»?
                     </span>
                     <span className="text-[11px] text-slate-400">
-                      Puedes subir tu imagen de QR directamente en la nueva pestaña «QR Apóyame» o al final de esta página (Sección 6).
+                      Puedes subir tu imagen de QR directamente en Ajustes › QR Apóyame.
                     </span>
                   </div>
                 </div>
@@ -1987,11 +1882,11 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                       <div className="flex items-center gap-2">
                         <h4 className="text-sm font-bold text-white font-display">Código QR de Apoyo y Donaciones</h4>
                         <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                          Pestaña 6
+                          Ajustes
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        La configuración y subida del código QR para el botón «Apóyame» ahora se gestiona de forma centralizada en la <strong>Pestaña 6 (QR Apóyame)</strong>.
+                        La configuración y subida del código QR para el botón «Apóyame» ahora se gestiona de forma centralizada en la <strong>Ajustes › QR Apóyame</strong>.
                       </p>
                     </div>
                   </div>
@@ -2001,12 +1896,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-400 hover:to-pink-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-rose-950/40 shrink-0"
                   >
                     <Heart className="w-3.5 h-3.5 fill-white" />
-                    <span>Ir a Pestaña 6 (QR Apóyame)</span>
+                    <span>Ir a Ajustes › QR Apóyame</span>
                   </button>
                 </div>
               </div>
             </div>
-          ) : activeTab === 'match' ? (
+          ) : effectiveTab === 'match' ? (
             /* PESTAÑA 2: PARTIDO & MARCADOR (CENTRO OFICIAL DE PARTIDOS Y MARCADOR) */
             <div className="space-y-6">
               <MatchDetailsEditor
@@ -2031,7 +1926,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                 events={events}
               />
             </div>
-          ) : activeTab === 'teams' ? (
+          ) : effectiveTab === 'teams' ? (
             /* PESTAÑA 3: GESTIÓN DE EQUIPOS */
             <TeamsManager
               clubs={clubs}
@@ -2040,7 +1935,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               currentHomeClubId={streamSettings.homeClubId}
               currentAwayClubId={streamSettings.awayClubId}
             />
-          ) : activeTab === 'events_chat' ? (
+          ) : effectiveTab === 'events_chat' ? (
             /* PESTAÑA 4: EVENTOS DE LÍNEA DE TIEMPO & MODERACIÓN DE CHAT */
             <EventsAndChatModeration
               streamSettings={streamSettings}
@@ -2056,7 +1951,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               onClearChat={onClearChat}
               clubs={clubs}
             />
-          ) : activeTab === 'vip_analytics' ? (
+          ) : effectiveTab === 'vip_analytics' ? (
             /* PESTAÑA 5: SUSCRIPCIONES VIP & AUDIENCIA */
             <div className="space-y-6">
               <AdminVipManagement />
@@ -2131,7 +2026,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           <div className="grid grid-cols-2 gap-1.5 text-xs">
             <button
               type="button"
-              onClick={() => { setUsernameInput('admin'); setPinInput('1925'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('admin'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'admin'
                   ? 'bg-red-500/20 border-red-500 text-red-300 font-bold'
@@ -2144,7 +2039,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('transmisor'); setPinInput('7788'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('transmisor'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'transmisor'
                   ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
@@ -2157,7 +2052,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('moderador'); setPinInput('4455'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('moderador'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'moderador'
                   ? 'bg-blue-500/20 border-blue-500 text-blue-300 font-bold'
@@ -2170,7 +2065,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('editor'); setPinInput('2233'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('editor'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'editor'
                   ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
@@ -2203,14 +2098,13 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               <label className="text-xs font-semibold text-slate-300">
                 PIN / Clave de Acceso (Validado en Servidor)
               </label>
-              <span className="text-[10px] text-slate-500 font-mono">PIN: {usernameInput === 'admin' ? '1925' : usernameInput === 'transmisor' ? '7788' : usernameInput === 'moderador' ? '4455' : '2233'}</span>
             </div>
             <div className="relative">
               <input
                 type={showPin ? 'text' : 'password'}
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                maxLength={12}
+                maxLength={64}
                 className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono tracking-widest text-slate-100 focus:outline-none focus:border-amber-500"
                 placeholder="••••"
                 required

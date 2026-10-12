@@ -25,7 +25,6 @@ import { LiveAudienceModal } from './components/LiveAudienceModal';
 import { useRealPresence } from './hooks/useRealPresence';
 import { useClubs } from './hooks/useClubs';
 import { apiClient } from './services/apiClient';
-import { LiveEventsShowcase } from './components/LiveEventsShowcase';
 import { getMatchSlug, findEventBySlug } from './utils/slug';
 import {
   subscribeScoreboardFirebase,
@@ -36,9 +35,14 @@ import {
   getDonationQrFromFirebase,
 } from './services/firebase';
 
+// ── Stream config sync (debounced) ──
+const STREAM_SYNC_DEBOUNCE_MS = 800;
+let pendingStreamSync: Partial<StreamSettings> = {};
+let streamSyncTimer: ReturnType<typeof setTimeout> | undefined;
+
 export default function App() {
   const { clubs } = useClubs();
-  const [activeTab, setActiveTab] = useState<'stream' | 'stats' | 'exclusive'>('stream');
+  const [activeTab, setActiveTab] = useState<'stream' | 'exclusive'>('stream');
   const [mobileViewMode, setMobileViewMode] = useState<'stream' | 'chat'>('stream');
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
@@ -756,10 +760,16 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       return updated;
     });
 
-    // Push authoritative match-specific update to dedicated backend endpoint & Firebase
-    apiClient.syncStreamConfig({ ...newSettings, activeEventId, eventId: activeEventId }).catch((err) => {
-      console.error('Error al sincronizar señal global:', err);
-    });
+    // Debounced so text inputs (YouTube ID, Kick channel) send one request instead of one per keystroke.
+    pendingStreamSync = { ...pendingStreamSync, ...newSettings };
+    clearTimeout(streamSyncTimer);
+    streamSyncTimer = setTimeout(() => {
+      const patch = pendingStreamSync;
+      pendingStreamSync = {};
+      apiClient.syncStreamConfig({ ...patch, activeEventId, eventId: activeEventId }).catch((err) => {
+        console.error('Error al sincronizar señal global:', err);
+      });
+    }, STREAM_SYNC_DEBOUNCE_MS);
   };
 
   const handleAddMatchEvent = (newEvent: Omit<MatchEvent, 'id'>) => {
@@ -1144,13 +1154,6 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-5 md:p-6 pb-24 md:pb-8">
         {activeTab === 'stream' && (
           <div className="space-y-4 sm:space-y-5">
-            {/* Paso 12: Portada detecta los partidos en vivo (Bolívar vs The Strongest / Blooming vs Oriente) */}
-            <LiveEventsShowcase
-              events={liveEvents}
-              activeEventId={activeEventId}
-              onSelectEvent={handleSelectMatchEvent}
-            />
-
             {/* Split Grid for Stream & Chat */}
             <div
               className={`grid gap-5 ${
@@ -1169,19 +1172,27 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
               >
                 {/* Fútbol Libre Style: Barra del Partido Activo y Opciones de Señal (Cloudflare, YouTube, Kick) */}
                 {currentLiveEvent && (
-                  <div className="mb-3 p-3 rounded-2xl liquid-glass-panel border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                  <div className="mb-3 p-3 rounded-2xl liquid-glass-panel border border-white/10 flex flex-col gap-3 shadow-lg">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="relative flex h-2.5 w-2.5 shrink-0">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
                       </span>
-                      <div className="min-w-0">
-                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
-                          Transmitiendo en Directo
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block truncate">
+                          En vivo · {currentLiveEvent.tournamentName || streamSettings.tournamentName || 'Liga Profesional'}
+                          {(currentLiveEvent.stadiumName || streamSettings.stadiumName) && ` · ${currentLiveEvent.stadiumName || streamSettings.stadiumName}`}
                         </span>
-                        <h3 className="text-sm sm:text-base font-black text-white font-display truncate">
-                          {currentLiveEvent.title || `${currentHomeClub?.name} vs ${currentAwayClub?.name}`}
-                        </h3>
+                        <div className="flex items-center gap-2 text-sm sm:text-base font-black text-white font-display min-w-0">
+                          <span className="truncate">{currentHomeClub?.badgeEmoji} {currentHomeClub?.shortName || currentHomeClub?.name}</span>
+                          <span className="font-mono tabular-nums text-emerald-400 bg-black/60 px-2 py-0.5 rounded-lg border border-slate-700 shrink-0">
+                            {currentHomeScore} - {currentAwayScore}
+                          </span>
+                          <span className="truncate">{currentAwayClub?.shortName || currentAwayClub?.name} {currentAwayClub?.badgeEmoji}</span>
+                          <span className="text-[11px] font-mono text-amber-400 shrink-0">
+                            {currentPeriod} · {currentMatchMinute}&apos;
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -1294,145 +1305,10 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                     }`}
                   >
                     <Activity className="w-3.5 h-3.5" />
-                    <span>Estadísticas & Resumen</span>
+                    <span>Partido</span>
                   </button>
                 </div>
 
-                {/* MARCADOR OFICIAL EN PORTADA & INFORMACIÓN DEL PARTIDO */}
-                <div className="mt-3 sm:mt-4 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-[#0b1222] via-[#090f1d] to-[#060a14] border-2 border-slate-800 shadow-2xl space-y-4">
-                  {/* Tournament & Badges Header */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                        <span>EN VIVO</span>
-                      </span>
-                      <span className="font-semibold text-white">{currentLiveEvent?.tournamentName || streamSettings?.tournamentName || 'Liga Profesional'}</span>
-                      <span className="text-slate-500 hidden sm:inline">·</span>
-                      <span className="text-slate-400 font-mono text-[11px] hidden sm:inline">1080p60 HLS HD</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs font-mono font-bold px-2.5 py-1 rounded-md border border-slate-700 bg-slate-900/90 text-emerald-400 flex items-center gap-1.5 shadow-sm">
-                        <span className={`w-2 h-2 rounded-full ${Boolean(currentLiveEvent?.isClockRunning) ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                        <span>{currentPeriod} · {currentMatchMinute}&apos;</span>
-                        {Boolean(currentLiveEvent?.isClockRunning) && (
-                          <span className="text-[10px] text-emerald-400/80 font-normal">
-                            {String(matchSeconds).padStart(2, '0')}&quot;
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => setActiveTab('stats')}
-                        className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 cursor-pointer transition-colors"
-                      >
-                        <Activity className="w-3.5 h-3.5 text-yellow-400" />
-                        <span className="hidden sm:inline">Estadísticas</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Main Match Title */}
-                  <h1 className="font-display font-black text-lg sm:text-xl md:text-2xl text-white tracking-tight">
-                    {currentLiveEvent?.title || streamSettings?.title || 'Partido en Directo'}
-                  </h1>
-
-                  {/* Live Scoreboard Hero Display */}
-                  <div className="bg-[#050811] rounded-xl p-3 sm:p-4 border border-slate-800 flex items-center justify-between gap-2">
-                    {/* Home Team */}
-                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                      <div
-                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl sm:text-2xl shadow-lg shrink-0 border border-white/20"
-                        style={{ backgroundColor: currentHomeClub.primaryColor }}
-                      >
-                        {currentHomeClub.badgeEmoji}
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-xs sm:text-sm font-black text-white block truncate">
-                          {currentHomeClub.name}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block truncate">
-                          {currentHomeClub.city} · Anfitrión
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Central Score - Marcador en tiempo real iniciado desde el dashboard */}
-                    <div className="flex flex-col items-center justify-center px-3 sm:px-6 py-2 rounded-2xl bg-black/60 border border-slate-700/80 shadow-lg select-none">
-                      <div className="font-mono text-2xl sm:text-4xl font-black text-emerald-400 tracking-wider tabular-nums bg-black/70 px-3 sm:px-5 py-1 rounded-xl border border-slate-700 shadow-inner flex items-center gap-1.5">
-                        <span>{currentHomeScore}</span>
-                        <span className="text-slate-500 font-light">-</span>
-                        <span>{currentAwayScore}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-300">
-                          {currentPeriod} ({currentMatchMinute}&apos;{Boolean(currentLiveEvent?.isClockRunning) ? ` ${String(matchSeconds).padStart(2, '0')}"` : ''})
-                        </span>
-                        {Boolean(currentLiveEvent?.isClockRunning) && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 animate-pulse">
-                            EN VIVO
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Away Team */}
-                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 justify-end text-right">
-                      <div className="min-w-0">
-                        <span className="text-xs sm:text-sm font-black text-white block truncate">
-                          {currentAwayClub.name}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block truncate">
-                          {currentAwayClub.city} · Visitante
-                        </span>
-                      </div>
-                      <div
-                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl sm:text-2xl shadow-lg shrink-0 border border-white/20"
-                        style={{ backgroundColor: currentAwayClub.primaryColor }}
-                      >
-                        {currentAwayClub.badgeEmoji}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Venue / Stadium & Broadcast Announcement */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-400 pt-1">
-                    <div className="flex items-center gap-1.5 font-medium text-slate-300">
-                      <MapPin className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                      <span>{streamSettings.stadiumName}</span>
-                      <span>·</span>
-                      <span className="font-mono text-amber-400">{streamSettings.altitudeMeters} m s.n.m.</span>
-                    </div>
-
-                    {streamSettings.officialAnnouncement && (
-                      <div className="text-[11px] text-slate-400 italic truncate max-w-md">
-                        📢 {streamSettings.officialAnnouncement}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Live Match Quick Summary Strip */}
-                <div className="mt-3 sm:mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 text-xs">
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-[#090e1b] border border-slate-800">
-                    <span className="text-slate-400 text-[10px] sm:text-[11px]">Posesión Balón</span>
-                    <div className="font-mono font-bold text-white text-xs sm:text-sm mt-0.5">56% - 44%</div>
-                  </div>
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-[#090e1b] border border-slate-800">
-                    <span className="text-slate-400 text-[10px] sm:text-[11px]">Tiros al Arco</span>
-                    <div className="font-mono font-bold text-white text-xs sm:text-sm mt-0.5">7 - 4</div>
-                  </div>
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-[#090e1b] border border-slate-800">
-                    <span className="text-slate-400 text-[10px] sm:text-[11px]">Espectadores</span>
-                    <div className="font-mono font-bold text-emerald-400 text-xs sm:text-sm mt-0.5">38.450 en vivo</div>
-                  </div>
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-[#090e1b] border border-slate-800">
-                    <span className="text-slate-400 text-[10px] sm:text-[11px]">Estadio y Altitud</span>
-                    <div className="font-mono font-bold text-slate-300 text-xs sm:text-sm mt-0.5">
-                      {streamSettings.altitudeMeters} m s.n.m.
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* LIVE CHAT COLUMN */}
@@ -1455,15 +1331,10 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
               </div>
             </div>
 
-            {/* PWA Mobile App Download Prompt Banner */}
-            <PWAInstallButton variant="banner" />
-
-            {/* Official Social Media Follow Banner (Kick, YouTube, TikTok, Facebook) */}
-            <SocialFollowBanner variant="cards" />
-
-            {/* Embedded Live Stats Section underneath for easy browsing */}
+            {/* Minuto a minuto / Estadísticas / Alineaciones */}
             <div className="pt-2 sm:pt-4">
               <MatchStats
+                showHeader={false}
                 homeScore={currentHomeScore}
                 awayScore={currentAwayScore}
                 matchMinute={currentMatchMinute}
@@ -1482,27 +1353,6 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
               />
             </div>
           </div>
-        )}
-
-        {/* TAB 2: DETAILED MATCH STATS */}
-        {activeTab === 'stats' && (
-          <MatchStats
-            homeScore={currentHomeScore}
-            awayScore={currentAwayScore}
-            matchMinute={currentMatchMinute}
-            isClockRunning={Boolean(currentLiveEvent?.isClockRunning)}
-            onToggleMatchClock={() => handleToggleMatchClock()}
-            streamSettings={{
-              ...streamSettings,
-              title: currentLiveEvent?.title || streamSettings?.title || 'Partido en Directo',
-              homeClubId: currentLiveEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar',
-              awayClubId: currentLiveEvent?.awayTeam || streamSettings?.awayClubId || 'strongest',
-              tournamentName: currentLiveEvent?.tournamentName || streamSettings?.tournamentName || 'División Profesional',
-              stadiumName: currentLiveEvent?.stadiumName || streamSettings?.stadiumName || '',
-              period: (currentLiveEvent?.period || streamSettings?.period || '1T') as any,
-            }}
-            events={events}
-          />
         )}
 
         {/* TAB 3: EXCLUSIVE CLUB CONTENT */}

@@ -104,7 +104,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div>
               <span className="font-display text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-1.5">
-                GolBolivia <span className="text-emerald-400 text-xs sm:text-sm font-semibold tracking-normal uppercase">Live</span>
+                GolBolivia <span className="hidden sm:inline text-emerald-400 text-xs sm:text-sm font-semibold tracking-normal uppercase">Live</span>
               </span>
             </div>
           </button>
@@ -120,37 +120,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-red-400 text-[11px]">viendo en vivo</span>
           </button>
 
-          {/* Marcador en Vivo Compacto en Header (Desktop) - Marcador en tiempo real */}
-          {homeClub && awayClub && (
-            <div
-              className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-full text-xs shadow-md select-none ${
-                isClockRunning
-                  ? 'bg-emerald-950/80 border border-emerald-500/70 ring-1 ring-emerald-500/40 text-emerald-200'
-                  : 'bg-slate-900/90 border border-slate-700/80 text-slate-300'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${isClockRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-              <div className="flex items-center gap-1 font-bold text-slate-200">
-                <span>{homeClub.badgeEmoji}</span>
-                <span className="truncate max-w-[80px]">{homeClub.shortName}</span>
-              </div>
-              <span className="font-mono text-emerald-400 font-black px-1.5 py-0.2 bg-black/60 rounded border border-slate-800 tabular-nums">
-                {homeScore} - {awayScore}
-              </span>
-              <div className="flex items-center gap-1 font-bold text-slate-200">
-                <span className="truncate max-w-[80px]">{awayClub.shortName}</span>
-                <span>{awayClub.badgeEmoji}</span>
-              </div>
-              <span className="text-[10px] text-amber-400 font-mono font-bold pl-1 border-l border-slate-700 flex items-center gap-1">
-                <span>{matchMinute}&apos;</span>
-                {isClockRunning && (
-                  <span className="text-[9px] text-emerald-400 font-normal">
-                    {String(matchSeconds).padStart(2, '0')}&quot;
-                  </span>
-                )}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Zone 2: Desktop Navigation Links */}
@@ -165,15 +134,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Transmisión</span>
           </button>
           <button
-            onClick={() => setActiveTab('stats')}
-            className={`transition-colors flex items-center gap-1.5 hover:text-white cursor-pointer ${
-              activeTab === 'stats' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400 pb-0.5' : ''
-            }`}
-          >
-            <Activity className="w-4 h-4" />
-            <span>Estadísticas & Marcador</span>
-          </button>
-          <button
             onClick={() => setActiveTab('exclusive')}
             className={`transition-colors flex items-center gap-1.5 hover:text-white cursor-pointer ${
               activeTab === 'exclusive' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400 pb-0.5' : ''
@@ -186,12 +146,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Zone 3: Actions (Desktop + Mobile) */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Creator Social Links (Desktop only) */}
-          <div className="hidden lg:flex items-center gap-1.5 border-r border-slate-800 pr-2.5 mr-0.5">
-            <span className="text-[11px] text-slate-400 font-medium">Sígueme:</span>
-            <SocialFollowBanner variant="compact" />
-          </div>
-
           {/* Audiencia en Tiempo Real - Mobile ONLY */}
           <button
             onClick={openAudienceModal}
@@ -210,7 +164,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="Apoya la transmisión independiente de GolBolivia (Donar vía QR)"
           >
             <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-rose-500 text-rose-400 animate-pulse" />
-            <span className="font-display font-black tracking-wide">Apóyame</span>
+            <span className="hidden sm:inline font-display font-black tracking-wide">Apóyame</span>
           </button>
 
           {/* PWA Install Button (Desktop & Tablet) */}
@@ -362,23 +316,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-[10px] text-slate-500 font-mono">HD</span>
             </button>
 
-            <button
-              onClick={() => {
-                setActiveTab('stats');
-                setMobileMenuOpen(false);
-              }}
-              className={`p-3 text-left text-xs rounded-xl flex items-center justify-between transition-colors ${
-                activeTab === 'stats'
-                  ? 'bg-slate-800 border border-emerald-500/50 text-emerald-400 font-bold'
-                  : 'bg-slate-900/60 border border-slate-800 text-slate-200'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Activity className="w-4 h-4 text-blue-400" />
-                <span>Estadísticas & Tabla de Posiciones</span>
-              </div>
-              <span className="text-[10px] text-slate-500 font-mono">Minuto a Minuto</span>
-            </button>
 
             <button
               onClick={() => {

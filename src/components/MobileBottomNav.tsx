@@ -52,17 +52,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         </button>
 
         {/* Stats */}
-        <button
-          onClick={() => setActiveTab('stats')}
-          className={`flex-1 flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
-            activeTab === 'stats'
-              ? 'text-emerald-400 font-semibold'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Activity className="w-5 h-5" />
-          <span className="text-[10px] tracking-tight mt-1">Estadísticas</span>
-        </button>
 
         {/* Exclusive VIP */}
         <button

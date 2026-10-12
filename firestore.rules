@@ -1,54 +1,71 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Lectura pública para visitantes en todas las colecciones oficiales
-    match /{document=**} {
-      allow read: if true;
+    // Solo el backend escribe. Su usuario de Firebase Auth debe tener un documento en /admins/{uid}
+    // (créalo a mano desde la consola de Firebase; nadie puede escribir en /admins desde la app).
+    function isBackend() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // Colecciones de configuración y ajustes oficiales (incluyendo QR y señal de streaming)
+    match /admins/{uid} {
+      allow read, write: if false;
+    }
+
     match /config/{docId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isBackend();
     }
 
-    // Marcador y estado en tiempo real
     match /match/{docId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isBackend();
     }
 
-    // Partidos y eventos en vivo
     match /liveEvents/{eventId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isBackend();
     }
 
-    // Equipos y clubes
     match /clubs/{clubId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isBackend();
     }
 
-    // Eventos e incidencias del partido
     match /events/{eventId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isBackend();
     }
 
-    // Chat interactivo
-    match /chat/{msgId} {
-      allow create: if request.resource.data.text is string 
-                    && request.resource.data.text.size() > 0 
-                    && request.resource.data.text.size() <= 300;
-      allow update, delete: if true;
-    }
-
-    // Encuestas interactivas
     match /polls/{pollId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isBackend();
     }
 
-    // Registro de auditoría
+    match /confirmations/{logId} {
+      allow read: if true;
+      allow write: if isBackend();
+    }
+
     match /audit_logs/{logId} {
-      allow read, create: if true;
+      allow read: if true;
+      allow create: if isBackend();
       allow update, delete: if false;
+    }
+
+    // Chat: los hinchas pueden crear mensajes validados; solo el backend modera (edita/borra).
+    match /chat/{msgId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(
+                         ['id', 'sender', 'clubId', 'text', 'timestamp', 'isVip', 'superChatAmount', 'createdAt'])
+                    && request.resource.data.id == msgId
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 300
+                    && request.resource.data.sender is string
+                    && request.resource.data.sender.size() > 0
+                    && request.resource.data.sender.size() <= 40;
+      allow update, delete: if isBackend();
     }
   }
 }
-
