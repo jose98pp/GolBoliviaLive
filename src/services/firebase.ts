@@ -799,21 +799,19 @@ export async function saveMatchScoreboardFirebase(
 
   return await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(ref);
-    let nextVersion = 1;
-    if (snap.exists()) {
-      const existing = snap.data();
-      const existingVersion = typeof existing?.version === 'number' ? existing.version : 0;
-      const isForce = Boolean(data.force);
-      if (!isForce && typeof data.version === 'number' && data.version > 0 && data.version < existingVersion) {
-        throw new Error(
-          `Marcador desactualizado: La versión actual en Firestore (v${existingVersion}) es superior a la versión enviada (v${data.version}). Guardado rechazado.`
-        );
-      }
-      const baseVersion = typeof data.version === 'number' && data.version > 0 ? Math.max(existingVersion, data.version) : existingVersion;
-      nextVersion = baseVersion + 1;
-    } else {
-      nextVersion = typeof data.version === 'number' && data.version > 0 ? data.version : 1;
+    if (!snap.exists()) {
+      throw new Error(`El partido "${safeId}" no existe en Firestore o fue eliminado.`);
     }
+    const existing = snap.data();
+    const existingVersion = typeof existing?.version === 'number' ? existing.version : 0;
+    const isForce = Boolean(data.force);
+    if (!isForce && typeof data.version === 'number' && data.version > 0 && data.version < existingVersion) {
+      throw new Error(
+        `Marcador desactualizado: La versión actual en Firestore (v${existingVersion}) es superior a la versión enviada (v${data.version}). Guardado rechazado.`
+      );
+    }
+    const baseVersion = typeof data.version === 'number' && data.version > 0 ? Math.max(existingVersion, data.version) : existingVersion;
+    const nextVersion = baseVersion + 1;
 
     const sanitized: any = {
       id: safeId,
@@ -838,13 +836,17 @@ export async function saveMatchScoreboardFirebase(
   });
 }
 
-function hydrateLiveEventDoc(d: any): LiveEvent {
+function hydrateLiveEventDoc(d: any): LiveEvent | null {
   const raw = d.data() as Partial<LiveEvent>;
   const docId = d.id;
   const safeId = raw.id || docId;
-  const home = raw.homeTeam || (docId === 'partido-002' ? 'blooming' : 'bolivar');
-  const away = raw.awayTeam || (docId === 'partido-002' ? 'oriente' : 'strongest');
-  const defaultTitle = docId === 'partido-002' ? 'Blooming vs Oriente Petrolero' : 'Bolívar vs The Strongest';
+  // Regla crítica: Si el documento no tiene título ni equipos, es un documento huérfano/marcador y NO un partido
+  if (!raw.title && !raw.homeTeam && !raw.awayTeam) {
+    return null;
+  }
+  const home = raw.homeTeam || 'bolivar';
+  const away = raw.awayTeam || 'strongest';
+  const defaultTitle = `${home} vs ${away}`;
   const title = (raw.title && raw.title.trim()) || defaultTitle;
 
   return {
@@ -883,7 +885,10 @@ export async function getLiveEventsFromFirebase(): Promise<LiveEvent[]> {
     const snap = await getDocs(colRef);
     if (!snap.empty) {
       const list: LiveEvent[] = [];
-      snap.forEach((d) => list.push(hydrateLiveEventDoc(d)));
+      snap.forEach((d) => {
+        const item = hydrateLiveEventDoc(d);
+        if (item) list.push(item);
+      });
       return list;
     }
   } catch (err) {
@@ -902,7 +907,10 @@ export function subscribeLiveEventsFirebase(
       (snap) => {
         if (!snap.empty) {
           const list: LiveEvent[] = [];
-          snap.forEach((d) => list.push(hydrateLiveEventDoc(d)));
+          snap.forEach((d) => {
+            const item = hydrateLiveEventDoc(d);
+            if (item) list.push(item);
+          });
           callback(list);
         } else {
           callback([]);

@@ -5,8 +5,6 @@ import { LiveEvent } from '../types/football';
 
 export function getMatchSlug(event: LiveEvent): string {
   if (!event) return 'partido';
-  if (event.id === 'partido-001') return 'bolivar-the-strongest';
-  if (event.id === 'partido-002') return 'blooming-oriente';
 
   // Slugify title safely
   const rawTitle = typeof event.title === 'string' ? event.title.trim() : '';

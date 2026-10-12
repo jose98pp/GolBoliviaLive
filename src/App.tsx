@@ -149,7 +149,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((item, idx) => sanitizeClientEvent(item, idx));
+          const valid = parsed.filter((item: any) => item && item.id && (item.title || (item.homeTeam && item.awayTeam)));
+          return valid.map((item, idx) => sanitizeClientEvent(item, idx));
         }
       }
     } catch {}
@@ -157,7 +158,19 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     // Esperar a la carga del backend (API) y mostrar estado vacío si no existen partidos.
     return [];
   });
-  const [activeEventId, setActiveEventId] = useState<string>('partido-001');
+  const [activeEventId, setActiveEventId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('golbolivia_live_events');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const valid = parsed.filter((item: any) => item && item.id && (item.title || (item.homeTeam && item.awayTeam)));
+          if (valid.length > 0) return valid[0].id;
+        }
+      }
+    } catch {}
+    return '';
+  });
   const activeEventIdRef = useRef(activeEventId);
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [donationQrInfo, setDonationQrInfo] = useState<DonationQrInfo | undefined>(undefined);
@@ -382,9 +395,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       } else if (type === 'LIVE_EVENTS_UPDATED') {
         if (Array.isArray(data)) {
           setLiveEvents((prev) => {
-            // Regla 3: SIEMPRE fusionar con validación de versiones. Nunca sustituir lista completa.
-            // Las eliminaciones se procesan mediante LIVE_EVENT_DELETED, no aquí.
-            const merged = mergeConfirmedEvents(prev, data);
+            const incomingIds = new Set(data.map((e: any) => e.id));
+            const prevFiltered = prev.filter((p) => incomingIds.has(p.id));
+            const merged = mergeConfirmedEvents(prevFiltered, data);
             try {
               localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
             } catch {}
@@ -402,10 +415,11 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
     // 4. Real-time Firebase Firestore Push Listeners: Listen to liveEvents collection (Fuente única de datos reales por partido)
     const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((fbEvents) => {
-      if (fbEvents && Array.isArray(fbEvents) && fbEvents.length > 0) {
+      if (Array.isArray(fbEvents)) {
         setLiveEvents((prev) => {
-          // Regla 3: Firebase es fuente de verdad. Siempre fusionar con validación de versiones.
-          const merged = mergeConfirmedEvents(prev, fbEvents);
+          const incomingIds = new Set(fbEvents.map((e: any) => e.id));
+          const prevFiltered = prev.filter((p) => incomingIds.has(p.id));
+          const merged = mergeConfirmedEvents(prevFiltered, fbEvents);
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
           } catch {}
@@ -416,10 +430,11 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
     // Carga inicial sincronizada desde el backend
     apiClient.getLiveEvents().then((evts) => {
-      if (evts && Array.isArray(evts) && evts.length > 0) {
+      if (Array.isArray(evts)) {
         setLiveEvents((prev) => {
-          // Regla 3: Siempre fusionar con validación de versiones en la carga inicial.
-          const merged = mergeConfirmedEvents(prev, evts);
+          const incomingIds = new Set(evts.map((e: any) => e.id));
+          const prevFiltered = prev.filter((p) => incomingIds.has(p.id));
+          const merged = mergeConfirmedEvents(prevFiltered, evts);
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
           } catch {}
@@ -464,6 +479,17 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       if (matched) {
         prevActiveEventIdRef.current = matched.id;
         setActiveEventId(matched.id);
+      } else if (liveEvents.length > 0) {
+        const fallback = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0];
+        if (fallback) {
+          prevActiveEventIdRef.current = fallback.id;
+          setActiveEventId(fallback.id);
+          if (path.includes('/live/')) {
+            try {
+              window.history.replaceState(null, '', `/live/${getMatchSlug(fallback)}`);
+            } catch {}
+          }
+        }
       }
     };
 
@@ -818,33 +844,41 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       console.warn('[App] Advertencia al eliminar partido en servidor/Firebase:', err.message || err);
     }
 
-    setLiveEvents((prev) => {
-      const remaining = prev.filter((e) => e.id !== id);
-      try {
-        localStorage.setItem('golbolivia_live_events', JSON.stringify(remaining));
-      } catch {}
-      return remaining;
-    });
+    const remaining = liveEvents.filter((e) => e.id !== id);
+    setLiveEvents(remaining);
+    try {
+      localStorage.setItem('golbolivia_live_events', JSON.stringify(remaining));
+    } catch {}
 
-    if (activeEventId === id) {
-      setLiveEvents((prev) => {
-        const next = prev.find((e) => e.id !== id) || prev[0];
-        if (next) {
-          setActiveEventId(next.id);
-          setStreamSettings((s) => ({
-            ...s,
-            title: next.title,
-            homeClubId: next.homeTeam,
-            awayClubId: next.awayTeam,
-            tournamentName: next.tournamentName || s.tournamentName || '',
-            stadiumName: next.stadiumName || s.stadiumName || '',
-            period: (next.period as any) || s.period || '1T',
-            homeScore: next.homeScore ?? s.homeScore,
-            awayScore: next.awayScore ?? s.awayScore,
-          }));
+    if (activeEventId === id || !remaining.some((e) => e.id === activeEventId)) {
+      if (remaining.length > 0) {
+        const next = remaining[0];
+        setActiveEventId(next.id);
+        const slug = getMatchSlug(next);
+        if (typeof window !== 'undefined' && window.history) {
+          try {
+            window.history.replaceState(null, '', `/live/${slug}`);
+          } catch {}
         }
-        return prev;
-      });
+        setStreamSettings((s) => ({
+          ...s,
+          title: next.title,
+          homeClubId: next.homeTeam,
+          awayClubId: next.awayTeam,
+          tournamentName: next.tournamentName || s.tournamentName || '',
+          stadiumName: next.stadiumName || s.stadiumName || '',
+          period: (next.period as any) || s.period || '1T',
+          homeScore: next.homeScore ?? s.homeScore,
+          awayScore: next.awayScore ?? s.awayScore,
+        }));
+      } else {
+        setActiveEventId('');
+        if (typeof window !== 'undefined' && window.history) {
+          try {
+            window.history.replaceState(null, '', '/');
+          } catch {}
+        }
+      }
     }
 
     setActiveToast({

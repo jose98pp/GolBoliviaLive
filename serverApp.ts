@@ -447,21 +447,14 @@ function loadPersistedState(): void {
           state.clubs = { ...BOLIVIAN_CLUBS, ...saved.clubs };
         }
         if (Array.isArray(saved.liveEvents) && saved.liveEvents.length > 0) {
-          state.liveEvents = saved.liveEvents.map((ev: any, idx: number) => {
-            const docId = ev.id || `partido-00${idx + 1}`;
-            const home = ev.homeTeam || (docId === 'partido-002' ? 'blooming' : 'bolivar');
-            const away = ev.awayTeam || (docId === 'partido-002' ? 'oriente' : 'strongest');
-            const defaultTitle = docId === 'partido-002' ? 'Blooming vs Oriente Petrolero' : 'Bolívar vs The Strongest';
-            return {
+          // Filter out orphan docs that lack required fields (scoreboard-only entries, no match metadata)
+          state.liveEvents = saved.liveEvents
+            .filter((ev: any) => ev && ev.id && ev.homeTeam && ev.awayTeam && ev.title)
+            .map((ev: any) => ({
               ...ev,
-              id: docId,
-              title: (typeof ev.title === 'string' && ev.title.trim()) || defaultTitle,
-              homeTeam: home,
-              awayTeam: away,
               isLive: ev.isLive !== undefined ? Boolean(ev.isLive) : true,
               primaryProvider: ev.primaryProvider || 'cloudflare',
-            };
-          });
+            }));
         }
         console.log(`[GolBolivia Backend] Estado persistido cargado con éxito desde ${STATE_FILE}`);
         console.log(`[GolBolivia Backend] Señal activa: ${state.streamSettings.customVideoUrl || '(simulación)'}`);
@@ -494,8 +487,15 @@ function loadPersistedState(): void {
 
   getLiveEventsFromFirebase().then((fbEvents) => {
     if (Array.isArray(fbEvents) && fbEvents.length > 0) {
-      state.liveEvents = fbEvents;
-      console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase (fuente única): ${fbEvents.length} partidos`);
+      // Filter out orphan docs that only contain scoreboard data (no homeTeam/title = not a real match event)
+      const validEvents = fbEvents.filter((e) => e && e.id && e.homeTeam && e.awayTeam && e.title);
+      if (validEvents.length > 0) {
+        state.liveEvents = validEvents;
+        console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase (fuente única): ${validEvents.length} partidos válidos (${fbEvents.length - validEvents.length} docs huérfanos ignorados)`);
+      } else {
+        console.log('[GolBolivia Backend] Firebase tiene docs pero sin datos de partido válidos. Lista de partidos vacía.');
+        state.liveEvents = [];
+      }
     } else {
       // Regla 2: NO crear partidos ficticios por defecto. Si Firebase no tiene partidos,
       // el sistema espera configuración real desde el panel de administración.
