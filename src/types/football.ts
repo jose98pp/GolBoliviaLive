@@ -117,7 +117,7 @@ export interface PublicStreamState {
   awayClubId: string;
   stadiumName: string;
   altitudeMeters: number;
-  period: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
+  period: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado' | 'Revisión VAR';
   broadcastMode?: 'obs_custom' | 'simulation' | 'pre_match' | 'halftime' | 'var' | 'post_match';
   chatMode?: 'all' | 'subscribers' | 'muted';
   officialAnnouncement?: string;
@@ -148,7 +148,7 @@ export interface StreamSettings {
   awayClubId: string;
   stadiumName: string;
   altitudeMeters: number;
-  period: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
+  period: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado' | 'Revisión VAR';
   isLive: boolean;
   rtmpServer?: string; // Private only - never exposed to public viewers
   streamKey?: string;  // Private only - never exposed to public viewers
@@ -225,7 +225,7 @@ export interface LiveEvent {
   fallbackOrder: StreamProvider[];
   tournamentName?: string;
   stadiumName?: string;
-  period?: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
+  period?: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado' | 'Revisión VAR';
   homeScore?: number;
   awayScore?: number;
   matchMinute?: number;

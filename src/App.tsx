@@ -27,6 +27,13 @@ import { useClubs } from './hooks/useClubs';
 import { apiClient } from './services/apiClient';
 import { getMatchSlug, findEventBySlug } from './utils/slug';
 import {
+  getMatchStatusInfo,
+  filterMatchesByCategory,
+  getMatchCategoryCounts,
+  MatchFilterCategory,
+} from './utils/matchStatus';
+import { LiveEventsShowcase } from './components/LiveEventsShowcase';
+import {
   subscribeScoreboardFirebase,
   subscribeMatchEventsFirebase,
   subscribeStreamSettingsFirebase,
@@ -251,6 +258,12 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   const currentAwayScore = typeof currentLiveEvent?.awayScore === 'number' ? currentLiveEvent.awayScore : 0;
   const currentMatchMinute = typeof currentLiveEvent?.matchMinute === 'number' ? currentLiveEvent.matchMinute : 0;
   const currentPeriod = (currentLiveEvent?.period || streamSettings?.period || '1T') as any;
+
+  // Filtro de Partidos (En Vivo, Hoy, Finalizados) y Estado de Partido (VAR, Medio Tiempo, Finalizado)
+  const [matchFilter, setMatchFilter] = useState<MatchFilterCategory>('all');
+  const matchCategoryCounts = getMatchCategoryCounts(liveEvents);
+  const filteredLiveEvents = filterMatchesByCategory(liveEvents, matchFilter);
+  const currentStatusInfo = getMatchStatusInfo(currentLiveEvent);
 
   // Authoritative Backend Synchronization: Dedicated Match-Specific Stream Sync, GET /api/live & SSE /api/events
   useEffect(() => {
@@ -1204,15 +1217,28 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                   <div className="mb-3 p-3 rounded-2xl liquid-glass-panel border border-white/10 flex flex-col gap-3 shadow-lg">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="relative flex h-2.5 w-2.5 shrink-0">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                        {currentStatusInfo.isPulsing && (
+                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentStatusInfo.dotClass}`} />
+                        )}
+                        <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${currentStatusInfo.dotClass}`} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block truncate">
-                          En vivo · {currentLiveEvent.tournamentName || streamSettings.tournamentName || 'Liga Profesional'}
-                          {(currentLiveEvent.stadiumName || streamSettings.stadiumName) && ` · ${currentLiveEvent.stadiumName || streamSettings.stadiumName}`}
-                        </span>
-                        <div className="flex items-center gap-2 text-sm sm:text-base font-black text-white font-display min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block truncate">
+                            {currentStatusInfo.shortLabel} · {currentLiveEvent.tournamentName || streamSettings.tournamentName || 'Liga Profesional'}
+                            {(currentLiveEvent.stadiumName || streamSettings.stadiumName) && ` · ${currentLiveEvent.stadiumName || streamSettings.stadiumName}`}
+                          </span>
+                          {/* Badge de estado autoritativo (Medio Tiempo, VAR, Finalizado, etc.) */}
+                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider border shrink-0 flex items-center gap-1 shadow-sm ${currentStatusInfo.badgeClass}`}>
+                            {currentStatusInfo.icon === 'var' && <span>🔍</span>}
+                            {currentStatusInfo.icon === 'pause' && <span>⏸</span>}
+                            {currentStatusInfo.icon === 'finish' && <span>🏁</span>}
+                            {currentStatusInfo.icon === 'clock' && <span>⏰</span>}
+                            {currentStatusInfo.icon === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                            <span>{currentStatusInfo.label}</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm sm:text-base font-black text-white font-display min-w-0 mt-0.5">
                           <span className="truncate">{currentHomeClub?.badgeEmoji} {currentHomeClub?.shortName || currentHomeClub?.name}</span>
                           <span className="font-mono tabular-nums text-emerald-400 bg-black/60 px-2 py-0.5 rounded-lg border border-slate-700 shrink-0">
                             {currentHomeScore} - {currentAwayScore}
@@ -1321,36 +1347,103 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                   </div>
                 )}
 
-                {/* Multi-Match Switcher si existen 2 o más partidos configurados */}
-                {liveEvents.length > 1 && (
-                  <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap shrink-0">
-                      Cambiar partido:
-                    </span>
-                    {liveEvents.map((evt, idx) => {
-                      const isSelected = evt.id === activeEventId;
-                      const provider = evt.primaryProvider || 'cloudflare';
-                      const homeClub = clubs[evt.homeTeam] || BOLIVIAN_CLUBS[evt.homeTeam];
-                      const awayClub = clubs[evt.awayTeam] || BOLIVIAN_CLUBS[evt.awayTeam];
-                      const evtTitle = (evt.title || '').trim() || (homeClub?.name && awayClub?.name ? `${homeClub.name} vs ${awayClub.name}` : `Partido ${idx + 1}`);
-                      return (
+                {/* Filtro de Partidos (En Vivo, Hoy, Finalizados) y Selector */}
+                {liveEvents.length > 0 && (
+                  <div className="mb-3 p-2.5 rounded-2xl liquid-glass-panel border border-white/10 space-y-2.5 shadow-md">
+                    {/* Fila de Filtros por Categoría */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar max-w-full">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">
+                          Partidos:
+                        </span>
+                        {[
+                          { id: 'all' as MatchFilterCategory, label: 'Todos', count: matchCategoryCounts.all, emoji: '⚽' },
+                          { id: 'live' as MatchFilterCategory, label: 'En Vivo', count: matchCategoryCounts.live, emoji: '🔴' },
+                          { id: 'today' as MatchFilterCategory, label: 'Hoy', count: matchCategoryCounts.today, emoji: '⏰' },
+                          { id: 'finished' as MatchFilterCategory, label: 'Finalizados', count: matchCategoryCounts.finished, emoji: '🏁' },
+                        ].map((tab) => {
+                          const isActive = matchFilter === tab.id;
+                          return (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              onClick={() => setMatchFilter(tab.id)}
+                              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                                isActive
+                                  ? 'bg-emerald-400 text-black font-black shadow-md shadow-emerald-500/20 ring-1 ring-emerald-300'
+                                  : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
+                              }`}
+                            >
+                              <span>{tab.emoji}</span>
+                              <span>{tab.label}</span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                                  isActive ? 'bg-black/30 text-white' : 'bg-slate-800 text-slate-400'
+                                }`}
+                              >
+                                {tab.count}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <span className="text-[11px] text-slate-400 font-medium hidden md:inline shrink-0">
+                        {filteredLiveEvents.length} {filteredLiveEvents.length === 1 ? 'partido' : 'partidos'}
+                      </span>
+                    </div>
+
+                    {/* Lista de Partidos Filtrados con Badges autoritativos (VAR, Medio Tiempo, Finalizado, etc.) */}
+                    {filteredLiveEvents.length > 0 ? (
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 no-scrollbar">
+                        {filteredLiveEvents.map((evt, idx) => {
+                          const isSelected = evt.id === activeEventId;
+                          const provider = evt.primaryProvider || 'cloudflare';
+                          const homeClub = clubs[evt.homeTeam] || BOLIVIAN_CLUBS[evt.homeTeam];
+                          const awayClub = clubs[evt.awayTeam] || BOLIVIAN_CLUBS[evt.awayTeam];
+                          const evtTitle = (evt.title || '').trim() || (homeClub?.name && awayClub?.name ? `${homeClub.name} vs ${awayClub.name}` : `Partido ${idx + 1}`);
+                          const status = getMatchStatusInfo(evt);
+                          const homeScore = typeof evt.homeScore === 'number' ? evt.homeScore : 0;
+                          const awayScore = typeof evt.awayScore === 'number' ? evt.awayScore : 0;
+
+                          return (
+                            <button
+                              key={evt.id || `live-match-pill-${idx}`}
+                              type="button"
+                              onClick={() => handleSelectMatchEvent(evt)}
+                              className={`px-3 py-1.5 text-xs flex items-center gap-2 whitespace-nowrap cursor-pointer transition-all rounded-xl border ${
+                                isSelected
+                                  ? 'bg-emerald-950/70 text-white font-bold border-emerald-500 shadow-md shadow-emerald-950/40 ring-1 ring-emerald-400/40'
+                                  : 'bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 hover:text-white border-slate-700/60'
+                              }`}
+                            >
+                              <span className={`w-2 h-2 rounded-full ${status.dotClass} ${status.isPulsing ? 'animate-pulse' : ''}`} />
+                              <span className="font-semibold">{evtTitle}</span>
+                              <span className="font-mono text-emerald-400 bg-black/60 px-1.5 py-0.5 rounded text-[11px] border border-slate-800">
+                                {homeScore}-{awayScore}
+                              </span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-black tracking-wider border uppercase ${status.badgeClass}`}>
+                                {status.shortLabel}
+                              </span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-400 uppercase">
+                                {provider.toUpperCase()}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="py-3 px-3 text-center text-xs text-slate-400 bg-slate-950/50 rounded-xl border border-slate-800/60 flex items-center justify-center gap-2">
+                        <span>No hay partidos registrados en &ldquo;{matchFilter === 'live' ? 'En Vivo' : matchFilter === 'today' ? 'Hoy' : 'Finalizados'}&rdquo;.</span>
                         <button
-                          key={evt.id || `live-match-pill-${idx}`}
-                          onClick={() => handleSelectMatchEvent(evt)}
-                          className={`px-3 py-1.5 text-xs flex items-center gap-2 whitespace-nowrap cursor-pointer transition-all ${
-                            isSelected
-                              ? 'liquid-glass-pill liquid-glass-pill-active text-white font-bold ring-1 ring-emerald-500/40'
-                              : 'liquid-glass-pill text-slate-300 hover:text-white'
-                          }`}
+                          type="button"
+                          onClick={() => setMatchFilter('all')}
+                          className="text-emerald-400 hover:text-emerald-300 font-bold underline cursor-pointer"
                         >
-                          <span className={`w-2 h-2 rounded-full ${evt.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                          <span>{evtTitle}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-400">
-                            {provider.toUpperCase()}
-                          </span>
+                          Ver todos ({matchCategoryCounts.all})
                         </button>
-                      );
-                    })}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1469,6 +1562,17 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                 events={events}
               />
             </div>
+
+            {/* Vitrina de Partidos: Filtro por categoría y reproducción directa */}
+            {liveEvents.length > 0 && (
+              <div className="pt-2">
+                <LiveEventsShowcase
+                  events={liveEvents}
+                  activeEventId={activeEventId}
+                  onSelectEvent={handleSelectMatchEvent}
+                />
+              </div>
+            )}
           </div>
         )}
 

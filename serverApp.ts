@@ -294,7 +294,7 @@ interface AppState {
     awayClubId: string;
     stadiumName: string;
     altitudeMeters: number;
-    period: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
+    period: '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado' | 'Revisión VAR';
     isLive: boolean;
     rtmpServer: string;
     streamKey: string;
@@ -1415,7 +1415,7 @@ app.post(
       if (safeHome !== undefined) activeEvt.homeScore = safeHome;
       if (safeAway !== undefined) activeEvt.awayScore = safeAway;
       if (safeMin !== undefined) activeEvt.matchMinute = safeMin;
-      if (period !== undefined && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado'].includes(period)) {
+      if (period !== undefined && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado', 'Revisión VAR'].includes(period)) {
         activeEvt.period = period;
       }
       if (typeof isClockRunning === 'boolean') {
@@ -1427,7 +1427,7 @@ app.post(
     if (safeHome !== undefined) state.scoreboard.homeScore = safeHome;
     if (safeAway !== undefined) state.scoreboard.awayScore = safeAway;
     if (safeMin !== undefined) state.scoreboard.matchMinute = safeMin;
-    if (period !== undefined && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado'].includes(period)) {
+    if (period !== undefined && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado', 'Revisión VAR'].includes(period)) {
       state.scoreboard.period = period;
       state.streamSettings.period = period as any;
     }
@@ -1722,7 +1722,7 @@ if (!process.env.VERCEL) {
   setInterval(() => {
     let anyUpdated = false;
     for (const evt of state.liveEvents) {
-      if (evt.isLive && evt.isClockRunning && evt.period !== 'Descanso' && evt.period !== 'Finalizado') {
+      if (evt.isLive && evt.isClockRunning && evt.period !== 'Descanso' && evt.period !== 'Finalizado' && evt.period !== 'Revisión VAR') {
         const currentMin = typeof evt.matchMinute === 'number' ? evt.matchMinute : 0;
         if (currentMin < 130) {
           evt.matchMinute = currentMin + 1;

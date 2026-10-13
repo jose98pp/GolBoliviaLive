@@ -289,7 +289,7 @@ export async function saveScoreboardToFirebase(data: {
   if (data.matchMinute !== undefined) {
     sanitized.matchMinute = validateMinute(data.matchMinute);
   }
-  if (data.period && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado'].includes(data.period)) {
+  if (data.period && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado', 'Revisión VAR'].includes(data.period)) {
     sanitized.period = data.period;
   }
   await setDoc(ref, sanitized, { merge: true });
@@ -848,7 +848,7 @@ export async function saveMatchScoreboardFirebase(
     if (data.homeScore !== undefined) sanitized.homeScore = validateScore(data.homeScore);
     if (data.awayScore !== undefined) sanitized.awayScore = validateScore(data.awayScore);
     if (data.matchMinute !== undefined) sanitized.matchMinute = validateMinute(data.matchMinute);
-    if (data.period && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado'].includes(data.period)) {
+    if (data.period && ['1T', 'Descanso', '2T', 'Tiempo Extra', 'Finalizado', 'Revisión VAR'].includes(data.period)) {
       sanitized.period = data.period;
     }
     if (typeof data.isClockRunning === 'boolean') {

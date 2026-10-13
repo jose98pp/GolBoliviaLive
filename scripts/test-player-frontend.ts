@@ -513,6 +513,118 @@ async function runTests() {
   // Verificación estricta: NO invocar borrado de base de datos en toggle
   assert(!appSource.includes('clearChatInFirebase') || !appSource.includes('handleToggleChat = () => { clearChatInFirebase'), 'Chat DB: Alternar chat NO borra mensajes de la base de datos');
 
+  // 37. MEJORA 3: FILTRO DE PARTIDOS (EN VIVO, HOY, FINALIZADOS) Y ESTADOS TV (MEDIO TIEMPO, VAR, FINALIZADO)
+  const {
+    getMatchStatusInfo,
+    filterMatchesByCategory,
+    getMatchCategoryCounts,
+  } = await import('../src/utils/matchStatus');
+
+  assert(typeof getMatchStatusInfo === 'function', 'Filtro & Estado: getMatchStatusInfo disponible');
+  assert(typeof filterMatchesByCategory === 'function', 'Filtro & Estado: filterMatchesByCategory disponible');
+  assert(typeof getMatchCategoryCounts === 'function', 'Filtro & Estado: getMatchCategoryCounts disponible');
+
+  // Test de Estados TV Autorizados:
+  // a) Revisión VAR
+  const varEvt: LiveEvent = {
+    id: 'test-var',
+    title: 'Bolívar vs The Strongest',
+    homeTeam: 'bolivar',
+    awayTeam: 'strongest',
+    period: 'Revisión VAR',
+    isLive: true,
+  };
+  const varStatus = getMatchStatusInfo(varEvt);
+  assert(varStatus.category === 'live', 'VAR: Categorizado como En Vivo');
+  assert(varStatus.icon === 'var', 'VAR: Icono var asignado');
+  assert(varStatus.label === 'REVISIÓN VAR', 'VAR: Etiqueta oficial REVISIÓN VAR');
+  assert(varStatus.badgeClass.includes('purple'), 'VAR: Estilo púrpura de alta visibilidad');
+
+  // b) Medio Tiempo / Descanso
+  const descansoEvt: LiveEvent = {
+    id: 'test-descanso',
+    title: 'Oriente vs Blooming',
+    homeTeam: 'oriente',
+    awayTeam: 'blooming',
+    period: 'Descanso',
+    isLive: true,
+  };
+  const descansoStatus = getMatchStatusInfo(descansoEvt);
+  assert(descansoStatus.category === 'live', 'Medio Tiempo: Categorizado como En Vivo');
+  assert(descansoStatus.icon === 'pause', 'Medio Tiempo: Icono pause asignado');
+  assert(descansoStatus.label === 'MEDIO TIEMPO', 'Medio Tiempo: Etiqueta oficial MEDIO TIEMPO');
+  assert(descansoStatus.badgeClass.includes('amber'), 'Medio Tiempo: Estilo ámbar cálido');
+
+  // c) Finalizado
+  const finalEvt: LiveEvent = {
+    id: 'test-final',
+    title: 'Wilstermann vs Aurora',
+    homeTeam: 'wilstermann',
+    awayTeam: 'aurora',
+    period: 'Finalizado',
+    isLive: false,
+  };
+  const finalStatus = getMatchStatusInfo(finalEvt);
+  assert(finalStatus.category === 'finished', 'Finalizado: Categorizado como finished');
+  assert(finalStatus.icon === 'finish', 'Finalizado: Icono finish asignado');
+  assert(finalStatus.label === 'FINALIZADO', 'Finalizado: Etiqueta oficial FINALIZADO');
+  assert(finalStatus.badgeClass.includes('slate'), 'Finalizado: Estilo slate sobrio');
+
+  // d) En Vivo (1T / 2T)
+  const enVivoEvt: LiveEvent = {
+    id: 'test-envivo',
+    title: 'Always Ready vs San José',
+    homeTeam: 'always_ready',
+    awayTeam: 'san_jose',
+    period: '1T',
+    matchMinute: 34,
+    isLive: true,
+  };
+  const enVivoStatus = getMatchStatusInfo(enVivoEvt);
+  assert(enVivoStatus.category === 'live', 'En Vivo: Categorizado como live');
+  assert(enVivoStatus.icon === 'live', 'En Vivo: Icono live asignado');
+  assert(enVivoStatus.label.includes('1T') && enVivoStatus.label.includes("34'"), 'En Vivo: Etiqueta incluye periodo y minuto');
+
+  // e) Previa / Hoy
+  const previaEvt: LiveEvent = {
+    id: 'test-previa',
+    title: 'Guabirá vs Real Tomayapo',
+    homeTeam: 'guabira',
+    awayTeam: 'real_tomayapo',
+    broadcastMode: 'pre_match',
+    isLive: false,
+  };
+  const previaStatus = getMatchStatusInfo(previaEvt);
+  assert(previaStatus.category === 'today', 'Previa: Categorizado como hoy');
+  assert(previaStatus.label === 'PREVIA / HOY', 'Previa: Etiqueta oficial PREVIA / HOY');
+
+  // Test de Filtros por Categoría y Conteos
+  const sampleEvents: LiveEvent[] = [varEvt, descansoEvt, finalEvt, enVivoEvt, previaEvt];
+  const counts = getMatchCategoryCounts(sampleEvents);
+  assert(counts.all === 5, 'Conteos: Total correcto (5)');
+  assert(counts.live === 3, 'Conteos: En Vivo correcto (3: VAR, Descanso, 1T)');
+  assert(counts.today === 1, 'Conteos: Hoy correcto (1)');
+  assert(counts.finished === 1, 'Conteos: Finalizados correcto (1)');
+
+  const liveList = filterMatchesByCategory(sampleEvents, 'live');
+  assert(liveList.length === 3, 'Filtro live devuelve 3 partidos');
+
+  const todayList = filterMatchesByCategory(sampleEvents, 'today');
+  assert(todayList.length === 1 && todayList[0].id === 'test-previa', 'Filtro today devuelve partido en previa');
+
+  const finishedList = filterMatchesByCategory(sampleEvents, 'finished');
+  assert(finishedList.length === 1 && finishedList[0].id === 'test-final', 'Filtro finished devuelve partido finalizado');
+
+  // Verificación en frontend y dashboard
+  const matchEditorSource = await fs.promises.readFile(
+    path.join(__dirname, '../src/components/MatchDetailsEditor.tsx'),
+    'utf-8'
+  );
+  assert(matchEditorSource.includes("'Revisión VAR'"), 'Dashboard: MatchDetailsEditor incluye selector de Revisión VAR');
+  assert(appSource.includes('matchFilter'), 'Frontend: App.tsx gestiona estado matchFilter');
+  assert(appSource.includes('filterMatchesByCategory'), 'Frontend: App.tsx filtra partidos por categoría');
+  assert(appSource.includes('LiveEventsShowcase'), 'Frontend: App.tsx integra vitrina LiveEventsShowcase');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS: ${passedTests}/${totalTests} PASARON CON ÉXITO`);
   console.log('====================================================\n');

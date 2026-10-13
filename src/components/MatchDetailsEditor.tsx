@@ -29,7 +29,7 @@ import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
 import { espnFootballApi, ApiMatchSummary } from '../services/espnFootballApi';
 
-export type MatchPeriod = '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado';
+export type MatchPeriod = '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado' | 'Revisión VAR';
 
 export interface MatchDetailsEditorProps {
   streamSettings: StreamSettings;
@@ -767,7 +767,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11px] font-semibold text-slate-400 mr-1">Período:</span>
-            {(['1T', 'Descanso', '2T', 'Finalizado'] as const).map((p) => (
+            {(['1T', 'Descanso', '2T', 'Tiempo Extra', 'Revisión VAR', 'Finalizado'] as const).map((p) => (
               <button
                 key={p}
                 type="button"
@@ -807,6 +807,15 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               className="px-2 py-1 rounded-lg bg-slate-850 hover:bg-slate-800 text-[11px] font-mono text-amber-300 border border-slate-750 cursor-pointer"
             >
               45&apos; Entretiempo
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                handlePeriodChange('Revisión VAR');
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-850 hover:bg-slate-800 text-[11px] font-mono text-purple-300 border border-purple-500/30 cursor-pointer"
+            >
+              🔍 VAR
             </button>
             <button
               type="button"
