@@ -533,6 +533,8 @@ async function runTests() {
     awayTeam: 'strongest',
     period: 'Revisión VAR',
     isLive: true,
+    primaryProvider: 'cloudflare',
+    fallbackOrder: ['cloudflare'],
   };
   const varStatus = getMatchStatusInfo(varEvt);
   assert(varStatus.category === 'live', 'VAR: Categorizado como En Vivo');
@@ -548,6 +550,8 @@ async function runTests() {
     awayTeam: 'blooming',
     period: 'Descanso',
     isLive: true,
+    primaryProvider: 'cloudflare',
+    fallbackOrder: ['cloudflare'],
   };
   const descansoStatus = getMatchStatusInfo(descansoEvt);
   assert(descansoStatus.category === 'live', 'Medio Tiempo: Categorizado como En Vivo');
@@ -563,6 +567,8 @@ async function runTests() {
     awayTeam: 'aurora',
     period: 'Finalizado',
     isLive: false,
+    primaryProvider: 'cloudflare',
+    fallbackOrder: ['cloudflare'],
   };
   const finalStatus = getMatchStatusInfo(finalEvt);
   assert(finalStatus.category === 'finished', 'Finalizado: Categorizado como finished');
@@ -579,6 +585,8 @@ async function runTests() {
     period: '1T',
     matchMinute: 34,
     isLive: true,
+    primaryProvider: 'cloudflare',
+    fallbackOrder: ['cloudflare'],
   };
   const enVivoStatus = getMatchStatusInfo(enVivoEvt);
   assert(enVivoStatus.category === 'live', 'En Vivo: Categorizado como live');
@@ -593,6 +601,8 @@ async function runTests() {
     awayTeam: 'real_tomayapo',
     broadcastMode: 'pre_match',
     isLive: false,
+    primaryProvider: 'cloudflare',
+    fallbackOrder: ['cloudflare'],
   };
   const previaStatus = getMatchStatusInfo(previaEvt);
   assert(previaStatus.category === 'today', 'Previa: Categorizado como hoy');
