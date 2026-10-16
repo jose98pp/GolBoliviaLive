@@ -12,5 +12,6 @@ coverage/
 .agents/
 
 
-# Estado local del servidor (contiene stream key y URLs privadas)
-data/
+# Estado local del servidor en la raíz (contiene stream key y URLs privadas)
+/data/
+!src/data/
