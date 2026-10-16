@@ -134,6 +134,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Transmisión</span>
           </button>
           <button
+            onClick={() => setActiveTab('iptv')}
+            className={`transition-colors flex items-center gap-1.5 hover:text-white cursor-pointer ${
+              activeTab === 'iptv' ? 'text-amber-400 font-semibold border-b-2 border-amber-400 pb-0.5' : ''
+            }`}
+          >
+            <Radio className="w-4 h-4 text-amber-400" />
+            <span>Canales IPTV</span>
+          </button>
+          <button
             onClick={() => setActiveTab('exclusive')}
             className={`transition-colors flex items-center gap-1.5 hover:text-white cursor-pointer ${
               activeTab === 'exclusive' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400 pb-0.5' : ''
@@ -316,6 +325,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-[10px] text-slate-500 font-mono">HD</span>
             </button>
 
+            <button
+              onClick={() => {
+                setActiveTab('iptv');
+                setMobileMenuOpen(false);
+              }}
+              className={`p-3 text-left text-xs rounded-xl flex items-center justify-between transition-colors ${
+                activeTab === 'iptv'
+                  ? 'bg-slate-800 border border-amber-500/50 text-amber-400 font-bold'
+                  : 'bg-slate-900/60 border border-slate-800 text-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Radio className="w-4 h-4 text-amber-400" />
+                <span>Canales IPTV Deportivos</span>
+              </div>
+              <span className="text-[10px] text-amber-400 font-mono font-bold">M3U8</span>
+            </button>
 
             <button
               onClick={() => {

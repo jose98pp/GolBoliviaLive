@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tv, MessageSquare, Activity, ShieldCheck } from 'lucide-react';
+import { Tv, MessageSquare, Activity, ShieldCheck, Radio } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 
 interface MobileBottomNavProps {
@@ -51,7 +51,18 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="text-[10px] tracking-tight mt-1">Chat</span>
         </button>
 
-        {/* Stats */}
+        {/* Canales IPTV */}
+        <button
+          onClick={() => setActiveTab('iptv')}
+          className={`flex-1 flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
+            activeTab === 'iptv'
+              ? 'text-amber-400 font-semibold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Radio className="w-5 h-5" />
+          <span className="text-[10px] tracking-tight mt-1">IPTV</span>
+        </button>
 
         {/* Exclusive VIP */}
         <button

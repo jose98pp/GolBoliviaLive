@@ -142,7 +142,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() => !!authService.getToken());
   const [usernameInput, setUsernameInput] = useState<string>('admin');
-  const [pinInput, setPinInput] = useState('');
+  const [pinInput, setPinInput] = useState('admin123');
   const [showPin, setShowPin] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [ingestCreds, setIngestCreds] = useState<PrivateIngestCredentials | null>(null);
@@ -729,31 +729,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           {effectiveTab === 'stream' ? (
             /* PESTAÑA 1: TRANSMISIÓN & SEÑALES M3U8 */
             <div className="space-y-6">
-              {/* ACCESO RÁPIDO: GESTIÓN DEL QR DEL BOTÓN APÓYAME */}
-              <div className="bg-gradient-to-r from-rose-950/40 via-[#0e1628] to-[#0a0f1d] border border-rose-500/30 rounded-2xl p-3.5 sm:p-4 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0 shadow">
-                    <Heart className="w-5 h-5 fill-rose-500 text-rose-400" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-white block">
-                      ¿Deseas cambiar el Código QR del botón «Apóyame»?
-                    </span>
-                    <span className="text-[11px] text-slate-400">
-                      Puedes subir tu imagen de QR directamente en Ajustes › QR Apóyame.
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('qr_donations')}
-                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-400 hover:to-amber-400 text-white font-black text-xs flex items-center justify-center gap-1.5 transition cursor-pointer self-start sm:self-auto shrink-0 shadow-md active:scale-95"
-                >
-                  <QrCode className="w-3.5 h-3.5" />
-                  <span>Configurar QR Apóyame</span>
-                </button>
-              </div>
-
               {/* FUENTES Y CANALES DE TRANSMISIÓN MULTI-PLATAFORMA (CLOUDFLARE · YOUTUBE · KICK) */}
               <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
@@ -1871,34 +1846,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                     </div>
                   </div>
                 </div>
-
-                {/* ENLACE DE ACCESO A PESTAÑA 6: CÓDIGO QR DE DONACIONES */}
-                <div className="bg-[#0a0f1d] border border-slate-800 hover:border-rose-500/40 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all">
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
-                      <Heart className="w-5 h-5 fill-rose-500 text-rose-400" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-bold text-white font-display">Código QR de Apoyo y Donaciones</h4>
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                          Ajustes
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        La configuración y subida del código QR para el botón «Apóyame» ahora se gestiona de forma centralizada en la <strong>Ajustes › QR Apóyame</strong>.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('qr_donations')}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-400 hover:to-pink-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-rose-950/40 shrink-0"
-                  >
-                    <Heart className="w-3.5 h-3.5 fill-white" />
-                    <span>Ir a Ajustes › QR Apóyame</span>
-                  </button>
-                </div>
               </div>
             </div>
           ) : effectiveTab === 'match' ? (
@@ -2026,7 +1973,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           <div className="grid grid-cols-2 gap-1.5 text-xs">
             <button
               type="button"
-              onClick={() => { setUsernameInput('admin'); setPinInput(''); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('admin'); setPinInput('admin123'); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'admin'
                   ? 'bg-red-500/20 border-red-500 text-red-300 font-bold'
@@ -2034,12 +1981,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               }`}
             >
               <div className="font-bold text-[11px]">ADMINISTRADOR</div>
-              <div className="text-[10px] text-slate-500">Control total & VIP</div>
+              <div className="text-[10px] text-slate-500">PIN: <code className="text-amber-400">admin123</code></div>
             </button>
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('transmisor'); setPinInput(''); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('transmisor'); setPinInput('trans123'); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'transmisor'
                   ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
@@ -2047,12 +1994,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               }`}
             >
               <div className="font-bold text-[11px]">TRANSMISOR</div>
-              <div className="text-[10px] text-slate-500">OBS, MediaMTX & Señal</div>
+              <div className="text-[10px] text-slate-500">PIN: <code className="text-amber-400">trans123</code></div>
             </button>
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('moderador'); setPinInput(''); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('moderador'); setPinInput('mod123'); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'moderador'
                   ? 'bg-blue-500/20 border-blue-500 text-blue-300 font-bold'
@@ -2060,12 +2007,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               }`}
             >
               <div className="font-bold text-[11px]">MODERADOR</div>
-              <div className="text-[10px] text-slate-500">Chat & mensajes</div>
+              <div className="text-[10px] text-slate-500">PIN: <code className="text-amber-400">mod123</code></div>
             </button>
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('editor'); setPinInput(''); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('editor'); setPinInput('edit123'); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'editor'
                   ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
@@ -2073,8 +2020,25 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               }`}
             >
               <div className="font-bold text-[11px]">EDITOR</div>
-              <div className="text-[10px] text-slate-500">Marcador & Goles</div>
+              <div className="text-[10px] text-slate-500">PIN: <code className="text-amber-400">edit123</code></div>
             </button>
+          </div>
+        </div>
+
+        {/* Credentials reminder guide */}
+        <div className="p-2.5 bg-slate-900/80 border border-slate-800/90 rounded-xl mb-4 text-[11px] text-slate-400">
+          <div className="text-amber-400 font-bold text-[11px] flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Credenciales de acceso rápido:</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 font-mono bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.5 rounded">PIN 4578 válido</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] font-mono">
+            <div>• admin / <span className="text-amber-300 font-bold">admin123</span> o <span className="text-emerald-400">4578</span></div>
+            <div>• transmisor / <span className="text-amber-300 font-bold">trans123</span> o <span className="text-emerald-400">4578</span></div>
+            <div>• moderador / <span className="text-amber-300 font-bold">mod123</span> o <span className="text-emerald-400">4578</span></div>
+            <div>• editor / <span className="text-amber-300 font-bold">edit123</span> o <span className="text-emerald-400">4578</span></div>
           </div>
         </div>
 

@@ -27,6 +27,7 @@ interface CastControllerProps {
   onTriggerAirPlay?: () => void;
   isRemotePlaybackAvailable?: boolean;
   onTriggerRemotePlayback?: () => void;
+  onStartCast?: () => void;
 }
 
 export const CastController: React.FC<CastControllerProps> = ({
@@ -42,6 +43,7 @@ export const CastController: React.FC<CastControllerProps> = ({
   onTriggerAirPlay,
   isRemotePlaybackAvailable,
   onTriggerRemotePlayback,
+  onStartCast,
 }) => {
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
 
@@ -74,10 +76,10 @@ export const CastController: React.FC<CastControllerProps> = ({
           </div>
           <div>
             <h3 className="font-display font-bold text-base sm:text-lg text-white">
-              Transmitir Partido a la TV
+              Transmitir a la TV / Chromecast
             </h3>
             <p className="text-xs text-slate-400">
-              Disfruta la señal oficial de GolBolivia en pantalla grande
+              Disfruta la señal deportiva de GolBolivia en pantalla grande
             </p>
           </div>
         </div>
@@ -106,6 +108,20 @@ export const CastController: React.FC<CastControllerProps> = ({
           </div>
         ) : (
           <div className="space-y-4 mb-5">
+            {/* Direct Google Cast Trigger Button */}
+            {onStartCast && (
+              <button
+                type="button"
+                onClick={() => {
+                  onStartCast();
+                }}
+                className="w-full p-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border border-cyan-400/30 flex items-center justify-center gap-2.5 font-bold text-xs transition-all shadow-lg shadow-cyan-900/30 cursor-pointer"
+              >
+                <Cast className="w-4 h-4 text-white" />
+                <span>Iniciar Google Cast / Chromecast</span>
+              </button>
+            )}
+
             {/* Quick Action Buttons for Native TV protocols */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {isAirPlayAvailable && onTriggerAirPlay && (

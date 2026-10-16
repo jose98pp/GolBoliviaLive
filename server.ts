@@ -1,3 +1,4 @@
+process.env.DISABLE_HMR = 'true';
 import 'dotenv/config';
 import http from 'http';
 import path from 'path';
@@ -37,7 +38,7 @@ async function startServer() {
         url.startsWith('/@') ||
         url.startsWith('/node_modules') ||
         url.startsWith('/src') ||
-        /\.[a-zA-Z0-9]+(\?.*)?$/.test(url)
+        (url !== '/index.html' && /\.[a-zA-Z0-9]+(\?.*)?$/.test(url))
       ) {
         return next();
       }
@@ -47,7 +48,7 @@ async function startServer() {
         template = await vite.transformIndexHtml(url, template);
 
         // Prepend WebSocket stub to head to execute before /@vite/client
-        const wsHmrStub = `<script>if(typeof window!=='undefined'&&window.WebSocket){var _OWS=window.WebSocket;window.WebSocket=function(u,p){if(p==='vite-hmr'||(Array.isArray(p)&&p.indexOf('vite-hmr')!==-1)||(typeof u==='string'&&(u.indexOf('vite')!==-1||u.indexOf('3000')!==-1))){var s=new EventTarget();s.readyState=3;s.close=function(){};s.send=function(){};return s;}return new _OWS(u,p);};window.WebSocket.prototype=_OWS.prototype;window.WebSocket.CONNECTING=_OWS.CONNECTING;window.WebSocket.OPEN=_OWS.OPEN;window.WebSocket.CLOSING=_OWS.CLOSING;window.WebSocket.CLOSED=_OWS.CLOSED;}var _isV=function(m){if(!m)return false;var s=typeof m==='string'?m:(m.message||(m.stack?m.stack:'')||String(m)||'');return s.indexOf('[vite]')!==-1||s.indexOf('WebSocket')!==-1||s.indexOf('websocket')!==-1;};['error','warn','info','log','debug'].forEach(function(m){var o=console[m];console[m]=function(){for(var i=0;i<arguments.length;i++){if(_isV(arguments[i]))return;}return o.apply(console,arguments);};});window.addEventListener('error',function(e){if(e&&(_isV(e.message)||_isV(e.error))){e.stopImmediatePropagation();e.preventDefault();}},true);window.addEventListener('unhandledrejection',function(e){if(e&&_isV(e.reason)){e.stopImmediatePropagation();e.preventDefault();}},true);</script>`;
+        const wsHmrStub = `<script>(function(){if(typeof window==='undefined')return;function FakeHmrSocket(u,p){var t=new EventTarget();this._t=t;this.url=u||'';this.protocol=Array.isArray(p)?p[0]||'':(p||'');this.readyState=1;this.OPEN=1;this.CONNECTING=0;this.CLOSING=2;this.CLOSED=3;this.bufferedAmount=0;this.extensions='';this.binaryType='blob';this.onopen=null;this.onmessage=null;this.onerror=null;this.onclose=null;}FakeHmrSocket.prototype.OPEN=1;FakeHmrSocket.prototype.CONNECTING=0;FakeHmrSocket.prototype.CLOSING=2;FakeHmrSocket.prototype.CLOSED=3;FakeHmrSocket.prototype.addEventListener=function(y,l,o){return this._t.addEventListener(y,l,o);};FakeHmrSocket.prototype.removeEventListener=function(y,l,o){return this._t.removeEventListener(y,l,o);};FakeHmrSocket.prototype.dispatchEvent=function(e){return this._t.dispatchEvent(e);};FakeHmrSocket.prototype.send=function(){};FakeHmrSocket.prototype.close=function(){};if(window.WebSocket){var _OWS=window.WebSocket;window.WebSocket=function(u,p){var h=false;var s=typeof u==='string'?u:(u&&u.href?u.href:'');if(p==='vite-hmr'||(Array.isArray(p)&&p.indexOf('vite-hmr')!==-1))h=true;if(s.indexOf('vite')!==-1||s.indexOf('token=')!==-1||s.indexOf('3000')!==-1||s.indexOf('24678')!==-1)h=true;if(h)return new FakeHmrSocket(s,p);return new _OWS(u,p);};window.WebSocket.prototype=_OWS.prototype;window.WebSocket.CONNECTING=_OWS.CONNECTING;window.WebSocket.OPEN=_OWS.OPEN;window.WebSocket.CLOSING=_OWS.CLOSING;window.WebSocket.CLOSED=_OWS.CLOSED;}var _isV=function(m){if(!m)return false;var s=typeof m==='string'?m:(m.message||(m.stack?m.stack:'')||String(m)||'');return s.indexOf('[vite]')!==-1||s.indexOf('WebSocket')!==-1||s.indexOf('websocket')!==-1||s.indexOf('createWebSocketModuleRunnerTransport')!==-1||s.indexOf('closed without opened')!==-1;};['error','warn','info','log','debug'].forEach(function(m){var o=console[m];console[m]=function(){for(var i=0;i<arguments.length;i++){if(_isV(arguments[i]))return;}return o.apply(console,arguments);};});window.addEventListener('error',function(e){if(e&&(_isV(e.message)||_isV(e.error)||(e.filename&&e.filename.indexOf('@vite/client')!==-1))){e.stopImmediatePropagation();e.preventDefault();return true;}},true);window.addEventListener('unhandledrejection',function(e){if(e&&(_isV(e.reason)||(e.reason&&e.reason.stack&&_isV(e.reason.stack)))){e.stopImmediatePropagation();e.preventDefault();return true;}},true);})();</script>`;
         template = template.replace('<head>', '<head>' + wsHmrStub);
 
         res.status(200).set({

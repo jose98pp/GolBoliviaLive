@@ -16,7 +16,7 @@ import { ToastNotification } from './components/ToastNotification';
 import { FloatingReactions, FloatingItem } from './components/FloatingReactions';
 import { NotificationItem, StreamSettings, MatchEvent, LivePoll, ChatMessage, LiveEvent, StreamProvider, DonationQrInfo } from './types/football';
 import { BOLIVIAN_CLUBS, INITIAL_EVENTS, INITIAL_POLL } from './data/bolivianFootballData';
-import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin, RefreshCw } from 'lucide-react';
+import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin, RefreshCw, Radio } from 'lucide-react';
 import { SecretLoginPage } from './components/SecretLoginPage';
 import { DonationQrModal } from './components/DonationQrModal';
 import { PWAInstallButton } from './components/PWAInstallButton';
@@ -33,6 +33,9 @@ import {
   MatchFilterCategory,
 } from './utils/matchStatus';
 import { LiveEventsShowcase } from './components/LiveEventsShowcase';
+import { IptvChannelsView } from './components/IptvChannelsView';
+import type { IptvChannel } from './types/iptv';
+import { iptvService } from './services/iptvService';
 import {
   subscribeScoreboardFirebase,
   subscribeMatchEventsFirebase,
@@ -49,7 +52,10 @@ let streamSyncTimer: ReturnType<typeof setTimeout> | undefined;
 
 export default function App() {
   const { clubs } = useClubs();
-  const [activeTab, setActiveTab] = useState<'stream' | 'exclusive'>('stream');
+  const [activeTab, setActiveTab] = useState<'stream' | 'exclusive' | 'iptv'>('stream');
+  const [activeIptvChannel, setActiveIptvChannel] = useState<IptvChannel | null>(() => {
+    return iptvService.getLastPlayed();
+  });
   const [mobileViewMode, setMobileViewMode] = useState<'stream' | 'chat'>('stream');
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
@@ -82,6 +88,41 @@ export default function App() {
     setTimeout(() => {
       setIsReloadingSignal(false);
     }, 600);
+  };
+
+  const handleSelectIptvChannel = (channel: IptvChannel) => {
+    setActiveIptvChannel(channel);
+    iptvService.saveLastPlayed(channel);
+    setStreamSettings((prev) => ({
+      ...prev,
+      title: channel.name,
+      tournamentName: `${channel.countryName} · Señal Deportiva IPTV`,
+      customVideoUrl: channel.streamUrl,
+      broadcastMode: 'obs_custom',
+      isLive: true,
+    }));
+    setSignalReloadKey((k) => k + 1);
+    setActiveToast({
+      id: `tune-${Date.now()}`,
+      title: '📺 Sintonizando Canal IPTV',
+      body: `${channel.name} (${channel.countryName}) listo en el reproductor`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'exclusive',
+      read: false,
+    });
+  };
+
+  const handleReturnToMatchBroadcast = () => {
+    setActiveIptvChannel(null);
+    setSignalReloadKey((k) => k + 1);
+    setActiveToast({
+      id: `match-return-${Date.now()}`,
+      title: '⚽ Señal Oficial Restaurada',
+      body: 'Has vuelto a la transmisión oficial del fútbol boliviano',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'exclusive',
+      read: false,
+    });
   };
 
   // Real-time live connected presence exclusively on this web & app
@@ -702,47 +743,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   const isClockActive = Boolean(currentLiveEvent?.isClockRunning);
   const currentPeriodStatus = currentLiveEvent?.period;
 
-  // Reloj oficial del partido: avanza segundos y minutos automáticamente cuando está activo desde el dashboard
-  useEffect(() => {
-    if (!isClockActive) {
-      setMatchSeconds(0);
-      return;
-    }
-    if (currentPeriodStatus === 'Descanso' || currentPeriodStatus === 'Finalizado') {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setMatchSeconds((prevSec) => {
-        const nextSec = prevSec + 1;
-        if (nextSec >= 60) {
-          // Ha transcurrido 1 minuto completo: avanzar minuto automáticamente
-          setLiveEvents((prevEvents) =>
-            prevEvents.map((ev) => {
-              if (ev.id === activeEventId) {
-                const nextMin = (ev.matchMinute || 0) + 1;
-                if (nextMin <= 130) {
-                  const updated = { ...ev, matchMinute: nextMin };
-                  try {
-                    localStorage.setItem(
-                      'golbolivia_live_events',
-                      JSON.stringify(prevEvents.map((p) => (p.id === ev.id ? updated : p)))
-                    );
-                  } catch {}
-                  return updated;
-                }
-              }
-              return ev;
-            })
-          );
-          return 0; // Reiniciar contador de segundos
-        }
-        return nextSec;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [activeEventId, isClockActive, currentPeriodStatus]);
+  // El marcador y minuto en la portada son autoritativos y se sincronizan en tiempo real
+  // exclusivamente desde la consola del dashboard vía SSE y Firestore. No se ejecuta reloj cliente artificial.
 
   const triggerReaction = (emoji: string) => {
     presence.registerUserInteraction(`Reacción ${emoji}`);
@@ -766,6 +768,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleUpdateStreamSettings = (newSettings: Partial<StreamSettings>) => {
+    if (newSettings.donationQr) {
+      setDonationQrInfo(newSettings.donationQr);
+    }
     setStreamSettings((prev) => {
       const updated = { ...prev, ...newSettings };
       try {
@@ -1282,19 +1287,32 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                             emoji: '🟢',
                             isConfigured: Boolean(currentLiveEvent.kick?.channel?.trim()),
                           },
+                          {
+                            id: 'iptv',
+                            name: 'Canales IPTV',
+                            shortName: 'IPTV',
+                            badge: 'M3U8',
+                            emoji: '📺',
+                            isConfigured: true,
+                          },
                         ].map((prov) => {
-                          const isCurrent = (currentLiveEvent.primaryProvider || 'cloudflare') === prov.id;
+                          const isCurrent = prov.id === 'iptv' ? Boolean(activeIptvChannel) : ((currentLiveEvent.primaryProvider || 'cloudflare') === prov.id && !activeIptvChannel);
                           return (
                             <button
                               key={prov.id}
                               type="button"
                               onClick={() => {
+                                if (prov.id === 'iptv') {
+                                  setActiveTab('iptv');
+                                  return;
+                                }
+                                setActiveIptvChannel(null);
                                 const updated: LiveEvent = { ...currentLiveEvent, primaryProvider: prov.id as StreamProvider };
                                 handleSelectMatchEvent(updated);
                               }}
                               className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                                 isCurrent
-                                  ? 'bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-black ring-1 ring-emerald-300'
+                                  ? (prov.id === 'iptv' ? 'bg-amber-400 text-black shadow-md shadow-amber-500/20 font-black ring-1 ring-amber-300' : 'bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-black ring-1 ring-emerald-300')
                                   : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
                               }`}
                             >
@@ -1447,16 +1465,88 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                   </div>
                 )}
 
+                {/* Notificación de canal IPTV sintonizado */}
+                {activeIptvChannel && (
+                  <div className="mb-3 p-3 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/30 border border-amber-500/40 flex items-center justify-between gap-3 text-xs shadow-md">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                        <Radio className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white flex items-center gap-1.5">
+                          <span>Canal IPTV sintonizado:</span>
+                          <span className="text-amber-300 font-bold">{activeIptvChannel.name}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {activeIptvChannel.countryName} · Señal HLS en vivo · Google Cast habilitado en controles
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleReturnToMatchBroadcast}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors cursor-pointer shrink-0"
+                    >
+                      Volver a Fútbol Boliviano
+                    </button>
+                  </div>
+                )}
+
+                {/* Banner de Respaldo Inteligente: cuando las 3 señales están en pausa o fuera de horario */}
+                {!activeIptvChannel && currentLiveEvent && (!currentLiveEvent.isLive || (!currentLiveEvent.cloudflare?.playbackUrl?.trim() && !currentLiveEvent.youtube?.videoId?.trim() && !currentLiveEvent.kick?.channel?.trim())) && (
+                  <div className="mb-3 p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-md">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                        <Tv className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-xs sm:text-sm">¿Sin transmisión oficial en este instante?</div>
+                        <div className="text-[11px] text-slate-400">Disfruta canales deportivos internacionales en vivo (M3U8) y transmítelos a tu Smart TV con Google Cast.</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('iptv')}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/20 cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      <span>Ver Canales IPTV</span>
+                    </button>
+                  </div>
+                )}
+
                 {currentLiveEvent ? (
                   <UniversalStreamPlayer
-                    key={`${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${signalReloadKey}`}
-                    event={currentLiveEvent}
+                    key={activeIptvChannel ? `iptv-${activeIptvChannel.id}-${signalReloadKey}` : `${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${signalReloadKey}`}
+                    event={activeIptvChannel ? undefined : currentLiveEvent}
                     isTheaterMode={isTheaterMode}
                     setIsTheaterMode={setIsTheaterMode}
-                    homeScore={currentHomeScore}
-                    awayScore={currentAwayScore}
-                    matchMinute={currentMatchMinute}
+                    homeScore={activeIptvChannel ? 0 : currentHomeScore}
+                    awayScore={activeIptvChannel ? 0 : currentAwayScore}
+                    matchMinute={activeIptvChannel ? 0 : currentMatchMinute}
                     viewerCount={liveViewerCount}
+                    streamSettings={
+                      activeIptvChannel
+                        ? {
+                            title: activeIptvChannel.name,
+                            tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva IPTV`,
+                            homeClubId: 'bolivar',
+                            awayClubId: 'strongest',
+                            stadiumName: 'Transmisión Internacional',
+                            altitudeMeters: 0,
+                            period: '2T',
+                            isLive: true,
+                            broadcastMode: 'obs_custom',
+                            customVideoUrl: activeIptvChannel.streamUrl,
+                            backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+                            backupChannelName: 'Respaldo IPTV',
+                            activeStreamSource: 'obs',
+                            autoFailoverEnabled: false,
+                            chatMode: 'all',
+                            officialAnnouncement: `Sintonizando canal deportivo ${activeIptvChannel.name}`,
+                            overlayScoreboardVisible: false,
+                            lowLatencyMode: true,
+                          }
+                        : undefined
+                    }
                     onProviderChange={(newProv) => {
                       setLiveEvents((prev) =>
                         prev.map((e) => (e.id === (currentLiveEvent?.id || activeEventId) ? { ...e, primaryProvider: newProv } : e))
@@ -1573,6 +1663,76 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 2: CANALES IPTV DEPORTIVOS */}
+        {activeTab === 'iptv' && (
+          <div className="space-y-6">
+            {activeIptvChannel && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <h3 className="text-sm font-bold text-white">
+                      {activeIptvChannel.name} — En Reproducción
+                    </h3>
+                    <span className="text-xs text-slate-400">({activeIptvChannel.countryName})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setActiveTab('stream')}
+                      className="text-xs text-amber-400 hover:text-amber-300 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 transition-colors cursor-pointer"
+                    >
+                      Ver con Chat en Vivo
+                    </button>
+                    <button
+                      onClick={() => setActiveIptvChannel(null)}
+                      className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+                    >
+                      Cerrar Reproductor
+                    </button>
+                  </div>
+                </div>
+
+                <div className="w-full">
+                  <UniversalStreamPlayer
+                    key={`iptv-tab-${activeIptvChannel.id}-${signalReloadKey}`}
+                    isTheaterMode={isTheaterMode}
+                    setIsTheaterMode={setIsTheaterMode}
+                    homeScore={0}
+                    awayScore={0}
+                    matchMinute={0}
+                    viewerCount={liveViewerCount}
+                    streamSettings={{
+                      title: activeIptvChannel.name,
+                      tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva IPTV`,
+                      homeClubId: 'bolivar',
+                      awayClubId: 'strongest',
+                      stadiumName: 'Transmisión Internacional',
+                      altitudeMeters: 0,
+                      period: '2T',
+                      isLive: true,
+                      broadcastMode: 'obs_custom',
+                      customVideoUrl: activeIptvChannel.streamUrl,
+                      backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+                      backupChannelName: 'Respaldo IPTV',
+                      activeStreamSource: 'obs',
+                      autoFailoverEnabled: false,
+                      chatMode: 'all',
+                      officialAnnouncement: `Sintonizando canal deportivo ${activeIptvChannel.name}`,
+                      overlayScoreboardVisible: false,
+                      lowLatencyMode: true,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <IptvChannelsView
+              onSelectChannel={handleSelectIptvChannel}
+              activeStreamUrl={activeIptvChannel?.streamUrl}
+            />
           </div>
         )}
 

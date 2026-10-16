@@ -320,6 +320,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         onTriggerAirPlay={triggerAirPlay}
         isRemotePlaybackAvailable={isRemotePlaybackAvailable}
         onTriggerRemotePlayback={triggerRemotePlayback}
+        onStartCast={startCast}
       />
     </div>
   );

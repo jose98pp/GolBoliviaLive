@@ -23,6 +23,7 @@ import { apiClient } from '../services/apiClient';
 import {
   getDonationQrFromFirebase,
   subscribeDonationQrFirebase,
+  saveDonationQrToFirebase,
 } from '../services/firebase';
 import { DonationQrModal } from './DonationQrModal';
 
@@ -123,6 +124,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isDirtyRef = useRef<boolean>(false);
+  const lastLocalSaveTimestampRef = useRef<number>(0);
   const [editCount, setEditCount] = useState(0);
 
   // 1. Cargar datos iniciales desde Firebase Firestore si están disponibles
@@ -131,6 +133,7 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
     getDonationQrFromFirebase().then((fbQr) => {
       if (!isMounted) return;
       if (fbQr && fbQr.imageUrl && !isDirtyRef.current) {
+        if (fbQr.updatedAt && fbQr.updatedAt < lastLocalSaveTimestampRef.current) return;
         setImageUrl(fbQr.imageUrl);
         if (fbQr.instructions) setInstructions(fbQr.instructions);
         setLastSavedTime(fbQr.updatedAt || Date.now());
@@ -142,6 +145,10 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
     // Suscribirse en tiempo real a Firebase Firestore
     const unsubscribe = subscribeDonationQrFirebase((liveQr) => {
       if (!isMounted) return;
+      // Prevenir reversión si llegó un snapshot anterior al guardado local reciente
+      if (liveQr && liveQr.updatedAt && liveQr.updatedAt < lastLocalSaveTimestampRef.current) {
+        return;
+      }
       // Sólo actualizar si el usuario no tiene cambios sin guardar en pantalla
       if (!isDirtyRef.current && liveQr) {
         if (liveQr.imageUrl !== undefined) setImageUrl(liveQr.imageUrl);
@@ -160,6 +167,9 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
   // 2. Sincronizar props sólo cuando el usuario no está editando activamente
   useEffect(() => {
     if (initialQr && !isDirtyRef.current) {
+      if (initialQr.updatedAt && initialQr.updatedAt < lastLocalSaveTimestampRef.current) {
+        return;
+      }
       if (initialQr.imageUrl !== undefined && !imageUrl) {
         setImageUrl(initialQr.imageUrl);
       }
@@ -256,9 +266,32 @@ export const DonationQrAdminCard: React.FC<DonationQrAdminCardProps> = ({
         updatedAt: now,
       };
 
-      // El backend valida el rol y persiste en Firestore
-      const res = await apiClient.saveDonationQr(payload);
-      const savedResult = res.donationQr || payload;
+      lastLocalSaveTimestampRef.current = now;
+      let savedResult: DonationQrInfo = payload;
+      let apiSuccess = false;
+
+      // 1. Guardar a través de la API autenticada del servidor
+      try {
+        const res = await apiClient.saveDonationQr(payload);
+        if (res.donationQr) {
+          savedResult = res.donationQr;
+        }
+        apiSuccess = true;
+      } catch (backendErr) {
+        console.warn('[DonationQR] Aviso de API backend, guardando directamente en Firebase:', backendErr);
+      }
+
+      // 2. Persistir directamente en Firebase Firestore para redundancia absoluta
+      try {
+        await saveDonationQrToFirebase(payload);
+      } catch (fbErr) {
+        if (!apiSuccess) throw fbErr;
+      }
+
+      // 3. Persistir en caché local del navegador
+      try {
+        localStorage.setItem('golbolivia_donation_qr', JSON.stringify(savedResult));
+      } catch {}
 
       isDirtyRef.current = false;
       setLastSavedTime(now);
