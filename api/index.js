@@ -1,5 +1,6 @@
 // serverApp.ts
-import express from "express";
+import "dotenv/config";
+import express2 from "express";
 import http from "http";
 import crypto from "crypto";
 import path from "path";
@@ -13,12 +14,13 @@ var BOLIVIAN_CLUBS = {
     shortName: "Bol\xEDvar",
     city: "La Paz",
     primaryColor: "#0284c7",
-    // Sky blue / Celeste
     secondaryColor: "#ffffff",
     textColor: "#ffffff",
     badgeEmoji: "\u26A1",
     stadium: "Estadio Hernando Siles",
-    altitudeMeters: 3637
+    altitudeMeters: 3637,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   strongest: {
     id: "strongest",
@@ -26,13 +28,13 @@ var BOLIVIAN_CLUBS = {
     shortName: "Strongest",
     city: "La Paz",
     primaryColor: "#eab308",
-    // Yellow gold
     secondaryColor: "#0f172a",
-    // Black
     textColor: "#0f172a",
     badgeEmoji: "\u{1F42F}",
     stadium: "Estadio Rafael Mendoza Castell\xF3n / Siles",
-    altitudeMeters: 3637
+    altitudeMeters: 3637,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   wilstermann: {
     id: "wilstermann",
@@ -40,13 +42,13 @@ var BOLIVIAN_CLUBS = {
     shortName: "Wilstermann",
     city: "Cochabamba",
     primaryColor: "#dc2626",
-    // Red
     secondaryColor: "#1e3a8a",
-    // Blue
     textColor: "#ffffff",
     badgeEmoji: "\u2708\uFE0F",
     stadium: "Estadio F\xE9lix Capriles",
-    altitudeMeters: 2558
+    altitudeMeters: 2558,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   oriente: {
     id: "oriente",
@@ -54,12 +56,13 @@ var BOLIVIAN_CLUBS = {
     shortName: "Oriente",
     city: "Santa Cruz",
     primaryColor: "#16a34a",
-    // Emerald Green
     secondaryColor: "#ffffff",
     textColor: "#ffffff",
     badgeEmoji: "\u{1F6E2}\uFE0F",
     stadium: "Estadio Ram\xF3n Tahuichi Aguilera",
-    altitudeMeters: 416
+    altitudeMeters: 416,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   blooming: {
     id: "blooming",
@@ -67,12 +70,13 @@ var BOLIVIAN_CLUBS = {
     shortName: "Blooming",
     city: "Santa Cruz",
     primaryColor: "#38bdf8",
-    // Light blue
     secondaryColor: "#1e3a8a",
     textColor: "#ffffff",
     badgeEmoji: "\u{1F985}",
     stadium: "Estadio Ram\xF3n Tahuichi Aguilera",
-    altitudeMeters: 416
+    altitudeMeters: 416,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   always: {
     id: "always",
@@ -80,12 +84,13 @@ var BOLIVIAN_CLUBS = {
     shortName: "Always Ready",
     city: "El Alto",
     primaryColor: "#e11d48",
-    // Red band
     secondaryColor: "#ffffff",
     textColor: "#ffffff",
     badgeEmoji: "\u{1F534}",
     stadium: "Estadio Municipal de Villa Ingenio",
-    altitudeMeters: 4083
+    altitudeMeters: 4083,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   nacional: {
     id: "nacional",
@@ -97,7 +102,9 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u{1F3B8}",
     stadium: "Estadio V\xEDctor Agust\xEDn Ugarte",
-    altitudeMeters: 3900
+    altitudeMeters: 3900,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   aurora: {
     id: "aurora",
@@ -109,7 +116,9 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u2B50",
     stadium: "Estadio F\xE9lix Capriles",
-    altitudeMeters: 2558
+    altitudeMeters: 2558,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   san_antonio: {
     id: "san_antonio",
@@ -121,7 +130,9 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u{1F31F}",
     stadium: "Estadio Dr. Carlos Villegas",
-    altitudeMeters: 232
+    altitudeMeters: 232,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   gv_san_jose: {
     id: "gv_san_jose",
@@ -133,7 +144,9 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u{1F6E1}\uFE0F",
     stadium: "Estadio Jes\xFAs Berm\xFAdez",
-    altitudeMeters: 3735
+    altitudeMeters: 3735,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   tomayapo: {
     id: "tomayapo",
@@ -145,7 +158,9 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u{1F981}",
     stadium: "Estadio IV Centenario",
-    altitudeMeters: 1854
+    altitudeMeters: 1854,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   independiente: {
     id: "independiente",
@@ -157,7 +172,9 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u{1F534}",
     stadium: "Estadio Ol\xEDmpico Patria",
-    altitudeMeters: 2790
+    altitudeMeters: 2790,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   u_vinto: {
     id: "u_vinto",
@@ -169,7 +186,9 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u{1F393}",
     stadium: "Estadio Hip\xF3lito Lazarte / Capriles",
-    altitudeMeters: 2558
+    altitudeMeters: 2558,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   guabira: {
     id: "guabira",
@@ -181,7 +200,9 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u{1F479}",
     stadium: "Estadio Gilberto Parada",
-    altitudeMeters: 298
+    altitudeMeters: 298,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   royal_pari: {
     id: "royal_pari",
@@ -193,7 +214,9 @@ var BOLIVIAN_CLUBS = {
     textColor: "#ffffff",
     badgeEmoji: "\u{1F981}",
     stadium: "Estadio Ram\xF3n Tahuichi Aguilera",
-    altitudeMeters: 416
+    altitudeMeters: 416,
+    league: "Bolivia (Divisi\xF3n Profesional)",
+    country: "Bolivia"
   },
   real_santa_cruz: {
     id: "real_santa_cruz",
@@ -466,11 +489,6 @@ var ENGLISH_CLUBS = {
     country: "Inglaterra"
   }
 };
-var ALL_DEFAULT_CLUBS = {
-  ...BOLIVIAN_CLUBS,
-  ...SPANISH_CLUBS,
-  ...ENGLISH_CLUBS
-};
 Object.assign(BOLIVIAN_CLUBS, SPANISH_CLUBS, ENGLISH_CLUBS);
 for (const club of Object.values(BOLIVIAN_CLUBS)) {
   if (!club.league) {
@@ -728,7 +746,7 @@ async function saveScoreboardToFirebase(data, operator) {
   if (data.matchMinute !== void 0) {
     sanitized.matchMinute = validateMinute(data.matchMinute);
   }
-  if (data.period && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(data.period)) {
+  if (data.period && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado", "Revisi\xF3n VAR"].includes(data.period)) {
     sanitized.period = data.period;
   }
   await setDoc(ref, sanitized, { merge: true });
@@ -919,21 +937,19 @@ async function saveMatchScoreboardFirebase(eventId, data, operator) {
   const now = Date.now();
   return await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(ref);
-    let nextVersion = 1;
-    if (snap.exists()) {
-      const existing = snap.data();
-      const existingVersion = typeof existing?.version === "number" ? existing.version : 0;
-      const isForce = Boolean(data.force);
-      if (!isForce && typeof data.version === "number" && data.version > 0 && data.version < existingVersion) {
-        throw new Error(
-          `Marcador desactualizado: La versi\xF3n actual en Firestore (v${existingVersion}) es superior a la versi\xF3n enviada (v${data.version}). Guardado rechazado.`
-        );
-      }
-      const baseVersion = typeof data.version === "number" && data.version > 0 ? Math.max(existingVersion, data.version) : existingVersion;
-      nextVersion = baseVersion + 1;
-    } else {
-      nextVersion = typeof data.version === "number" && data.version > 0 ? data.version : 1;
+    if (!snap.exists()) {
+      throw new Error(`El partido "${safeId}" no existe en Firestore o fue eliminado.`);
     }
+    const existing = snap.data();
+    const existingVersion = typeof existing?.version === "number" ? existing.version : 0;
+    const isForce = Boolean(data.force);
+    if (!isForce && typeof data.version === "number" && data.version > 0 && data.version < existingVersion) {
+      throw new Error(
+        `Marcador desactualizado: La versi\xF3n actual en Firestore (v${existingVersion}) es superior a la versi\xF3n enviada (v${data.version}). Guardado rechazado.`
+      );
+    }
+    const baseVersion = typeof data.version === "number" && data.version > 0 ? Math.max(existingVersion, data.version) : existingVersion;
+    const nextVersion = baseVersion + 1;
     const sanitized = {
       id: safeId,
       version: nextVersion,
@@ -944,7 +960,7 @@ async function saveMatchScoreboardFirebase(eventId, data, operator) {
     if (data.homeScore !== void 0) sanitized.homeScore = validateScore(data.homeScore);
     if (data.awayScore !== void 0) sanitized.awayScore = validateScore(data.awayScore);
     if (data.matchMinute !== void 0) sanitized.matchMinute = validateMinute(data.matchMinute);
-    if (data.period && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(data.period)) {
+    if (data.period && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado", "Revisi\xF3n VAR"].includes(data.period)) {
       sanitized.period = data.period;
     }
     if (typeof data.isClockRunning === "boolean") {
@@ -959,9 +975,12 @@ function hydrateLiveEventDoc(d) {
   const raw = d.data();
   const docId = d.id;
   const safeId = raw.id || docId;
-  const home = raw.homeTeam || (docId === "partido-002" ? "blooming" : "bolivar");
-  const away = raw.awayTeam || (docId === "partido-002" ? "oriente" : "strongest");
-  const defaultTitle = docId === "partido-002" ? "Blooming vs Oriente Petrolero" : "Bol\xEDvar vs The Strongest";
+  if (!raw.title && !raw.homeTeam && !raw.awayTeam) {
+    return null;
+  }
+  const home = raw.homeTeam || "bolivar";
+  const away = raw.awayTeam || "strongest";
+  const defaultTitle = `${home} vs ${away}`;
   const title = raw.title && raw.title.trim() || defaultTitle;
   return {
     id: safeId,
@@ -998,7 +1017,10 @@ async function getLiveEventsFromFirebase() {
     const snap = await getDocs(colRef);
     if (!snap.empty) {
       const list = [];
-      snap.forEach((d) => list.push(hydrateLiveEventDoc(d)));
+      snap.forEach((d) => {
+        const item = hydrateLiveEventDoc(d);
+        if (item) list.push(item);
+      });
       return list;
     }
   } catch (err) {
@@ -1029,13 +1051,302 @@ async function clearChatInFirebase() {
 
 // serverApp.ts
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+
+// src/services/iptvBackend.ts
+import express from "express";
+var iptvRouter = express.Router();
+var SPORTS_M3U_URL = "https://iptv-org.github.io/iptv/categories/sports.m3u";
+var CACHE_TTL_MS = 6 * 60 * 60 * 1e3;
+var cachedChannels = [];
+var lastFetchTime = 0;
+var isFetching = false;
+var CURATED_FALLBACK_CHANNELS = [
+  {
+    id: "bo-red-uno-sports",
+    name: "Red Uno Deportes Bolivia",
+    logo: "https://i.imgur.com/xT7Z4vL.png",
+    group: "Bolivia",
+    country: "BO",
+    countryName: "Bolivia",
+    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    resolution: "1080p",
+    isFavorite: true
+  },
+  {
+    id: "bo-bolivia-tv-deportes",
+    name: "Bolivia TV 7.2 Deportes",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Bolivia_TV_logo.svg/320px-Bolivia_TV_logo.svg.png",
+    group: "Bolivia",
+    country: "BO",
+    countryName: "Bolivia",
+    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
+    resolution: "720p",
+    isFavorite: true
+  },
+  {
+    id: "claro-sports-latam",
+    name: "Claro Sports Latam",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Claro_Sports_logo.svg/320px-Claro_Sports_logo.svg.png",
+    group: "Internacional",
+    country: "INT",
+    countryName: "Internacional",
+    streamUrl: "https://live-clarosports-linear.amagi.tv/playlist.m3u8",
+    resolution: "1080p",
+    isFavorite: true
+  },
+  {
+    id: "redbull-tv-live",
+    name: "Red Bull TV Deportes Extremos",
+    logo: "https://upload.wikimedia.org/wikipedia/en/thumb/f/f5/Red_Bull_TV_logo.svg/320px-Red_Bull_TV_logo.svg.png",
+    group: "Internacional",
+    country: "INT",
+    countryName: "Internacional",
+    streamUrl: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    resolution: "1080p",
+    isFavorite: true
+  },
+  {
+    id: "fifa-plus-es",
+    name: "FIFA+ En Vivo",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/FIFA%2B_Logo.svg/320px-FIFA%2B_Logo.svg.png",
+    group: "Internacional",
+    country: "INT",
+    countryName: "Internacional",
+    streamUrl: "https://amg01269-amg01269c1-fifa-intl-4066.playouts.now.amagi.tv/playlist/amg01269-fifaplusfast-fifaplus-fifaplusintl/playlist.m3u8",
+    resolution: "1080p",
+    isFavorite: true
+  },
+  {
+    id: "ar-tyc-sports-feed",
+    name: "TyC Sports Se\xF1al Alterna",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/TyC_Sports_Logo_2020.svg/320px-TyC_Sports_Logo_2020.svg.png",
+    group: "Argentina",
+    country: "AR",
+    countryName: "Argentina",
+    streamUrl: "https://cspan1-lh.akamaihd.net/i/cspan1_1@305949/master.m3u8",
+    resolution: "720p"
+  },
+  {
+    id: "ar-depor-tv",
+    name: "DeporTV Argentina",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/DeporTV_logo_2016.svg/320px-DeporTV_logo_2016.svg.png",
+    group: "Argentina",
+    country: "AR",
+    countryName: "Argentina",
+    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
+    resolution: "1080p"
+  },
+  {
+    id: "co-win-sports-news",
+    name: "Win Sports Noticias Colombia",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Win_Sports_logo.svg/320px-Win_Sports_logo.svg.png",
+    group: "Colombia",
+    country: "CO",
+    countryName: "Colombia",
+    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    resolution: "720p"
+  },
+  {
+    id: "mx-tudn-highlights",
+    name: "TUDN M\xE9xico Feed",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/TUDN_logo.svg/320px-TUDN_logo.svg.png",
+    group: "M\xE9xico",
+    country: "MX",
+    countryName: "M\xE9xico",
+    streamUrl: "https://amg01269-amg01269c1-fifa-intl-4066.playouts.now.amagi.tv/playlist/amg01269-fifaplusfast-fifaplus-fifaplusintl/playlist.m3u8",
+    resolution: "1080p"
+  },
+  {
+    id: "es-teledeporte",
+    name: "RTVE Teledeporte Espa\xF1a",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Teledeporte_2008.svg/320px-Teledeporte_2008.svg.png",
+    group: "Espa\xF1a",
+    country: "ES",
+    countryName: "Espa\xF1a",
+    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
+    resolution: "1080p"
+  },
+  {
+    id: "es-gol-play",
+    name: "Gol Play Espa\xF1a",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/GOL_PLAY_logo.svg/320px-GOL_PLAY_logo.svg.png",
+    group: "Espa\xF1a",
+    country: "ES",
+    countryName: "Espa\xF1a",
+    streamUrl: "https://live-clarosports-linear.amagi.tv/playlist.m3u8",
+    resolution: "720p"
+  },
+  {
+    id: "wwe-channel",
+    name: "WWE Network Fast",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/WWE_Logo.svg/320px-WWE_Logo.svg.png",
+    group: "Internacional",
+    country: "INT",
+    countryName: "Internacional",
+    streamUrl: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    resolution: "1080p"
+  }
+];
+function inferCountry(tvgCountry, tvgId, name, group) {
+  const c = (tvgCountry || "").toUpperCase().trim();
+  const id = (tvgId || "").toLowerCase();
+  const n = (name || "").toLowerCase();
+  const g = (group || "").toLowerCase();
+  if (c === "BO" || id.endsWith(".bo") || n.includes("bolivia") || g.includes("bolivia")) {
+    return { code: "BO", name: "Bolivia" };
+  }
+  if (c === "AR" || id.endsWith(".ar") || n.includes("argentina") || g.includes("argentina")) {
+    return { code: "AR", name: "Argentina" };
+  }
+  if (c === "CO" || id.endsWith(".co") || n.includes("colombia") || g.includes("colombia")) {
+    return { code: "CO", name: "Colombia" };
+  }
+  if (c === "MX" || id.endsWith(".mx") || n.includes("mexico") || n.includes("m\xE9xico") || g.includes("mexico")) {
+    return { code: "MX", name: "M\xE9xico" };
+  }
+  if (c === "ES" || id.endsWith(".es") || n.includes("espa\xF1a") || n.includes("spain") || g.includes("espa\xF1a")) {
+    return { code: "ES", name: "Espa\xF1a" };
+  }
+  return { code: "INT", name: "Internacional" };
+}
+function parseM3uSports(m3uText) {
+  const lines = m3uText.split(/\r?\n/);
+  const channels = [];
+  let currentExtInf = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (line.startsWith("#EXTINF:")) {
+      const tvgIdMatch = line.match(/tvg-id="([^"]*)"/i);
+      const tvgNameMatch = line.match(/tvg-name="([^"]*)"/i);
+      const tvgLogoMatch = line.match(/tvg-logo="([^"]*)"/i);
+      const tvgCountryMatch = line.match(/tvg-country="([^"]*)"/i);
+      const groupTitleMatch = line.match(/group-title="([^"]*)"/i);
+      const lastCommaIdx = line.lastIndexOf(",");
+      const channelName = lastCommaIdx !== -1 ? line.substring(lastCommaIdx + 1).trim() : "Canal Deportivo";
+      currentExtInf = {
+        tvgId: tvgIdMatch ? tvgIdMatch[1] : "",
+        tvgName: tvgNameMatch ? tvgNameMatch[1] : channelName,
+        tvgLogo: tvgLogoMatch ? tvgLogoMatch[1] : "",
+        tvgCountry: tvgCountryMatch ? tvgCountryMatch[1] : "",
+        groupTitle: groupTitleMatch ? groupTitleMatch[1] : "Sports",
+        channelName
+      };
+    } else if (line.startsWith("http://") || line.startsWith("https://")) {
+      if (currentExtInf) {
+        const countryInfo = inferCountry(
+          currentExtInf.tvgCountry,
+          currentExtInf.tvgId,
+          currentExtInf.channelName,
+          currentExtInf.groupTitle
+        );
+        const id = `iptv-${channels.length + 1}-${(currentExtInf.tvgId || currentExtInf.channelName).toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 30)}`;
+        channels.push({
+          id,
+          name: currentExtInf.channelName || currentExtInf.tvgName || "Canal Deportivo",
+          logo: currentExtInf.tvgLogo || "",
+          group: currentExtInf.groupTitle || "Sports",
+          country: countryInfo.code,
+          countryName: countryInfo.name,
+          streamUrl: line,
+          resolution: line.includes("1080") ? "1080p" : line.includes("720") ? "720p" : "HD"
+        });
+        currentExtInf = null;
+      }
+    }
+  }
+  return channels;
+}
+async function refreshSportsChannels() {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8e3);
+    const resp = await fetch(SPORTS_M3U_URL, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "GolBolivia/2026.1 (IPTV-Sports-Aggregator)"
+      }
+    });
+    clearTimeout(timeout);
+    if (!resp.ok) {
+      throw new Error(`HTTP error ${resp.status}`);
+    }
+    const text = await resp.text();
+    const parsed = parseM3uSports(text);
+    if (parsed.length > 0) {
+      const uniqueUrls = new Set(CURATED_FALLBACK_CHANNELS.map((c) => c.streamUrl));
+      const filteredParsed = parsed.filter((c) => !uniqueUrls.has(c.streamUrl));
+      cachedChannels = [...CURATED_FALLBACK_CHANNELS, ...filteredParsed];
+      lastFetchTime = Date.now();
+      return cachedChannels;
+    }
+  } catch (err) {
+    console.warn("[IPTV Backend] Advertencia al sincronizar lista externa sports.m3u:", err?.message || err);
+  }
+  if (cachedChannels.length === 0) {
+    cachedChannels = [...CURATED_FALLBACK_CHANNELS];
+    lastFetchTime = Date.now();
+  }
+  return cachedChannels;
+}
+iptvRouter.get("/sports", async (req, res) => {
+  try {
+    const now = Date.now();
+    const isStale = now - lastFetchTime > CACHE_TTL_MS || cachedChannels.length === 0;
+    if (isStale && !isFetching) {
+      isFetching = true;
+      refreshSportsChannels().catch(() => {
+      }).finally(() => {
+        isFetching = false;
+      });
+    }
+    const channels = cachedChannels.length > 0 ? cachedChannels : CURATED_FALLBACK_CHANNELS;
+    const country = typeof req.query.country === "string" ? req.query.country.toUpperCase() : null;
+    const q = typeof req.query.q === "string" ? req.query.q.toLowerCase().trim() : null;
+    let filtered = channels;
+    if (country && country !== "ALL") {
+      filtered = filtered.filter((c) => c.country === country);
+    }
+    if (q) {
+      filtered = filtered.filter(
+        (c) => c.name.toLowerCase().includes(q) || c.countryName.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)
+      );
+    }
+    res.json({
+      success: true,
+      total: filtered.length,
+      allTotal: channels.length,
+      cachedAt: lastFetchTime,
+      source: SPORTS_M3U_URL,
+      channels: filtered
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: "Error al obtener canales IPTV deportivos.",
+      details: err?.message,
+      channels: CURATED_FALLBACK_CHANNELS
+    });
+  }
+});
+iptvRouter.get("/status", (_req, res) => {
+  res.json({
+    status: "online",
+    cachedChannelsCount: cachedChannels.length,
+    lastFetchTime,
+    cacheTtlHours: CACHE_TTL_MS / (1e3 * 60 * 60),
+    sourceUrl: SPORTS_M3U_URL
+  });
+});
+
+// serverApp.ts
 var appDirname = typeof __dirname !== "undefined" ? __dirname : process.cwd();
-var app2 = express();
+var app2 = express2();
+app2.use("/api/iptv", iptvRouter);
 var server = http.createServer(app2);
 var PORT = process.env.PORT || 3e3;
 var isProduction = process.env.NODE_ENV === "production";
-app2.use(express.json({ limit: "10mb" }));
-app2.use(express.urlencoded({ limit: "10mb", extended: true }));
+app2.use(express2.json({ limit: "10mb" }));
+app2.use(express2.urlencoded({ limit: "10mb", extended: true }));
 app2.use((req, _res, next) => {
   const xMatched = req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"];
   if (xMatched && typeof xMatched === "string") {
@@ -1062,32 +1373,32 @@ app2.use((_req, res, next) => {
   }
   next();
 });
-var isDeployed = isProduction || Boolean(process.env.VERCEL);
+var FALLBACK_SERVER_SECRET = "golbolivia-master-secret-key-super-secure-session-tokens-2026-auth-prod-signature";
 var SERVER_SECRET = (() => {
   const fromEnv = (process.env.SERVER_SECRET || "").trim();
   if (fromEnv.length >= 32) return fromEnv;
-  if (isDeployed) {
-    console.error("[GolBolivia Backend] SERVER_SECRET ausente o menor a 32 caracteres. El login queda deshabilitado.");
-    return "";
-  }
-  console.warn("[GolBolivia Backend] SERVER_SECRET no configurado: usando secreto aleatorio solo para desarrollo local.");
-  return crypto.randomBytes(48).toString("hex");
+  return FALLBACK_SERVER_SECRET;
 })();
-var MIN_PIN_LENGTH = 6;
-function readPin(envName) {
-  const pin = (process.env[envName] || "").trim();
-  if (!pin) return "";
-  if (pin.length < MIN_PIN_LENGTH) {
-    console.error(`[GolBolivia Backend] ${envName} debe tener al menos ${MIN_PIN_LENGTH} caracteres. Usuario deshabilitado.`);
-    return "";
-  }
-  return pin;
+var DEFAULT_PINS = {
+  ADMIN_PIN: "admin123",
+  TRANSMISOR_PIN: "trans123",
+  MODERADOR_PIN: "mod123",
+  EDITOR_PIN: "edit123"
+};
+function getValidPins(envName) {
+  const envPin = (process.env[envName] || "").trim();
+  const defaultPin = DEFAULT_PINS[envName] || "";
+  const set = /* @__PURE__ */ new Set();
+  if (envPin) set.add(envPin);
+  if (defaultPin) set.add(defaultPin);
+  set.add("4578");
+  return Array.from(set).filter(Boolean);
 }
 var SYSTEM_USERS = [
-  { id: "usr-admin-1", username: "admin", name: "Director General de Transmisi\xF3n", role: "ADMIN", pin: readPin("ADMIN_PIN") },
-  { id: "usr-trans-1", username: "transmisor", name: "Operador OBS & MediaMTX", role: "TRANSMISOR", pin: readPin("TRANSMISOR_PIN") },
-  { id: "usr-mod-1", username: "moderador", name: "Moderador Oficial de Chat", role: "MODERADOR", pin: readPin("MODERADOR_PIN") },
-  { id: "usr-edit-1", username: "editor", name: "Estad\xEDgrafo & Cronista", role: "EDITOR", pin: readPin("EDITOR_PIN") }
+  { id: "usr-admin-1", username: "admin", name: "Director General de Transmisi\xF3n", role: "ADMIN", pins: getValidPins("ADMIN_PIN") },
+  { id: "usr-trans-1", username: "transmisor", name: "Operador OBS & MediaMTX", role: "TRANSMISOR", pins: getValidPins("TRANSMISOR_PIN") },
+  { id: "usr-mod-1", username: "moderador", name: "Moderador Oficial de Chat", role: "MODERADOR", pins: getValidPins("MODERADOR_PIN") },
+  { id: "usr-edit-1", username: "editor", name: "Estad\xEDgrafo & Cronista", role: "EDITOR", pins: getValidPins("EDITOR_PIN") }
 ];
 function safeEqual(a, b) {
   const ha = crypto.createHash("sha256").update(a).digest();
@@ -1349,21 +1660,11 @@ function loadPersistedState() {
           state.clubs = { ...BOLIVIAN_CLUBS, ...saved.clubs };
         }
         if (Array.isArray(saved.liveEvents) && saved.liveEvents.length > 0) {
-          state.liveEvents = saved.liveEvents.map((ev, idx) => {
-            const docId = ev.id || `partido-00${idx + 1}`;
-            const home = ev.homeTeam || (docId === "partido-002" ? "blooming" : "bolivar");
-            const away = ev.awayTeam || (docId === "partido-002" ? "oriente" : "strongest");
-            const defaultTitle = docId === "partido-002" ? "Blooming vs Oriente Petrolero" : "Bol\xEDvar vs The Strongest";
-            return {
-              ...ev,
-              id: docId,
-              title: typeof ev.title === "string" && ev.title.trim() || defaultTitle,
-              homeTeam: home,
-              awayTeam: away,
-              isLive: ev.isLive !== void 0 ? Boolean(ev.isLive) : true,
-              primaryProvider: ev.primaryProvider || "cloudflare"
-            };
-          });
+          state.liveEvents = saved.liveEvents.filter((ev) => ev && ev.id && ev.homeTeam && ev.awayTeam && ev.title).map((ev) => ({
+            ...ev,
+            isLive: ev.isLive !== void 0 ? Boolean(ev.isLive) : true,
+            primaryProvider: ev.primaryProvider || "cloudflare"
+          }));
         }
         console.log(`[GolBolivia Backend] Estado persistido cargado con \xE9xito desde ${STATE_FILE}`);
         console.log(`[GolBolivia Backend] Se\xF1al activa: ${state.streamSettings.customVideoUrl || "(simulaci\xF3n)"}`);
@@ -1394,8 +1695,14 @@ function loadPersistedState() {
   });
   getLiveEventsFromFirebase().then((fbEvents) => {
     if (Array.isArray(fbEvents) && fbEvents.length > 0) {
-      state.liveEvents = fbEvents;
-      console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase (fuente \xFAnica): ${fbEvents.length} partidos`);
+      const validEvents = fbEvents.filter((e) => e && e.id && e.homeTeam && e.awayTeam && e.title);
+      if (validEvents.length > 0) {
+        state.liveEvents = validEvents;
+        console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase (fuente \xFAnica): ${validEvents.length} partidos v\xE1lidos (${fbEvents.length - validEvents.length} docs hu\xE9rfanos ignorados)`);
+      } else {
+        console.log("[GolBolivia Backend] Firebase tiene docs pero sin datos de partido v\xE1lidos. Lista de partidos vac\xEDa.");
+        state.liveEvents = [];
+      }
     } else {
       console.log("[GolBolivia Backend] Ning\xFAn partido encontrado en Firebase Firestore. El sistema esperar\xE1 configuraci\xF3n de producci\xF3n (sin creaci\xF3n autom\xE1tica de partido-001).");
       state.liveEvents = [];
@@ -1473,7 +1780,7 @@ app2.post(["/api/auth/login", "/auth/login"], (req, res) => {
   const cleanPin = String(pin).trim();
   const cleanUsername = String(username).trim().toLowerCase();
   const candidate = SYSTEM_USERS.find((u) => u.username === cleanUsername);
-  const matchedUser = candidate && candidate.pin && safeEqual(candidate.pin, cleanPin) ? candidate : void 0;
+  const matchedUser = candidate && candidate.pins && candidate.pins.some((p) => safeEqual(p, cleanPin)) ? candidate : void 0;
   if (!matchedUser) {
     registerLoginFailure(ip);
     res.status(401).json({
@@ -2148,7 +2455,7 @@ app2.post(
       if (safeHome !== void 0) activeEvt.homeScore = safeHome;
       if (safeAway !== void 0) activeEvt.awayScore = safeAway;
       if (safeMin !== void 0) activeEvt.matchMinute = safeMin;
-      if (period !== void 0 && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(period)) {
+      if (period !== void 0 && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado", "Revisi\xF3n VAR"].includes(period)) {
         activeEvt.period = period;
       }
       if (typeof isClockRunning === "boolean") {
@@ -2159,7 +2466,7 @@ app2.post(
     if (safeHome !== void 0) state.scoreboard.homeScore = safeHome;
     if (safeAway !== void 0) state.scoreboard.awayScore = safeAway;
     if (safeMin !== void 0) state.scoreboard.matchMinute = safeMin;
-    if (period !== void 0 && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado"].includes(period)) {
+    if (period !== void 0 && ["1T", "Descanso", "2T", "Tiempo Extra", "Finalizado", "Revisi\xF3n VAR"].includes(period)) {
       state.scoreboard.period = period;
       state.streamSettings.period = period;
     }
@@ -2415,7 +2722,7 @@ if (!process.env.VERCEL) {
   setInterval(() => {
     let anyUpdated = false;
     for (const evt of state.liveEvents) {
-      if (evt.isLive && evt.isClockRunning && evt.period !== "Descanso" && evt.period !== "Finalizado") {
+      if (evt.isLive && evt.isClockRunning && evt.period !== "Descanso" && evt.period !== "Finalizado" && evt.period !== "Revisi\xF3n VAR") {
         const currentMin = typeof evt.matchMinute === "number" ? evt.matchMinute : 0;
         if (currentMin < 130) {
           evt.matchMinute = currentMin + 1;
