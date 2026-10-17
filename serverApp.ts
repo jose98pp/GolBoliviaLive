@@ -34,6 +34,7 @@ import {
 } from './src/services/firebase';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { iptvRouter } from './src/services/iptvBackend';
+import proxyHandler from './api/proxy.js';
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
@@ -90,6 +91,11 @@ app.use((_req, res, next) => {
 
 // 4. Montar router IPTV una vez normalizada la URL y configurado CORS
 app.use('/api/iptv', iptvRouter);
+
+// 5. Proxy de streaming para evitar bloqueos CORS y enlaces http:// (Mixed Content)
+app.all(['/api/proxy', '/proxy'], async (req: Request, res: Response) => {
+  await proxyHandler(req, res);
+});
 
 // ── Secrets & operator accounts (configured via environment variables or fallback) ──
 const FALLBACK_SERVER_SECRET = 'golbolivia-master-secret-key-super-secure-session-tokens-2026-auth-prod-signature';

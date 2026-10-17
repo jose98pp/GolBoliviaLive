@@ -50,3 +50,25 @@ export function detectProviderFromUrl(url: string): StreamProvider {
   if (clean.includes('youtube.com/') || clean.includes('youtu.be/')) return 'youtube';
   return 'cloudflare';
 }
+
+/**
+ * Wraps external HTTP streams with the Vercel serverless /api/proxy to prevent Mixed Content
+ * blocking on HTTPS, and allows passing arbitrary streams through the CORS proxy.
+ */
+export function getProxiedStreamUrl(url?: string | null, forceProxy = false): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+
+  // Already proxied or relative
+  if (trimmed.startsWith('/api/proxy') || trimmed.startsWith('/proxy')) {
+    return trimmed;
+  }
+
+  // External HTTP stream MUST be proxied to prevent browser Mixed Content error on HTTPS (Vercel)
+  if (trimmed.startsWith('http://') || forceProxy) {
+    return `/api/proxy?url=${encodeURIComponent(trimmed)}`;
+  }
+
+  return trimmed;
+}

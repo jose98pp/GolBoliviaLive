@@ -6,6 +6,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/proxy",
+      "destination": "/api/proxy.js"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index?path=$1"
     },

@@ -11,6 +11,8 @@ import {
 } from '../src/services/iptvBackend';
 import { iptvService } from '../src/services/iptvService';
 import type { IptvChannel } from '../src/types/iptv';
+import proxyHandler, { rewriteM3u8Content } from '../api/proxy.js';
+import { getProxiedStreamUrl } from '../src/utils/streamUtils';
 
 console.log('====================================================');
 console.log('🧪 PRUEBAS AUTOMATIZADAS DE IPTV Y NORMALIZACIÓN VERCEL');
@@ -348,6 +350,92 @@ async function runAllIptvTests() {
 
   assert(deleteCustomRes?.success === true, 'DELETE /api/iptv/custom/:id elimina el canal');
   assert(getCustomChannelsForTest().every((c) => c.id !== createdChannelId), 'El canal fue removido de la memoria');
+
+  // ── 7. Pruebas del Proxy Serverless /api/proxy (CORS y enlaces http://) ──
+  console.log('\n--- 7. Pruebas del Proxy Serverless /api/proxy (CORS y enlaces http://) ---');
+
+  // 7.1 Validación de parámetros y protocolo
+  let noUrlStatus = 200;
+  let noUrlJson: any = null;
+  const mockResNoUrl: any = {
+    setHeader: () => {},
+    status: (s: number) => { noUrlStatus = s; return mockResNoUrl; },
+    json: (d: any) => { noUrlJson = d; },
+  };
+  await proxyHandler({ method: 'GET', query: {} }, mockResNoUrl);
+  assert(noUrlStatus === 400, 'Rechaza solicitudes sin parámetro ?url= con código 400');
+  assert(noUrlJson?.error?.includes('Falta el parámetro'), 'Devuelve mensaje de error descriptivo');
+
+  let invalidProtoStatus = 200;
+  const mockResInvalidProto: any = {
+    setHeader: () => {},
+    status: (s: number) => { invalidProtoStatus = s; return mockResInvalidProto; },
+    json: () => {},
+  };
+  await proxyHandler({ method: 'GET', query: { url: 'ftp://invalido.com/stream' } }, mockResInvalidProto);
+  assert(invalidProtoStatus === 400, 'Rechaza protocolos no permitidos (ftp://) con código 400');
+
+  // 7.2 Soporte de CORS Preflight (OPTIONS)
+  const headersSet: Record<string, string> = {};
+  let optionsEnded = false;
+  let optionsStatus = 0;
+  const mockResOptions: any = {
+    setHeader: (k: string, v: string) => { headersSet[k.toLowerCase()] = v; },
+    status: (s: number) => { optionsStatus = s; return mockResOptions; },
+    end: () => { optionsEnded = true; },
+  };
+  await proxyHandler({ method: 'OPTIONS' }, mockResOptions);
+  assert(optionsStatus === 200 && optionsEnded, 'Responde 200 a preflight OPTIONS');
+  assert(headersSet['access-control-allow-origin'] === '*', 'Cabecera Access-Control-Allow-Origin: * configurada');
+  assert(Boolean(headersSet['access-control-allow-methods']?.includes('GET')), 'Cabecera Access-Control-Allow-Methods incluye GET');
+
+  // 7.3 Prueba de reescritura de listas de reproducción M3U8
+  const sampleM3u8 = `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-KEY:METHOD=AES-128,URI="http://key.origin.com/enc.key"
+#EXTINF:6.0,
+segment001.ts
+#EXTINF:6.0,
+http://cdn.origin.com/live/segment002.ts`;
+
+  const rewritten = rewriteM3u8Content(sampleM3u8, 'http://origin.com/live/playlist.m3u8');
+  assert(rewritten.includes('#EXTM3U'), 'Preserva encabezado #EXTM3U');
+  assert(rewritten.includes('#EXTINF:6.0,'), 'Preserva marcas de duración #EXTINF');
+  assert(
+    rewritten.includes('/api/proxy?url=' + encodeURIComponent('http://origin.com/live/segment001.ts')),
+    'Reescribe segmentos relativos (segment001.ts) resolviendo URL base absoluta'
+  );
+  assert(
+    rewritten.includes('/api/proxy?url=' + encodeURIComponent('http://cdn.origin.com/live/segment002.ts')),
+    'Reescribe segmentos absolutos (http://...) para pasar por el proxy'
+  );
+  assert(
+    rewritten.includes('/api/proxy?url=' + encodeURIComponent('http://key.origin.com/enc.key')),
+    'Reescribe URIs de claves de encriptación #EXT-X-KEY'
+  );
+
+  // 7.4 Helper frontend getProxiedStreamUrl
+  const proxiedHttp = getProxiedStreamUrl('http://canal.bo/stream.m3u8');
+  assert(
+    proxiedHttp.startsWith('/api/proxy?url='),
+    'Convierte automáticamente enlaces http:// a /api/proxy para evitar Mixed Content'
+  );
+  const proxiedHttps = getProxiedStreamUrl('https://seguro.bo/stream.m3u8');
+  assert(
+    proxiedHttps === 'https://seguro.bo/stream.m3u8',
+    'Mantiene enlaces https:// intactos por defecto'
+  );
+  const forcedHttps = getProxiedStreamUrl('https://con-cors.bo/stream.m3u8', true);
+  assert(
+    forcedHttps.startsWith('/api/proxy?url='),
+    'Permite forzar proxy en enlaces https:// cuando falla por CORS'
+  );
+  const alreadyProxied = getProxiedStreamUrl('/api/proxy?url=http%3A%2F%2Ftest');
+  assert(
+    alreadyProxied === '/api/proxy?url=http%3A%2F%2Ftest',
+    'Evita doble envoltura si la URL ya está usando /api/proxy'
+  );
 
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS CON ÉXITO: ${passedTests}/${totalTests}`);

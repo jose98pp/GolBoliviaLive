@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
+import { getProxiedStreamUrl } from '../../../utils/streamUtils';
 
 interface UseHlsOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -28,12 +29,24 @@ export function useHls({
   const [currentLevel, setCurrentLevel] = useState<number>(-1); // -1 = auto
   const [isUsingBackup, setIsUsingBackup] = useState<boolean>(false);
   const networkErrorCountRef = useRef<number>(0);
+  const proxyAttemptedRef = useRef<boolean>(false);
+  const prevSrcRef = useRef<string | undefined>(undefined);
 
   // Store latest callbacks in ref so changing inline callback instances never trigger useEffect loops
   const callbacksRef = useRef({ onError, onSuccess, onFailoverTriggered });
   useEffect(() => {
     callbacksRef.current = { onError, onSuccess, onFailoverTriggered };
   });
+
+  // Al cambiar de canal o fuente, reiniciar estados de fallo y proxy para que no quede atascado en backup
+  if (prevSrcRef.current !== src) {
+    prevSrcRef.current = src;
+    if (isUsingBackup) {
+      setIsUsingBackup(false);
+    }
+    networkErrorCountRef.current = 0;
+    proxyAttemptedRef.current = false;
+  }
 
   const destroyHls = useCallback(() => {
     if (hlsRef.current) {
@@ -52,8 +65,8 @@ export function useHls({
 
   useEffect(() => {
     const video = videoRef.current;
-    const effectiveSrc = (isUsingBackup && backupSrc) ? backupSrc : (src || backupSrc);
-    if (!video || !effectiveSrc) {
+    const rawTarget = (isUsingBackup && backupSrc) ? backupSrc : (src || backupSrc);
+    if (!video || !rawTarget) {
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -62,11 +75,20 @@ export function useHls({
       return;
     }
 
-    // Clean prior instance
+    // Auto-proxy para fuentes HTTP externas para evitar bloqueos Mixed Content en HTTPS (Vercel)
+    const effectiveSrc = getProxiedStreamUrl(rawTarget);
+
+    // Limpiar instancia previa y buffer del video
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+    try {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    } catch {}
+
     networkErrorCountRef.current = 0;
 
     // Check if HLS.js is supported
@@ -78,6 +100,12 @@ export function useHls({
         maxBufferLength: 30,
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 6,
+        manifestLoadingTimeOut: 12000,
+        manifestLoadingMaxRetry: 3,
+        levelLoadingTimeOut: 12000,
+        levelLoadingMaxRetry: 3,
+        fragLoadingTimeOut: 15000,
+        fragLoadingMaxRetry: 3,
       });
 
       hlsRef.current = hls;
@@ -114,6 +142,14 @@ export function useHls({
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               networkErrorCountRef.current += 1;
+              // Si falla por CORS o bloqueo de red en HTTPS directo y aún no se probó el proxy, rescatarlo vía /api/proxy
+              if (!proxyAttemptedRef.current && rawTarget && !rawTarget.includes('/api/proxy') && !effectiveSrc.includes('/api/proxy')) {
+                proxyAttemptedRef.current = true;
+                const proxiedUrl = getProxiedStreamUrl(rawTarget, true);
+                hls.loadSource(proxiedUrl);
+                hls.startLoad();
+                return;
+              }
               if (networkErrorCountRef.current >= 2 && autoFailover && backupSrc && !isUsingBackup && src !== backupSrc) {
                 setIsUsingBackup(true);
                 callbacksRef.current.onFailoverTriggered?.('backup');
@@ -153,6 +189,13 @@ export function useHls({
         callbacksRef.current.onSuccess?.();
       };
       const onVideoError = () => {
+        if (!proxyAttemptedRef.current && rawTarget && !rawTarget.includes('/api/proxy') && !effectiveSrc.includes('/api/proxy')) {
+          proxyAttemptedRef.current = true;
+          video.src = getProxiedStreamUrl(rawTarget, true);
+          video.load();
+          video.play().catch(() => {});
+          return;
+        }
         if (autoFailover && backupSrc && !isUsingBackup) {
           setIsUsingBackup(true);
           callbacksRef.current.onFailoverTriggered?.('backup');
