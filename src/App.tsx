@@ -55,9 +55,7 @@ let streamSyncTimer: ReturnType<typeof setTimeout> | undefined;
 export default function App() {
   const { clubs } = useClubs();
   const [activeTab, setActiveTab] = useState<'stream' | 'exclusive' | 'iptv'>('stream');
-  const [activeIptvChannel, setActiveIptvChannel] = useState<IptvChannel | null>(() => {
-    return iptvService.getLastPlayed();
-  });
+  const [activeIptvChannel, setActiveIptvChannel] = useState<IptvChannel | null>(null);
   const [mobileViewMode, setMobileViewMode] = useState<'stream' | 'chat'>('stream');
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
@@ -95,14 +93,7 @@ export default function App() {
   const handleSelectIptvChannel = (channel: IptvChannel) => {
     setActiveIptvChannel(channel);
     iptvService.saveLastPlayed(channel);
-    setStreamSettings((prev) => ({
-      ...prev,
-      title: channel.name,
-      tournamentName: `${channel.countryName} · Señal Deportiva IPTV`,
-      customVideoUrl: channel.streamUrl,
-      broadcastMode: 'obs_custom',
-      isLive: true,
-    }));
+    // IPTV es una selección de reproducción local: nunca modificar la señal oficial del partido.
     setSignalReloadKey((k) => k + 1);
     setActiveToast({
       id: `tune-${Date.now()}`,
@@ -208,10 +199,10 @@ export default function App() {
 
 function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   const docId = e?.id || `partido-00${idx + 1}`;
-  const home = e?.homeTeam || (docId === 'partido-002' ? 'blooming' : 'bolivar');
-  const away = e?.awayTeam || (docId === 'partido-002' ? 'oriente' : 'strongest');
-  const defaultTitle = docId === 'partido-002' ? 'Blooming vs Oriente Petrolero' : 'Bolívar vs The Strongest';
-  const title = (typeof e?.title === 'string' && e.title.trim()) || defaultTitle;
+  const home = typeof e?.homeTeam === 'string' ? e.homeTeam : '';
+  const away = typeof e?.awayTeam === 'string' ? e.awayTeam : '';
+  const defaultTitle = home && away ? `${home} vs ${away}` : '';
+  const title = typeof e?.title === 'string' ? e.title.trim() : defaultTitle;
 
   return {
     ...e,
@@ -415,13 +406,12 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
           // 2. Eliminamos items locales que el servidor ya no tiene (eliminados mientras offline).
           setLiveEvents((prev) => {
             const serverIds = new Set(data.liveEvents.map((e: any) => e.id));
-            const prevFiltered = prev.filter((p) => serverIds.has(p.id));
-            return mergeConfirmedEvents(prevFiltered, data.liveEvents);
+            return mergeConfirmedEvents(prev, data.liveEvents);
           });
         } else if (Array.isArray(data.liveEvents) && data.liveEvents.length === 0) {
           // Servidor confirmó lista vacía (todos eliminados)
-          setLiveEvents([]);
-          try { localStorage.setItem('golbolivia_live_events', '[]'); } catch {}
+          // Una instancia serverless sin datos no constituye confirmación de eliminación.
+          // Los borrados explícitos llegan mediante LIVE_EVENT_DELETED.
         }
         if (data.events) setEvents(data.events);
         if (data.stream?.donationQr) {
@@ -488,8 +478,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         if (Array.isArray(data)) {
           setLiveEvents((prev) => {
             const incomingIds = new Set(data.map((e: any) => e.id));
-            const prevFiltered = prev.filter((p) => incomingIds.has(p.id));
-            const merged = mergeConfirmedEvents(prevFiltered, data);
+            const merged = mergeConfirmedEvents(prev, data);
             try {
               localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
             } catch {}
@@ -535,8 +524,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       if (Array.isArray(fbEvents)) {
         setLiveEvents((prev) => {
           const incomingIds = new Set(fbEvents.map((e: any) => e.id));
-          const prevFiltered = prev.filter((p) => incomingIds.has(p.id));
-          const merged = mergeConfirmedEvents(prevFiltered, fbEvents);
+          const merged = mergeConfirmedEvents(prev, fbEvents);
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
           } catch {}
@@ -550,8 +538,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       if (Array.isArray(evts)) {
         setLiveEvents((prev) => {
           const incomingIds = new Set(evts.map((e: any) => e.id));
-          const prevFiltered = prev.filter((p) => incomingIds.has(p.id));
-          const merged = mergeConfirmedEvents(prevFiltered, evts);
+          const merged = mergeConfirmedEvents(prev, evts);
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
           } catch {}
@@ -624,6 +611,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         window.history.pushState(null, '', `/live/${slug}`);
       } catch {}
     }
+    setActiveIptvChannel(null);
     setStreamSettings((prev) => ({
       ...prev,
       title: evt.title,
@@ -633,8 +621,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       tournamentName: evt.tournamentName || prev.tournamentName,
       stadiumName: evt.stadiumName || prev.stadiumName,
       period: evt.period || prev.period,
-      customVideoUrl: evt.customVideoUrl || evt.cloudflare?.playbackUrl || prev.customVideoUrl,
-      backupVideoUrl: evt.backupVideoUrl || prev.backupVideoUrl,
+      customVideoUrl: evt.customVideoUrl || evt.cloudflare?.playbackUrl || '',
+      backupVideoUrl: evt.backupVideoUrl || '',
       backupChannelName: evt.backupChannelName || prev.backupChannelName,
       activeStreamSource: evt.activeStreamSource || prev.activeStreamSource,
       autoFailoverEnabled: evt.autoFailoverEnabled ?? prev.autoFailoverEnabled,
@@ -1340,8 +1328,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                                   return;
                                 }
                                 setActiveIptvChannel(null);
-                                const updated: LiveEvent = { ...currentLiveEvent, primaryProvider: prov.id as StreamProvider };
-                                handleSelectMatchEvent(updated);
+                                // Selector de fuente local: no persistir ni sobrescribir la configuración oficial.
+                                setLiveEvents((prev) => prev.map((ev) => ev.id === currentLiveEvent.id ? { ...ev, primaryProvider: prov.id as StreamProvider } : ev));
+                                setSignalReloadKey((k) => k + 1);
                               }}
                               className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                                 isCurrent
@@ -1579,7 +1568,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                             overlayScoreboardVisible: false,
                             lowLatencyMode: true,
                           }
-                        : undefined
+                        : { ...streamSettings, title: currentLiveEvent.title, homeClubId: currentLiveEvent.homeTeam, awayClubId: currentLiveEvent.awayTeam, tournamentName: currentLiveEvent.tournamentName || '', customVideoUrl: getStreamUrlForEvent(currentLiveEvent), activeStreamSource: 'obs', backupVideoUrl: '' }
                     }
                     onProviderChange={(newProv) => {
                       setLiveEvents((prev) =>
