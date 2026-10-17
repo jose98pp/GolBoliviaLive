@@ -763,6 +763,32 @@ async function addMatchEventToFirebase(event) {
   });
   return eventId;
 }
+async function getMatchEventsFromFirebase() {
+  try {
+    const colRef = collection(db, "events");
+    const q = query(colRef, orderBy("createdAt", "desc"), limit(50));
+    const snap = await getDocs(q);
+    const events = [];
+    snap.forEach((d) => events.push(d.data()));
+    return events;
+  } catch (err) {
+    console.warn("[Firebase] Error al obtener eventos:", err);
+    return [];
+  }
+}
+async function getChatMessagesFromFirebase() {
+  try {
+    const colRef = collection(db, "chat");
+    const q = query(colRef, orderBy("createdAt", "desc"), limit(60));
+    const snap = await getDocs(q);
+    const messages = [];
+    snap.forEach((d) => messages.push(d.data()));
+    return messages.reverse();
+  } catch (err) {
+    console.warn("[Firebase] Error al obtener mensajes de chat:", err);
+    return [];
+  }
+}
 async function logConfirmationToFirebase(log) {
   await writeGate;
   const id = `conf_${Date.now()}`;
@@ -1743,60 +1769,8 @@ var state = {
     passes: [412, 318],
     passAccuracy: [86, 80]
   },
-  events: [
-    {
-      id: "ev-1",
-      minute: 14,
-      type: "goal",
-      clubId: "strongest",
-      player: "Michael Ortega",
-      description: "\xA1GOLAZO del Tigre! Remate potente de media distancia al \xE1ngulo.",
-      scoreAfter: "0 - 1"
-    },
-    {
-      id: "ev-3",
-      minute: 39,
-      type: "goal",
-      clubId: "bolivar",
-      player: "Ramiro Vaca",
-      description: "\xA1GOOOL de Bol\xEDvar! Tiro libre magistral al \xE1ngulo superior izquierdo.",
-      scoreAfter: "1 - 1"
-    },
-    {
-      id: "ev-6",
-      minute: 71,
-      type: "goal",
-      clubId: "bolivar",
-      player: "Bruno S\xE1vio",
-      description: "\xA1GOOOOOL de Bol\xEDvar! Penal ejecutado con categor\xEDa.",
-      scoreAfter: "2 - 1"
-    }
-  ],
-  chatMessages: [
-    {
-      id: "c1",
-      sender: "Gonzalo Cobo (Relator Oficial)",
-      clubId: "bolivar",
-      text: "\xA1Bienvenidos a la transmisi\xF3n oficial del Cl\xE1sico 234 del f\xFAtbol boliviano desde el Hernando Siles!",
-      timestamp: "19:42",
-      isOfficialRelator: true
-    },
-    {
-      id: "c2",
-      sender: "Marcelo_LaPaz",
-      clubId: "bolivar",
-      text: "\xA1Vamos Academia de mi vida! \u{1FA75}\u26A1",
-      timestamp: "19:43",
-      isVip: true
-    },
-    {
-      id: "c3",
-      sender: "TigreCentenario",
-      clubId: "strongest",
-      text: "\xA1Con garra atigrada se empata este cl\xE1sico! \u{1F49B}\u{1F5A4}",
-      timestamp: "19:44"
-    }
-  ]
+  events: [],
+  chatMessages: []
 };
 var DATA_DIR = process.env.VERCEL ? path2.resolve("/tmp", "data") : path2.resolve(appDirname, "data");
 var STATE_FILE = path2.join(DATA_DIR, "stream-state.json");
@@ -1825,6 +1799,12 @@ function loadPersistedState() {
             primaryProvider: ev.primaryProvider || "cloudflare"
           }));
         }
+        if (Array.isArray(saved.events)) {
+          state.events = saved.events;
+        }
+        if (Array.isArray(saved.chatMessages)) {
+          state.chatMessages = saved.chatMessages;
+        }
         console.log(`[GolBolivia Backend] Estado persistido cargado con \xE9xito desde ${STATE_FILE}`);
         console.log(`[GolBolivia Backend] Se\xF1al activa: ${state.streamSettings.customVideoUrl || "(simulaci\xF3n)"}`);
       }
@@ -1849,6 +1829,20 @@ function loadPersistedState() {
   getClubsFromFirebase().then((fbClubs) => {
     if (fbClubs && Object.keys(fbClubs).length > 0) {
       state.clubs = { ...state.clubs, ...fbClubs };
+    }
+  }).catch(() => {
+  });
+  getMatchEventsFromFirebase().then((fbEvents) => {
+    if (Array.isArray(fbEvents)) {
+      state.events = fbEvents;
+      console.log(`[GolBolivia Backend] Eventos de partido sincronizados desde Firebase: ${fbEvents.length}`);
+    }
+  }).catch(() => {
+  });
+  getChatMessagesFromFirebase().then((fbChat) => {
+    if (Array.isArray(fbChat)) {
+      state.chatMessages = fbChat;
+      console.log(`[GolBolivia Backend] Mensajes de chat sincronizados desde Firebase: ${fbChat.length}`);
     }
   }).catch(() => {
   });
@@ -1883,6 +1877,8 @@ function persistState() {
       scoreboard: state.scoreboard,
       clubs: state.clubs,
       liveEvents: state.liveEvents,
+      events: state.events,
+      chatMessages: state.chatMessages,
       updatedAt: Date.now()
     };
     fs2.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), "utf-8");
@@ -2701,6 +2697,7 @@ app2.delete(
     const id = req.params.id;
     const initialLen = state.events.length;
     state.events = state.events.filter((e) => e.id !== id);
+    persistState();
     deleteMatchEventFromFirebase(id).catch(logFirestoreWarning("eliminar evento"));
     if (state.events.length === initialLen) {
       broadcastSseEvent("MATCH_EVENT_DELETED", { id });
@@ -2717,6 +2714,7 @@ app2.post(
   requireRoles(["ADMIN", "EDITOR"]),
   (_req, res) => {
     state.events = [];
+    persistState();
     clearMatchEventsInFirebase().catch(logFirestoreWarning("limpiar eventos"));
     broadcastSseEvent("MATCH_EVENTS_CLEARED", {});
     res.json({ success: true, message: "Cronolog\xEDa de eventos limpiada correctamente." });
@@ -2756,6 +2754,7 @@ app2.delete(
   (req, res) => {
     const id = req.params.id;
     state.chatMessages = state.chatMessages.filter((m) => m.id !== id);
+    persistState();
     deleteChatMessageFromFirebase(id).catch(logFirestoreWarning("eliminar mensaje"));
     broadcastSseEvent("CHAT_MESSAGE_DELETED", { id });
     res.json({ success: true });
@@ -2767,6 +2766,7 @@ app2.post(
   requireRoles(["ADMIN", "MODERADOR"]),
   (_req, res) => {
     state.chatMessages = [];
+    persistState();
     clearChatInFirebase().catch(logFirestoreWarning("limpiar chat"));
     broadcastSseEvent("CHAT_CLEARED", {});
     res.json({ success: true, message: "Chat en vivo limpiado correctamente." });

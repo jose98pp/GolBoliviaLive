@@ -4,6 +4,16 @@ import { ChatMessage, LivePoll, Club } from '../types/football';
 import { BOLIVIAN_CLUBS, INITIAL_POLL } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { sendChatMessageToFirebase, subscribeChatMessagesFirebase } from '../services/firebase';
+import { apiClient } from '../services/apiClient';
+
+const WELCOME_CHAT_MESSAGE: ChatMessage = {
+  id: 'welcome-live',
+  sender: 'GolBolivia Live',
+  clubId: 'fbf',
+  text: '¡Bienvenidos al chat oficial! Los mensajes de los hinchas que entran a la página se muestran aquí en vivo.',
+  timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
+  isOfficialRelator: true,
+};
 
 interface LiveChatProps {
   onTriggerFloatingReaction: (emoji: string) => void;
@@ -36,16 +46,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [
-      {
-        id: 'welcome-live',
-        sender: 'GolBolivia Live',
-        clubId: 'fbf',
-        text: '¡Bienvenidos al chat oficial! Los mensajes de los hinchas que entran a la página se muestran aquí en vivo.',
-        timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
-        isOfficialRelator: true,
-      },
-    ];
+    return [WELCOME_CHAT_MESSAGE];
   });
 
   const [userNickname, setUserNickname] = useState<string>(() => {
@@ -108,16 +109,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
           } else if (event.data?.type === 'REACTION') {
             onTriggerFloatingReaction(event.data.emoji);
           } else if (event.data?.type === 'CLEAR_CHAT') {
-            setMessages([
-              {
-                id: 'welcome-live-' + Date.now(),
-                sender: 'GolBolivia Live',
-                clubId: 'fbf',
-                text: 'Chat oficial reiniciado para la nueva transmisión. ¡Bienvenidos!',
-                timestamp: new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }),
-                isOfficialRelator: true,
-              },
-            ]);
+            setMessages([WELCOME_CHAT_MESSAGE]);
             try {
               localStorage.removeItem('golbolivia_real_chat_messages');
             } catch {}
@@ -133,19 +125,42 @@ export const LiveChat: React.FC<LiveChatProps> = ({
     };
   }, [onTriggerFloatingReaction]);
 
-  // Synchronize with real Firebase chat collection for real website visitors
+  // Synchronize with real Firebase chat collection and SSE for all users in real-time
   useEffect(() => {
-    const unsub = subscribeChatMessagesFirebase((realMsgs) => {
-      if (realMsgs && realMsgs.length > 0) {
-        setMessages((prev) => {
-          const map = new Map<string, ChatMessage>();
-          prev.forEach((m) => map.set(m.id, m));
-          realMsgs.forEach((m) => map.set(m.id, m));
-          return Array.from(map.values()).slice(-60);
-        });
+    const unsubFirebase = subscribeChatMessagesFirebase((realMsgs) => {
+      if (!realMsgs || realMsgs.length === 0) {
+        setMessages([WELCOME_CHAT_MESSAGE]);
+        try {
+          localStorage.removeItem('golbolivia_real_chat_messages');
+        } catch {}
+      } else {
+        setMessages(realMsgs.slice(-60));
+        try {
+          localStorage.setItem('golbolivia_real_chat_messages', JSON.stringify(realMsgs.slice(-60)));
+        } catch {}
       }
     });
-    return () => unsub();
+
+    const unsubSSE = apiClient.subscribeLiveEvents((type, data) => {
+      if (type === 'CHAT_CLEARED') {
+        setMessages([WELCOME_CHAT_MESSAGE]);
+        try {
+          localStorage.removeItem('golbolivia_real_chat_messages');
+        } catch {}
+      } else if (type === 'CHAT_MESSAGE_ADDED' && data) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === data.id)) return prev;
+          return [...prev, data].slice(-60);
+        });
+      } else if (type === 'CHAT_MESSAGE_DELETED' && data?.id) {
+        setMessages((prev) => prev.filter((m) => m.id !== data.id));
+      }
+    });
+
+    return () => {
+      unsubFirebase();
+      unsubSSE();
+    };
   }, []);
 
   // Auto-scroll inside chat box ONLY (does NOT scroll the outer browser window)

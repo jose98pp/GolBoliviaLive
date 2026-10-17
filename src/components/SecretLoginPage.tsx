@@ -1899,6 +1899,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               onPostOfficialMessage={onPostOfficialMessage}
               onUpdatePoll={onUpdatePoll}
               onClearChat={onClearChat}
+              onClearEvents={onClearEvents}
               clubs={clubs}
             />
           ) : effectiveTab === 'vip_analytics' ? (

@@ -354,6 +354,20 @@ export function subscribeMatchEventsFirebase(
   }
 }
 
+export async function getMatchEventsFromFirebase(): Promise<MatchEvent[]> {
+  try {
+    const colRef = collection(db, 'events');
+    const q = query(colRef, orderBy('createdAt', 'desc'), limit(50));
+    const snap = await getDocs(q);
+    const events: MatchEvent[] = [];
+    snap.forEach((d) => events.push(d.data() as MatchEvent));
+    return events;
+  } catch (err) {
+    console.warn('[Firebase] Error al obtener eventos:', err);
+    return [];
+  }
+}
+
 /**
  * 4. LIVE CHAT
  */
@@ -391,6 +405,20 @@ export function subscribeChatMessagesFirebase(
     );
   } catch {
     return () => {};
+  }
+}
+
+export async function getChatMessagesFromFirebase(): Promise<ChatMessage[]> {
+  try {
+    const colRef = collection(db, 'chat');
+    const q = query(colRef, orderBy('createdAt', 'desc'), limit(60));
+    const snap = await getDocs(q);
+    const messages: ChatMessage[] = [];
+    snap.forEach((d) => messages.push(d.data() as ChatMessage));
+    return messages.reverse();
+  } catch (err) {
+    console.warn('[Firebase] Error al obtener mensajes de chat:', err);
+    return [];
   }
 }
 

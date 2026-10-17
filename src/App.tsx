@@ -43,6 +43,8 @@ import {
   getStreamSettingsFromFirebase,
   subscribeDonationQrFirebase,
   getDonationQrFromFirebase,
+  clearMatchEventsInFirebase,
+  clearChatInFirebase,
 } from './services/firebase';
 
 // ── Stream config sync (debounced) ──
@@ -317,8 +319,11 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
             localStorage.setItem('golbolivia_stream_settings', JSON.stringify(data.streamSettings));
           } catch {}
         }
-        if (data.events && data.events.length > 0) {
+        if (Array.isArray(data.events)) {
           setEvents(data.events);
+          try {
+            localStorage.setItem('golbolivia_match_events', JSON.stringify(data.events));
+          } catch {}
         }
         if (data.stream?.donationQr) {
           setDonationQrInfo(data.stream.donationQr);
@@ -497,10 +502,35 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         setEvents((prev) => prev.map((e) => (e.id === data.id ? { ...e, ...data } : e)));
       } else if (type === 'MATCH_EVENT_DELETED') {
         setEvents((prev) => prev.filter((e) => e.id !== data.id));
+      } else if (type === 'MATCH_EVENTS_CLEARED') {
+        setEvents([]);
+        try {
+          localStorage.removeItem('golbolivia_match_events');
+        } catch {}
+      } else if (type === 'CHAT_CLEARED') {
+        try {
+          localStorage.removeItem('golbolivia_real_chat_messages');
+        } catch {}
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          try {
+            const bc = new BroadcastChannel('gol_bolivia_live_chat_channel');
+            bc.postMessage({ type: 'CLEAR_CHAT' });
+            bc.close();
+          } catch {}
+        }
       }
     });
 
-    // 4. Real-time Firebase Firestore Push Listeners: Listen to liveEvents collection (Fuente única de datos reales por partido)
+    // 4. Real-time Firebase Firestore Push Listeners: Listen to liveEvents and events collections (Fuente única de datos reales)
+    const unsubscribeMatchEvents = subscribeMatchEventsFirebase((fbEvents) => {
+      if (Array.isArray(fbEvents)) {
+        setEvents(fbEvents);
+        try {
+          localStorage.setItem('golbolivia_match_events', JSON.stringify(fbEvents));
+        } catch {}
+      }
+    });
+
     const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((fbEvents) => {
       if (Array.isArray(fbEvents)) {
         setLiveEvents((prev) => {
@@ -540,6 +570,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     return () => {
       unsubscribeStream();
       unsubscribeEvents();
+      unsubscribeMatchEvents();
       unsubscribeMultiLiveEvents();
       unsubscribeDonationQr();
       clearInterval(heartbeatTimer);
@@ -863,6 +894,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     try {
       localStorage.removeItem('golbolivia_match_events');
     } catch {}
+    clearMatchEventsInFirebase().catch(() => {});
     apiClient.clearAllMatchEvents().catch(() => {});
     setActiveToast({
       id: `events-cleared-${Date.now()}`,
@@ -883,6 +915,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       }
       localStorage.removeItem('golbolivia_real_chat_messages');
     } catch {}
+    clearChatInFirebase().catch(() => {});
     apiClient.clearAllChatMessages().catch(() => {});
     setActiveToast({
       id: `chat-cleared-${Date.now()}`,

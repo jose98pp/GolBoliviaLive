@@ -18,6 +18,8 @@ import {
   getLiveEventsFromFirebase,
   subscribeLiveEventsFirebase,
   deleteLiveEventFromFirebase,
+  clearMatchEventsInFirebase,
+  clearChatInFirebase,
   FIREBASE_PROJECT_ID,
 } from './firebase';
 
@@ -46,6 +48,8 @@ export interface LiveStateResponse {
 
 class GolBoliviaApiClient {
   private eventSource: EventSource | null = null;
+  private liveEventListeners: Set<(type: string, data: any) => void> = new Set();
+  private fallbackPollTimer: any = null;
 
   public getToken(): string | null {
     return authService.getToken();
@@ -490,8 +494,12 @@ class GolBoliviaApiClient {
     return true;
   }
 
-  // 7.3 Clear All Match Events (Local + Backend)
+  // 7.3 Clear All Match Events (Local + Firebase + Backend)
   async clearAllMatchEvents(): Promise<boolean> {
+    clearMatchEventsInFirebase().catch(() => {});
+    try {
+      localStorage.removeItem('golbolivia_match_events');
+    } catch {}
     try {
       await fetch('/api/matches/events/clear', {
         method: 'POST',
@@ -501,14 +509,9 @@ class GolBoliviaApiClient {
     return true;
   }
 
-  // 8.3 Clear All Chat Messages (Local + Broadcast + Backend)
+  // 8.3 Clear All Chat Messages (Local + Broadcast + Firebase + Backend)
   async clearAllChatMessages(): Promise<boolean> {
-    try {
-      await fetch('/api/chat/clear', {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-      });
-    } catch {}
+    clearChatInFirebase().catch(() => {});
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         const bc = new BroadcastChannel('gol_bolivia_live_chat_channel');
@@ -516,6 +519,12 @@ class GolBoliviaApiClient {
         bc.close();
       }
       localStorage.removeItem('golbolivia_real_chat_messages');
+    } catch {}
+    try {
+      await fetch('/api/chat/clear', {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+      });
     } catch {}
     return true;
   }
@@ -672,34 +681,26 @@ class GolBoliviaApiClient {
       return () => {};
     }
 
-    if (this.eventSource) {
-      try {
-        this.eventSource.close();
-      } catch {}
-      this.eventSource = null;
-    }
-
-    let fallbackPollTimer: any = null;
-    let es: EventSource | null = null;
+    this.liveEventListeners.add(onEvent);
 
     const startPollingFallback = () => {
-      if (fallbackPollTimer) return;
-      fallbackPollTimer = setInterval(async () => {
+      if (this.fallbackPollTimer) return;
+      this.fallbackPollTimer = setInterval(async () => {
         try {
           const liveData = await this.getLiveState();
           if (liveData && liveData.streamSettings) {
-            onEvent('STREAM_UPDATED', liveData.streamSettings);
+            this.broadcastLiveEvent('STREAM_UPDATED', liveData.streamSettings);
           }
           if (liveData && liveData.scoreboard) {
-            onEvent('SCOREBOARD_UPDATED', liveData.scoreboard);
+            this.broadcastLiveEvent('SCOREBOARD_UPDATED', liveData.scoreboard);
           }
         } catch {}
       }, 10000);
     };
 
-    if ('EventSource' in window) {
+    if (!this.eventSource && 'EventSource' in window) {
       try {
-        es = new EventSource('/api/events');
+        const es = new EventSource('/api/events');
         this.eventSource = es;
 
         const eventTypes = [
@@ -707,15 +708,21 @@ class GolBoliviaApiClient {
           'STREAM_UPDATED',
           'SCOREBOARD_UPDATED',
           'MATCH_EVENT_ADDED',
+          'MATCH_EVENT_UPDATED',
+          'MATCH_EVENT_DELETED',
+          'MATCH_EVENTS_CLEARED',
           'CHAT_MESSAGE_ADDED',
           'CHAT_MESSAGE_DELETED',
+          'CHAT_CLEARED',
+          'LIVE_EVENTS_UPDATED',
+          'LIVE_EVENT_DELETED',
         ];
 
         eventTypes.forEach((type) => {
-          es?.addEventListener(type, (e: MessageEvent) => {
+          es.addEventListener(type, (e: MessageEvent) => {
             try {
               const parsed = JSON.parse(e.data);
-              onEvent(type, parsed);
+              this.broadcastLiveEvent(type, parsed);
             } catch {}
           });
         });
@@ -726,33 +733,46 @@ class GolBoliviaApiClient {
           // If serverless environment (e.g. Vercel) terminates persistent SSE stream
           if (errorCount >= 2) {
             try {
-              es?.close();
+              es.close();
             } catch {}
-            es = null;
-            this.eventSource = null;
+            if (this.eventSource === es) {
+              this.eventSource = null;
+            }
             startPollingFallback();
           }
         };
       } catch {
         startPollingFallback();
       }
-    } else {
+    } else if (!this.eventSource) {
       startPollingFallback();
     }
 
     return () => {
-      if (es) {
-        try {
-          es.close();
-        } catch {}
-      }
-      if (this.eventSource === es) {
-        this.eventSource = null;
-      }
-      if (fallbackPollTimer) {
-        clearInterval(fallbackPollTimer);
+      this.liveEventListeners.delete(onEvent);
+      if (this.liveEventListeners.size === 0) {
+        if (this.eventSource) {
+          try {
+            this.eventSource.close();
+          } catch {}
+          this.eventSource = null;
+        }
+        if (this.fallbackPollTimer) {
+          clearInterval(this.fallbackPollTimer);
+          this.fallbackPollTimer = null;
+        }
       }
     };
+  }
+
+  private broadcastLiveEvent(type: string, data: any): void {
+    this.liveEventListeners.forEach((listener) => {
+      try {
+        listener(type, data);
+      } catch (err) {
+        console.error('Error in live event listener:', err);
+      }
+    });
   }
 
   /**

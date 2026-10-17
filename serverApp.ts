@@ -25,6 +25,8 @@ import {
   clearMatchEventsInFirebase,
   deleteChatMessageFromFirebase,
   clearChatInFirebase,
+  getMatchEventsFromFirebase,
+  getChatMessagesFromFirebase,
   saveSingleClubToFirebase,
   deleteClubFromFirebase,
   firebaseApp,
@@ -422,60 +424,8 @@ const state: AppState = {
     passes: [412, 318],
     passAccuracy: [86, 80],
   },
-  events: [
-    {
-      id: 'ev-1',
-      minute: 14,
-      type: 'goal',
-      clubId: 'strongest',
-      player: 'Michael Ortega',
-      description: '¡GOLAZO del Tigre! Remate potente de media distancia al ángulo.',
-      scoreAfter: '0 - 1',
-    },
-    {
-      id: 'ev-3',
-      minute: 39,
-      type: 'goal',
-      clubId: 'bolivar',
-      player: 'Ramiro Vaca',
-      description: '¡GOOOL de Bolívar! Tiro libre magistral al ángulo superior izquierdo.',
-      scoreAfter: '1 - 1',
-    },
-    {
-      id: 'ev-6',
-      minute: 71,
-      type: 'goal',
-      clubId: 'bolivar',
-      player: 'Bruno Sávio',
-      description: '¡GOOOOOL de Bolívar! Penal ejecutado con categoría.',
-      scoreAfter: '2 - 1',
-    },
-  ],
-  chatMessages: [
-    {
-      id: 'c1',
-      sender: 'Gonzalo Cobo (Relator Oficial)',
-      clubId: 'bolivar',
-      text: '¡Bienvenidos a la transmisión oficial del Clásico 234 del fútbol boliviano desde el Hernando Siles!',
-      timestamp: '19:42',
-      isOfficialRelator: true,
-    },
-    {
-      id: 'c2',
-      sender: 'Marcelo_LaPaz',
-      clubId: 'bolivar',
-      text: '¡Vamos Academia de mi vida! 🩵⚡',
-      timestamp: '19:43',
-      isVip: true,
-    },
-    {
-      id: 'c3',
-      sender: 'TigreCentenario',
-      clubId: 'strongest',
-      text: '¡Con garra atigrada se empata este clásico! 💛🖤',
-      timestamp: '19:44',
-    },
-  ],
+  events: [],
+  chatMessages: [],
 };
 
 // ==========================================
@@ -514,6 +464,12 @@ function loadPersistedState(): void {
               primaryProvider: ev.primaryProvider || 'cloudflare',
             }));
         }
+        if (Array.isArray(saved.events)) {
+          state.events = saved.events;
+        }
+        if (Array.isArray(saved.chatMessages)) {
+          state.chatMessages = saved.chatMessages;
+        }
         console.log(`[GolBolivia Backend] Estado persistido cargado con éxito desde ${STATE_FILE}`);
         console.log(`[GolBolivia Backend] Señal activa: ${state.streamSettings.customVideoUrl || '(simulación)'}`);
       }
@@ -540,6 +496,20 @@ function loadPersistedState(): void {
   getClubsFromFirebase().then((fbClubs) => {
     if (fbClubs && Object.keys(fbClubs).length > 0) {
       state.clubs = { ...state.clubs, ...fbClubs };
+    }
+  }).catch(() => {});
+
+  getMatchEventsFromFirebase().then((fbEvents) => {
+    if (Array.isArray(fbEvents)) {
+      state.events = fbEvents;
+      console.log(`[GolBolivia Backend] Eventos de partido sincronizados desde Firebase: ${fbEvents.length}`);
+    }
+  }).catch(() => {});
+
+  getChatMessagesFromFirebase().then((fbChat) => {
+    if (Array.isArray(fbChat)) {
+      state.chatMessages = fbChat;
+      console.log(`[GolBolivia Backend] Mensajes de chat sincronizados desde Firebase: ${fbChat.length}`);
     }
   }).catch(() => {});
 
@@ -580,6 +550,8 @@ function persistState(): void {
       scoreboard: state.scoreboard,
       clubs: state.clubs,
       liveEvents: state.liveEvents,
+      events: state.events,
+      chatMessages: state.chatMessages,
       updatedAt: Date.now(),
     };
     fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
@@ -1530,6 +1502,7 @@ app.delete(
     const id = req.params.id;
     const initialLen = state.events.length;
     state.events = state.events.filter((e) => e.id !== id);
+    persistState();
     deleteMatchEventFromFirebase(id).catch(logFirestoreWarning('eliminar evento'));
     if (state.events.length === initialLen) {
       broadcastSseEvent('MATCH_EVENT_DELETED', { id });
@@ -1548,6 +1521,7 @@ app.post(
   requireRoles(['ADMIN', 'EDITOR']),
   (_req: Request, res: Response) => {
     state.events = [];
+    persistState();
     clearMatchEventsInFirebase().catch(logFirestoreWarning('limpiar eventos'));
     broadcastSseEvent('MATCH_EVENTS_CLEARED', {});
     res.json({ success: true, message: 'Cronología de eventos limpiada correctamente.' });
@@ -1596,6 +1570,7 @@ app.delete(
   (req: Request, res: Response) => {
     const id = req.params.id;
     state.chatMessages = state.chatMessages.filter((m) => m.id !== id);
+    persistState();
     deleteChatMessageFromFirebase(id).catch(logFirestoreWarning('eliminar mensaje'));
     broadcastSseEvent('CHAT_MESSAGE_DELETED', { id });
     res.json({ success: true });
@@ -1609,6 +1584,7 @@ app.post(
   requireRoles(['ADMIN', 'MODERADOR']),
   (_req: Request, res: Response) => {
     state.chatMessages = [];
+    persistState();
     clearChatInFirebase().catch(logFirestoreWarning('limpiar chat'));
     broadcastSseEvent('CHAT_CLEARED', {});
     res.json({ success: true, message: 'Chat en vivo limpiado correctamente.' });
