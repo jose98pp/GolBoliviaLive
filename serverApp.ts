@@ -35,34 +35,46 @@ import { iptvRouter } from './src/services/iptvBackend';
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
+// Helper: Normalizar URLs reescritas por Vercel Serverless Function preservando query params
+export function normalizeVercelUrl(
+  rawUrl: string,
+  headers: Record<string, string | string[] | undefined> = {}
+): string {
+  const xMatched = (headers['x-matched-path'] || headers['x-vercel-matched-path']) as string | undefined;
+  if (xMatched && typeof xMatched === 'string') {
+    return xMatched;
+  }
+
+  try {
+    const parsed = new URL(rawUrl, 'http://localhost');
+    const pathParam = parsed.searchParams.get('path');
+    if (pathParam) {
+      parsed.searchParams.delete('path');
+      const basePath = pathParam.startsWith('/') ? `/api${pathParam}` : `/api/${pathParam}`;
+      const remainingSearch = parsed.searchParams.toString();
+      return remainingSearch ? `${basePath}?${remainingSearch}` : basePath;
+    }
+  } catch {}
+
+  return rawUrl;
+}
+
 const app = express();
-app.use('/api/iptv', iptvRouter);
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Parse JSON and URL-encoded request bodies (soporta hasta 10MB para imágenes QR optimizadas y configuraciones)
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
-
-// Normalize rewritten URLs from Vercel Serverless Function
+// 1. Normalizar la URL reescrita por Vercel ANTES de montar rutas como /api/iptv
 app.use((req: Request, _res: Response, next: NextFunction) => {
-  const xMatched = (req.headers['x-matched-path'] || req.headers['x-vercel-matched-path']) as string | undefined;
-  if (xMatched && typeof xMatched === 'string') {
-    req.url = xMatched;
-  } else {
-    try {
-      const parsed = new URL(req.url, 'http://localhost');
-      const pathParam = parsed.searchParams.get('path');
-      if (pathParam) {
-        req.url = pathParam.startsWith('/') ? `/api${pathParam}` : `/api/${pathParam}`;
-      }
-    } catch {}
-  }
+  req.url = normalizeVercelUrl(req.url, req.headers as Record<string, string | string[] | undefined>);
   next();
 });
 
-// Enable CORS for all devices (Smart TVs, Mobile phones, Tablets, External PCs)
+// 2. Parse JSON and URL-encoded request bodies (soporta hasta 10MB para imágenes QR optimizadas y configuraciones)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// 3. Enable CORS for all devices (Smart TVs, Mobile phones, Tablets, External PCs)
 app.use((_req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
@@ -73,6 +85,9 @@ app.use((_req, res, next) => {
   }
   next();
 });
+
+// 4. Montar router IPTV una vez normalizada la URL y configurado CORS
+app.use('/api/iptv', iptvRouter);
 
 // ── Secrets & operator accounts (configured via environment variables or fallback) ──
 const FALLBACK_SERVER_SECRET = 'golbolivia-master-secret-key-super-secure-session-tokens-2026-auth-prod-signature';

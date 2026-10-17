@@ -50,15 +50,16 @@ import { MatchDetailsEditor } from './MatchDetailsEditor';
 import { TeamsManager } from './TeamsManager';
 import { LiveEventsManager } from './LiveEventsManager';
 import { DonationQrAdminCard } from './DonationQrAdminCard';
+import { IptvChannelsManager } from './IptvChannelsManager';
 import { useClubs } from '../hooks/useClubs';
 import { verifyStreamLatency, LatencyTestResult } from '../services/latencyChecker';
 
 // ── Panel sections ──
-type AdminTab = 'stream' | 'match' | 'teams' | 'events_chat' | 'vip_analytics' | 'qr_donations';
+type AdminTab = 'stream' | 'match' | 'teams' | 'events_chat' | 'vip_analytics' | 'qr_donations' | 'iptv_channels';
 type AdminSection = 'live' | 'match' | 'settings';
 
 const ADMIN_SECTIONS: { id: AdminSection; label: string; tabs: AdminTab[] }[] = [
-  { id: 'live', label: 'En vivo', tabs: ['stream', 'events_chat'] },
+  { id: 'live', label: 'En vivo', tabs: ['stream', 'events_chat', 'iptv_channels'] },
   { id: 'match', label: 'Partido', tabs: ['match', 'teams'] },
   { id: 'settings', label: 'Ajustes', tabs: ['qr_donations', 'vip_analytics'] },
 ];
@@ -66,6 +67,7 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; tabs: AdminTab[] }[] = 
 const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
   stream: 'Señal',
   events_chat: 'Eventos y chat',
+  iptv_channels: 'Canales IPTV',
   match: 'Marcador',
   teams: 'Equipos',
   qr_donations: 'QR Apóyame',
@@ -76,6 +78,7 @@ const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
 const ADMIN_TAB_ROLES: Record<AdminTab, UserRole[]> = {
   stream: ['ADMIN', 'TRANSMISOR'],
   events_chat: ['ADMIN', 'TRANSMISOR', 'EDITOR', 'MODERADOR'],
+  iptv_channels: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
   match: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
   teams: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
   qr_donations: ['ADMIN', 'TRANSMISOR', 'EDITOR'],
@@ -142,7 +145,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() => !!authService.getToken());
   const [usernameInput, setUsernameInput] = useState<string>('admin');
-  const [pinInput, setPinInput] = useState('admin123');
+  const [pinInput, setPinInput] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [ingestCreds, setIngestCreds] = useState<PrivateIngestCredentials | null>(null);
@@ -1903,6 +1906,20 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             <div className="space-y-6">
               <AdminVipManagement />
             </div>
+          ) : effectiveTab === 'iptv_channels' ? (
+            /* PESTAÑA CANALES IPTV: GESTIÓN DE SEÑALES IPTV Y CARGA DESDE DASHBOARD */
+            <div className="space-y-6">
+              <IptvChannelsManager
+                activeMatchStreamUrl={streamSettings.customVideoUrl}
+                onSetMatchStreamUrl={(streamUrl, channelName) => {
+                  onUpdateStreamSettings({
+                    customVideoUrl: streamUrl,
+                    primaryProvider: 'cloudflare',
+                    title: `${channelName} · En Vivo`,
+                  });
+                }}
+              />
+            </div>
           ) : (
             /* PESTAÑA 6: GESTIÓN DEDICADA DEL CÓDIGO QR (BOTÓN APÓYAME) */
             <div className="space-y-6">
@@ -1973,7 +1990,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           <div className="grid grid-cols-2 gap-1.5 text-xs">
             <button
               type="button"
-              onClick={() => { setUsernameInput('admin'); setPinInput('admin123'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('admin'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'admin'
                   ? 'bg-red-500/20 border-red-500 text-red-300 font-bold'
@@ -1981,12 +1998,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               }`}
             >
               <div className="font-bold text-[11px]">ADMINISTRADOR</div>
-              <div className="text-[10px] text-slate-500">PIN: <code className="text-amber-400">admin123</code></div>
+              <div className="text-[10px] text-slate-500">Control total & VIP</div>
             </button>
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('transmisor'); setPinInput('trans123'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('transmisor'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'transmisor'
                   ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
@@ -1994,12 +2011,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               }`}
             >
               <div className="font-bold text-[11px]">TRANSMISOR</div>
-              <div className="text-[10px] text-slate-500">PIN: <code className="text-amber-400">trans123</code></div>
+              <div className="text-[10px] text-slate-500">OBS, MediaMTX & Señal</div>
             </button>
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('moderador'); setPinInput('mod123'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('moderador'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'moderador'
                   ? 'bg-blue-500/20 border-blue-500 text-blue-300 font-bold'
@@ -2007,12 +2024,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               }`}
             >
               <div className="font-bold text-[11px]">MODERADOR</div>
-              <div className="text-[10px] text-slate-500">PIN: <code className="text-amber-400">mod123</code></div>
+              <div className="text-[10px] text-slate-500">Chat & mensajes</div>
             </button>
 
             <button
               type="button"
-              onClick={() => { setUsernameInput('editor'); setPinInput('edit123'); setErrorMsg(null); }}
+              onClick={() => { setUsernameInput('editor'); setPinInput(''); setErrorMsg(null); }}
               className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
                 usernameInput === 'editor'
                   ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
@@ -2020,25 +2037,8 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
               }`}
             >
               <div className="font-bold text-[11px]">EDITOR</div>
-              <div className="text-[10px] text-slate-500">PIN: <code className="text-amber-400">edit123</code></div>
+              <div className="text-[10px] text-slate-500">Marcador & Goles</div>
             </button>
-          </div>
-        </div>
-
-        {/* Credentials reminder guide */}
-        <div className="p-2.5 bg-slate-900/80 border border-slate-800/90 rounded-xl mb-4 text-[11px] text-slate-400">
-          <div className="text-amber-400 font-bold text-[11px] flex items-center justify-between mb-1">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Credenciales de acceso rápido:</span>
-            </div>
-            <span className="text-[10px] text-emerald-400 font-mono bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.5 rounded">PIN 4578 válido</span>
-          </div>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] font-mono">
-            <div>• admin / <span className="text-amber-300 font-bold">admin123</span> o <span className="text-emerald-400">4578</span></div>
-            <div>• transmisor / <span className="text-amber-300 font-bold">trans123</span> o <span className="text-emerald-400">4578</span></div>
-            <div>• moderador / <span className="text-amber-300 font-bold">mod123</span> o <span className="text-emerald-400">4578</span></div>
-            <div>• editor / <span className="text-amber-300 font-bold">edit123</span> o <span className="text-emerald-400">4578</span></div>
           </div>
         </div>
 

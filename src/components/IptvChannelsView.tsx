@@ -291,6 +291,12 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
                       <span>{channel.countryName}</span>
                       <span aria-hidden="true">·</span>
                       <span className="text-slate-500">{channel.resolution || 'HD'}</span>
+                      {channel.isCustom && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="text-amber-400 font-semibold">Oficial</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -305,7 +311,11 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
                       </span>
                     ) : (
                       <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                        <span>Señal HLS</span>
+                        {channel.isCustom ? (
+                          <span className="text-amber-400/90 font-medium">Señal Verificada</span>
+                        ) : (
+                          <span>Señal HLS</span>
+                        )}
                       </span>
                     )}
                   </div>

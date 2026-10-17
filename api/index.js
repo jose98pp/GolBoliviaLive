@@ -3,8 +3,8 @@ import "dotenv/config";
 import express2 from "express";
 import http from "http";
 import crypto from "crypto";
-import path from "path";
-import fs from "fs";
+import path2 from "path";
+import fs2 from "fs";
 
 // src/data/bolivianFootballData.ts
 var BOLIVIAN_CLUBS = {
@@ -1054,35 +1054,40 @@ import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 
 // src/services/iptvBackend.ts
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
 var iptvRouter = express.Router();
 var SPORTS_M3U_URL = "https://iptv-org.github.io/iptv/categories/sports.m3u";
 var CACHE_TTL_MS = 6 * 60 * 60 * 1e3;
+var CUSTOM_CHANNELS_FILE = path.join(process.cwd(), "data", "custom-iptv-channels.json");
+function loadCustomChannels() {
+  try {
+    if (fs.existsSync(CUSTOM_CHANNELS_FILE)) {
+      const raw = fs.readFileSync(CUSTOM_CHANNELS_FILE, "utf-8");
+      const data = JSON.parse(raw);
+      if (Array.isArray(data)) return data;
+    }
+  } catch (err) {
+    console.warn("[IPTV Backend] Advertencia al leer canales personalizados locales:", err);
+  }
+  return [];
+}
+function saveCustomChannels(channels) {
+  try {
+    const dir = path.dirname(CUSTOM_CHANNELS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(CUSTOM_CHANNELS_FILE, JSON.stringify(channels, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("[IPTV Backend] Advertencia al persistir canales personalizados locales:", err);
+  }
+}
+var customChannels = loadCustomChannels();
 var cachedChannels = [];
 var lastFetchTime = 0;
-var isFetching = false;
+var activeFetchPromise = null;
 var CURATED_FALLBACK_CHANNELS = [
-  {
-    id: "bo-red-uno-sports",
-    name: "Red Uno Deportes Bolivia",
-    logo: "https://i.imgur.com/xT7Z4vL.png",
-    group: "Bolivia",
-    country: "BO",
-    countryName: "Bolivia",
-    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    resolution: "1080p",
-    isFavorite: true
-  },
-  {
-    id: "bo-bolivia-tv-deportes",
-    name: "Bolivia TV 7.2 Deportes",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Bolivia_TV_logo.svg/320px-Bolivia_TV_logo.svg.png",
-    group: "Bolivia",
-    country: "BO",
-    countryName: "Bolivia",
-    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
-    resolution: "720p",
-    isFavorite: true
-  },
   {
     id: "claro-sports-latam",
     name: "Claro Sports Latam",
@@ -1092,7 +1097,9 @@ var CURATED_FALLBACK_CHANNELS = [
     countryName: "Internacional",
     streamUrl: "https://live-clarosports-linear.amagi.tv/playlist.m3u8",
     resolution: "1080p",
-    isFavorite: true
+    isFavorite: true,
+    isDemoFeed: false,
+    notes: "Se\xF1al oficial FAST 24/7 en vivo v\xEDa Amagi CDN."
   },
   {
     id: "redbull-tv-live",
@@ -1103,7 +1110,9 @@ var CURATED_FALLBACK_CHANNELS = [
     countryName: "Internacional",
     streamUrl: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
     resolution: "1080p",
-    isFavorite: true
+    isFavorite: true,
+    isDemoFeed: false,
+    notes: "Se\xF1al oficial Red Bull TV Live en vivo v\xEDa Akamai."
   },
   {
     id: "fifa-plus-es",
@@ -1114,67 +1123,9 @@ var CURATED_FALLBACK_CHANNELS = [
     countryName: "Internacional",
     streamUrl: "https://amg01269-amg01269c1-fifa-intl-4066.playouts.now.amagi.tv/playlist/amg01269-fifaplusfast-fifaplus-fifaplusintl/playlist.m3u8",
     resolution: "1080p",
-    isFavorite: true
-  },
-  {
-    id: "ar-tyc-sports-feed",
-    name: "TyC Sports Se\xF1al Alterna",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/TyC_Sports_Logo_2020.svg/320px-TyC_Sports_Logo_2020.svg.png",
-    group: "Argentina",
-    country: "AR",
-    countryName: "Argentina",
-    streamUrl: "https://cspan1-lh.akamaihd.net/i/cspan1_1@305949/master.m3u8",
-    resolution: "720p"
-  },
-  {
-    id: "ar-depor-tv",
-    name: "DeporTV Argentina",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/DeporTV_logo_2016.svg/320px-DeporTV_logo_2016.svg.png",
-    group: "Argentina",
-    country: "AR",
-    countryName: "Argentina",
-    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
-    resolution: "1080p"
-  },
-  {
-    id: "co-win-sports-news",
-    name: "Win Sports Noticias Colombia",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Win_Sports_logo.svg/320px-Win_Sports_logo.svg.png",
-    group: "Colombia",
-    country: "CO",
-    countryName: "Colombia",
-    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    resolution: "720p"
-  },
-  {
-    id: "mx-tudn-highlights",
-    name: "TUDN M\xE9xico Feed",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/TUDN_logo.svg/320px-TUDN_logo.svg.png",
-    group: "M\xE9xico",
-    country: "MX",
-    countryName: "M\xE9xico",
-    streamUrl: "https://amg01269-amg01269c1-fifa-intl-4066.playouts.now.amagi.tv/playlist/amg01269-fifaplusfast-fifaplus-fifaplusintl/playlist.m3u8",
-    resolution: "1080p"
-  },
-  {
-    id: "es-teledeporte",
-    name: "RTVE Teledeporte Espa\xF1a",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Teledeporte_2008.svg/320px-Teledeporte_2008.svg.png",
-    group: "Espa\xF1a",
-    country: "ES",
-    countryName: "Espa\xF1a",
-    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
-    resolution: "1080p"
-  },
-  {
-    id: "es-gol-play",
-    name: "Gol Play Espa\xF1a",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/GOL_PLAY_logo.svg/320px-GOL_PLAY_logo.svg.png",
-    group: "Espa\xF1a",
-    country: "ES",
-    countryName: "Espa\xF1a",
-    streamUrl: "https://live-clarosports-linear.amagi.tv/playlist.m3u8",
-    resolution: "720p"
+    isFavorite: true,
+    isDemoFeed: false,
+    notes: "Se\xF1al oficial FIFA+ FAST 24/7 en espa\xF1ol."
   },
   {
     id: "wwe-channel",
@@ -1184,7 +1135,107 @@ var CURATED_FALLBACK_CHANNELS = [
     country: "INT",
     countryName: "Internacional",
     streamUrl: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-    resolution: "1080p"
+    resolution: "1080p",
+    isDemoFeed: false,
+    notes: "Feed FAST de deportes de contacto."
+  },
+  {
+    id: "bo-red-uno-sports",
+    name: "Red Uno Deportes Bolivia",
+    logo: "https://i.imgur.com/xT7Z4vL.png",
+    group: "Bolivia",
+    country: "BO",
+    countryName: "Bolivia",
+    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    resolution: "1080p",
+    isFavorite: true,
+    isDemoFeed: true,
+    notes: "Feed de prueba HLS para verificaci\xF3n t\xE9cnica. Se\xF1al oficial sujeta a geobloqueo."
+  },
+  {
+    id: "bo-bolivia-tv-deportes",
+    name: "Bolivia TV 7.2 Deportes",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Bolivia_TV_logo.svg/320px-Bolivia_TV_logo.svg.png",
+    group: "Bolivia",
+    country: "BO",
+    countryName: "Bolivia",
+    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
+    resolution: "720p",
+    isFavorite: true,
+    isDemoFeed: true,
+    notes: "Feed de prueba HLS para verificaci\xF3n t\xE9cnica en Bolivia."
+  },
+  {
+    id: "ar-tyc-sports-feed",
+    name: "TyC Sports Se\xF1al Alterna",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/TyC_Sports_Logo_2020.svg/320px-TyC_Sports_Logo_2020.svg.png",
+    group: "Argentina",
+    country: "AR",
+    countryName: "Argentina",
+    streamUrl: "https://cspan1-lh.akamaihd.net/i/cspan1_1@305949/master.m3u8",
+    resolution: "720p",
+    isDemoFeed: true,
+    notes: "Feed de respaldo alternativo Akamai para pruebas de conectividad."
+  },
+  {
+    id: "ar-depor-tv",
+    name: "DeporTV Argentina",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/DeporTV_logo_2016.svg/320px-DeporTV_logo_2016.svg.png",
+    group: "Argentina",
+    country: "AR",
+    countryName: "Argentina",
+    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
+    resolution: "1080p",
+    isDemoFeed: true,
+    notes: "Feed de diagn\xF3stico BipBop para validaci\xF3n en Argentina."
+  },
+  {
+    id: "co-win-sports-news",
+    name: "Win Sports Noticias Colombia",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Win_Sports_logo.svg/320px-Win_Sports_logo.svg.png",
+    group: "Colombia",
+    country: "CO",
+    countryName: "Colombia",
+    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    resolution: "720p",
+    isDemoFeed: true,
+    notes: "Feed de prueba Mux HLS para diagn\xF3stico t\xE9cnico en Colombia."
+  },
+  {
+    id: "mx-tudn-highlights",
+    name: "TUDN M\xE9xico Feed",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/TUDN_logo.svg/320px-TUDN_logo.svg.png",
+    group: "M\xE9xico",
+    country: "MX",
+    countryName: "M\xE9xico",
+    streamUrl: "https://amg01269-amg01269c1-fifa-intl-4066.playouts.now.amagi.tv/playlist/amg01269-fifaplusfast-fifaplus-fifaplusintl/playlist.m3u8",
+    resolution: "1080p",
+    isDemoFeed: false,
+    notes: "Feed alternativo FAST en espa\xF1ol para M\xE9xico."
+  },
+  {
+    id: "es-teledeporte",
+    name: "RTVE Teledeporte Espa\xF1a",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Teledeporte_2008.svg/320px-Teledeporte_2008.svg.png",
+    group: "Espa\xF1a",
+    country: "ES",
+    countryName: "Espa\xF1a",
+    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
+    resolution: "1080p",
+    isDemoFeed: true,
+    notes: "Feed de prueba HLS para verificaci\xF3n t\xE9cnica en Espa\xF1a."
+  },
+  {
+    id: "es-gol-play",
+    name: "Gol Play Espa\xF1a",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/GOL_PLAY_logo.svg/320px-GOL_PLAY_logo.svg.png",
+    group: "Espa\xF1a",
+    country: "ES",
+    countryName: "Espa\xF1a",
+    streamUrl: "https://live-clarosports-linear.amagi.tv/playlist.m3u8",
+    resolution: "720p",
+    isDemoFeed: false,
+    notes: "Feed deportivo FAST en espa\xF1ol."
   }
 ];
 function inferCountry(tvgCountry, tvgId, name, group) {
@@ -1274,9 +1325,12 @@ async function refreshSportsChannels() {
     const text = await resp.text();
     const parsed = parseM3uSports(text);
     if (parsed.length > 0) {
-      const uniqueUrls = new Set(CURATED_FALLBACK_CHANNELS.map((c) => c.streamUrl));
+      const uniqueUrls = /* @__PURE__ */ new Set([
+        ...customChannels.map((c) => c.streamUrl),
+        ...CURATED_FALLBACK_CHANNELS.map((c) => c.streamUrl)
+      ]);
       const filteredParsed = parsed.filter((c) => !uniqueUrls.has(c.streamUrl));
-      cachedChannels = [...CURATED_FALLBACK_CHANNELS, ...filteredParsed];
+      cachedChannels = [...customChannels, ...CURATED_FALLBACK_CHANNELS, ...filteredParsed];
       lastFetchTime = Date.now();
       return cachedChannels;
     }
@@ -1284,23 +1338,33 @@ async function refreshSportsChannels() {
     console.warn("[IPTV Backend] Advertencia al sincronizar lista externa sports.m3u:", err?.message || err);
   }
   if (cachedChannels.length === 0) {
-    cachedChannels = [...CURATED_FALLBACK_CHANNELS];
+    cachedChannels = [...customChannels, ...CURATED_FALLBACK_CHANNELS];
     lastFetchTime = Date.now();
   }
   return cachedChannels;
 }
+function getOrRefreshSportsChannels(force = false) {
+  const now = Date.now();
+  const isStale = force || now - lastFetchTime > CACHE_TTL_MS || cachedChannels.length === 0;
+  if (!isStale && cachedChannels.length > 0) {
+    return Promise.resolve(cachedChannels);
+  }
+  if (activeFetchPromise) {
+    return activeFetchPromise;
+  }
+  activeFetchPromise = refreshSportsChannels().catch((err) => {
+    console.warn("[IPTV Backend] Error durante la actualizaci\xF3n de canales:", err?.message || err);
+    if (cachedChannels.length > 0) return cachedChannels;
+    return [...customChannels, ...CURATED_FALLBACK_CHANNELS];
+  }).finally(() => {
+    activeFetchPromise = null;
+  });
+  return activeFetchPromise;
+}
 iptvRouter.get("/sports", async (req, res) => {
   try {
-    const now = Date.now();
-    const isStale = now - lastFetchTime > CACHE_TTL_MS || cachedChannels.length === 0;
-    if (isStale && !isFetching) {
-      isFetching = true;
-      refreshSportsChannels().catch(() => {
-      }).finally(() => {
-        isFetching = false;
-      });
-    }
-    const channels = cachedChannels.length > 0 ? cachedChannels : CURATED_FALLBACK_CHANNELS;
+    const force = req.query.refresh === "true";
+    const channels = await getOrRefreshSportsChannels(force);
     const country = typeof req.query.country === "string" ? req.query.country.toUpperCase() : null;
     const q = typeof req.query.q === "string" ? req.query.q.toLowerCase().trim() : null;
     let filtered = channels;
@@ -1332,37 +1396,131 @@ iptvRouter.get("/status", (_req, res) => {
   res.json({
     status: "online",
     cachedChannelsCount: cachedChannels.length,
+    customChannelsCount: customChannels.length,
     lastFetchTime,
+    isUpdating: Boolean(activeFetchPromise),
     cacheTtlHours: CACHE_TTL_MS / (1e3 * 60 * 60),
     sourceUrl: SPORTS_M3U_URL
   });
 });
+iptvRouter.get("/custom", (_req, res) => {
+  res.json({
+    success: true,
+    total: customChannels.length,
+    channels: customChannels
+  });
+});
+iptvRouter.post("/custom", (req, res) => {
+  try {
+    const { name, streamUrl, country, countryName, group, resolution, logo, notes } = req.body || {};
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ success: false, error: "El nombre del canal es requerido." });
+    }
+    if (!streamUrl || typeof streamUrl !== "string" || !streamUrl.trim().startsWith("http")) {
+      return res.status(400).json({ success: false, error: "La URL del stream debe comenzar con http:// o https://" });
+    }
+    const cCountry = (country || "BO").toString().toUpperCase().trim();
+    const cCountryName = countryName?.trim() || (cCountry === "BO" ? "Bolivia" : cCountry === "INT" ? "Internacional" : cCountry);
+    const newChannel = {
+      id: `custom-iptv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: name.trim(),
+      streamUrl: streamUrl.trim(),
+      country: cCountry,
+      countryName: cCountryName,
+      group: group?.trim() || "F\xFAtbol Boliviano",
+      resolution: resolution?.trim() || "1080p",
+      logo: logo?.trim() || "",
+      isCustom: true,
+      isDemoFeed: false,
+      notes: notes?.trim() || "Canal configurado manualmente desde el panel de administraci\xF3n.",
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    customChannels = [newChannel, ...customChannels.filter((c) => c.streamUrl !== newChannel.streamUrl)];
+    saveCustomChannels(customChannels);
+    cachedChannels = [
+      newChannel,
+      ...cachedChannels.filter((c) => c.id !== newChannel.id && c.streamUrl !== newChannel.streamUrl)
+    ];
+    res.json({
+      success: true,
+      message: "Canal IPTV registrado exitosamente.",
+      channel: newChannel
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err?.message || "Error guardando canal IPTV" });
+  }
+});
+iptvRouter.delete("/custom/:id", (req, res) => {
+  const { id } = req.params;
+  customChannels = customChannels.filter((c) => c.id !== id);
+  saveCustomChannels(customChannels);
+  cachedChannels = cachedChannels.filter((c) => c.id !== id);
+  res.json({ success: true, removedId: id });
+});
+iptvRouter.post("/probe", async (req, res) => {
+  const { streamUrl } = req.body || {};
+  if (!streamUrl || typeof streamUrl !== "string") {
+    return res.status(400).json({ success: false, error: "streamUrl es requerido" });
+  }
+  const startTime = Date.now();
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4e3);
+    const resp = await fetch(streamUrl, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { "User-Agent": "GolBolivia/2026.1 (Channel-Probe)" }
+    });
+    clearTimeout(timeout);
+    const latencyMs = Date.now() - startTime;
+    res.json({
+      success: true,
+      reachable: resp.ok || resp.status < 400,
+      status: resp.status,
+      statusText: resp.statusText,
+      contentType: resp.headers.get("content-type") || "",
+      latencyMs
+    });
+  } catch (err) {
+    res.json({
+      success: false,
+      reachable: false,
+      error: err?.message || "Tiempo de espera agotado al conectar con el stream",
+      latencyMs: Date.now() - startTime
+    });
+  }
+});
 
 // serverApp.ts
 var appDirname = typeof __dirname !== "undefined" ? __dirname : process.cwd();
+function normalizeVercelUrl(rawUrl, headers = {}) {
+  const xMatched = headers["x-matched-path"] || headers["x-vercel-matched-path"];
+  if (xMatched && typeof xMatched === "string") {
+    return xMatched;
+  }
+  try {
+    const parsed = new URL(rawUrl, "http://localhost");
+    const pathParam = parsed.searchParams.get("path");
+    if (pathParam) {
+      parsed.searchParams.delete("path");
+      const basePath = pathParam.startsWith("/") ? `/api${pathParam}` : `/api/${pathParam}`;
+      const remainingSearch = parsed.searchParams.toString();
+      return remainingSearch ? `${basePath}?${remainingSearch}` : basePath;
+    }
+  } catch {
+  }
+  return rawUrl;
+}
 var app2 = express2();
-app2.use("/api/iptv", iptvRouter);
 var server = http.createServer(app2);
 var PORT = process.env.PORT || 3e3;
 var isProduction = process.env.NODE_ENV === "production";
-app2.use(express2.json({ limit: "10mb" }));
-app2.use(express2.urlencoded({ limit: "10mb", extended: true }));
 app2.use((req, _res, next) => {
-  const xMatched = req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"];
-  if (xMatched && typeof xMatched === "string") {
-    req.url = xMatched;
-  } else {
-    try {
-      const parsed = new URL(req.url, "http://localhost");
-      const pathParam = parsed.searchParams.get("path");
-      if (pathParam) {
-        req.url = pathParam.startsWith("/") ? `/api${pathParam}` : `/api/${pathParam}`;
-      }
-    } catch {
-    }
-  }
+  req.url = normalizeVercelUrl(req.url, req.headers);
   next();
 });
+app2.use(express2.json({ limit: "10mb" }));
+app2.use(express2.urlencoded({ limit: "10mb", extended: true }));
 app2.use((_req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
@@ -1373,6 +1531,7 @@ app2.use((_req, res, next) => {
   }
   next();
 });
+app2.use("/api/iptv", iptvRouter);
 var FALLBACK_SERVER_SECRET = "golbolivia-master-secret-key-super-secure-session-tokens-2026-auth-prod-signature";
 var SERVER_SECRET = (() => {
   const fromEnv = (process.env.SERVER_SECRET || "").trim();
@@ -1639,15 +1798,15 @@ var state = {
     }
   ]
 };
-var DATA_DIR = process.env.VERCEL ? path.resolve("/tmp", "data") : path.resolve(appDirname, "data");
-var STATE_FILE = path.join(DATA_DIR, "stream-state.json");
+var DATA_DIR = process.env.VERCEL ? path2.resolve("/tmp", "data") : path2.resolve(appDirname, "data");
+var STATE_FILE = path2.join(DATA_DIR, "stream-state.json");
 function loadPersistedState() {
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs2.existsSync(DATA_DIR)) {
+      fs2.mkdirSync(DATA_DIR, { recursive: true });
     }
-    if (fs.existsSync(STATE_FILE)) {
-      const raw = fs.readFileSync(STATE_FILE, "utf-8");
+    if (fs2.existsSync(STATE_FILE)) {
+      const raw = fs2.readFileSync(STATE_FILE, "utf-8");
       const saved = JSON.parse(raw);
       if (saved && typeof saved === "object") {
         if (saved.streamSettings) {
@@ -1716,8 +1875,8 @@ function loadPersistedState() {
 }
 function persistState() {
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs2.existsSync(DATA_DIR)) {
+      fs2.mkdirSync(DATA_DIR, { recursive: true });
     }
     const dataToSave = {
       streamSettings: state.streamSettings,
@@ -1726,7 +1885,7 @@ function persistState() {
       liveEvents: state.liveEvents,
       updatedAt: Date.now()
     };
-    fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), "utf-8");
+    fs2.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), "utf-8");
     console.log("[GolBolivia Backend] Configuraci\xF3n de transmisi\xF3n respaldada en disco local.");
   } catch (err) {
     console.error("[GolBolivia Backend] Error al guardar estado en disco:", err);
@@ -2816,5 +2975,6 @@ var serverApp_default = app2;
 export {
   SYSTEM_USERS,
   app2 as app,
-  serverApp_default as default
+  serverApp_default as default,
+  normalizeVercelUrl
 };

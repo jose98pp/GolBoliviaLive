@@ -8,6 +8,11 @@ export interface IptvChannel {
   streamUrl: string;
   resolution?: string;
   isFavorite?: boolean;
+  isDemoFeed?: boolean;
+  notes?: string;
+  isCustom?: boolean;
+  addedBy?: string;
+  createdAt?: string;
 }
 
 export type IptvCountryCode = 'ALL' | 'BO' | 'AR' | 'CO' | 'MX' | 'ES' | 'INT';
