@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { IptvChannel } from '../types/iptv';
+import type { IptvChannel } from '../types/iptv';\nimport { isSafeIptvUrl } from '../../api/proxy.js';
 
 export const iptvRouter = express.Router();
 
@@ -484,7 +484,7 @@ iptvRouter.post('/custom', (req: Request, res: Response) => {
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ success: false, error: 'El nombre del canal es requerido.' });
     }
-    if (!streamUrl || typeof streamUrl !== 'string' || !streamUrl.trim().startsWith('http')) {
+    if (!streamUrl || typeof streamUrl !== 'string' || !isSafeIptvUrl(streamUrl)) {
       return res.status(400).json({ success: false, error: 'La URL del stream debe comenzar con http:// o https://' });
     }
 
@@ -538,7 +538,7 @@ iptvRouter.delete('/custom/:id', (req: Request, res: Response) => {
 // POST /api/iptv/probe - Probar conectividad y latencia de señal .m3u8 en vivo
 iptvRouter.post('/probe', async (req: Request, res: Response) => {
   const { streamUrl } = req.body || {};
-  if (!streamUrl || typeof streamUrl !== 'string') {
+  if (!streamUrl || typeof streamUrl !== 'string' || !isSafeIptvUrl(streamUrl)) {
     return res.status(400).json({ success: false, error: 'streamUrl es requerido' });
   }
 
@@ -549,14 +549,14 @@ iptvRouter.post('/probe', async (req: Request, res: Response) => {
     const resp = await fetch(streamUrl, {
       method: 'GET',
       signal: controller.signal,
-      headers: { 'User-Agent': 'GolBolivia/2026.1 (Channel-Probe)' },
+      redirect: 'error',\n      headers: { 'User-Agent': 'GolBolivia/2026.1 (Channel-Probe)' },
     });
     clearTimeout(timeout);
     const latencyMs = Date.now() - startTime;
 
     res.json({
       success: true,
-      reachable: resp.ok || resp.status < 400,
+      reachable: resp.ok && /mpegurl|x-mpegurl/i.test(resp.headers.get('content-type') || ''),
       status: resp.status,
       statusText: resp.statusText,
       contentType: resp.headers.get('content-type') || '',
