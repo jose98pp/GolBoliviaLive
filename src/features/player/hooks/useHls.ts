@@ -95,18 +95,18 @@ export function useHls({
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
+        lowLatencyMode: false,
         backBufferLength: 60,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 6,
         // Detección veloz de fallos y cambio inmediato de canal (sin esperas de 12s)
-        manifestLoadingTimeOut: 4000,
+        manifestLoadingTimeOut: 8000,
         manifestLoadingMaxRetry: 1,
-        levelLoadingTimeOut: 4500,
+        levelLoadingTimeOut: 8000,
         levelLoadingMaxRetry: 1,
-        fragLoadingTimeOut: 6000,
+        fragLoadingTimeOut: 10000,
         fragLoadingMaxRetry: 2,
         startLevel: -1,
         progressive: true,
@@ -151,7 +151,7 @@ export function useHls({
           data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR;
 
         if (
-          isManifestError &&
+          isManifestError &&\n          data.details !== Hls.ErrorDetails.MANIFEST_PARSING_ERROR &&\n          data.response?.code !== 401 && data.response?.code !== 403 && data.response?.code !== 404 &&
           !proxyAttemptedRef.current &&
           rawTarget &&
           !rawTarget.includes('/api/proxy') &&
@@ -170,7 +170,7 @@ export function useHls({
               networkErrorCountRef.current += 1;
               // Si falla por CORS o bloqueo de red en HTTPS directo y aún no se probó el proxy, rescatarlo vía /api/proxy
               if (
-                !proxyAttemptedRef.current &&
+                data.response?.code !== 401 && data.response?.code !== 403 && data.response?.code !== 404 &&\n                !proxyAttemptedRef.current &&
                 rawTarget &&
                 !rawTarget.includes('/api/proxy') &&
                 !effectiveSrc.includes('/api/proxy')
@@ -186,8 +186,7 @@ export function useHls({
                 callbacksRef.current.onFailoverTriggered?.('backup');
                 return;
               }
-              hls.startLoad();
-              break;
+              if (networkErrorCountRef.current >= 3) {\n                callbacksRef.current.onError?.('No se pudo cargar la señal. Revisa si la fuente está disponible o requiere acceso autorizado.');\n              } else {\n                hls.startLoad();\n              }\n              break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               hls.recoverMediaError();
               break;
