@@ -57,6 +57,7 @@ export default function App() {
   const { clubs } = useClubs();
   const [activeTab, setActiveTab] = useState<'stream' | 'exclusive' | 'iptv'>('stream');
   const [activeIptvChannel, setActiveIptvChannel] = useState<IptvChannel | null>(null);
+  const [viewerSource, setViewerSource] = useState<{ eventId: string; provider: StreamProvider } | null>(null);
   const [mobileViewMode, setMobileViewMode] = useState<'stream' | 'chat'>('stream');
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
@@ -609,6 +610,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       } catch {}
     }
     setActiveIptvChannel(null);
+    setViewerSource(null);
     setStreamSettings((prev) => ({
       ...prev,
       title: evt.title,
@@ -1305,16 +1307,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                             emoji: '🟢',
                             isConfigured: Boolean(currentLiveEvent.kick?.channel?.trim()),
                           },
-                          {
-                            id: 'iptv',
-                            name: 'Más Canales TV',
-                            shortName: 'Canales TV',
-                            badge: 'EN VIVO',
-                            emoji: '📺',
-                            isConfigured: true,
-                          },
                         ].map((prov) => {
-                          const isCurrent = prov.id === 'iptv' ? Boolean(activeIptvChannel) : ((currentLiveEvent.primaryProvider || 'cloudflare') === prov.id && !activeIptvChannel);
+                          const isCurrent = (viewerSource?.eventId === currentLiveEvent.id ? viewerSource.provider : (currentLiveEvent.primaryProvider || 'cloudflare')) === prov.id && !activeIptvChannel;
                           return (
                             <button
                               key={prov.id}
@@ -1326,7 +1320,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                                 }
                                 setActiveIptvChannel(null);
                                 // Selector de fuente local: no persistir ni sobrescribir la configuración oficial.
-                                setLiveEvents((prev) => prev.map((ev) => ev.id === currentLiveEvent.id ? { ...ev, primaryProvider: prov.id as StreamProvider } : ev));
+                                setViewerSource({ eventId: currentLiveEvent.id, provider: prov.id as StreamProvider });
                                 setSignalReloadKey((k) => k + 1);
                               }}
                               className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
@@ -1535,8 +1529,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
                 {currentLiveEvent ? (
                   <UniversalStreamPlayer
-                    key={activeIptvChannel ? `iptv-${activeIptvChannel.id}-${signalReloadKey}` : `${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${signalReloadKey}`}
-                    event={activeIptvChannel ? undefined : currentLiveEvent}
+                    key={activeIptvChannel ? `iptv-${activeIptvChannel.id}-${signalReloadKey}` : `${currentLiveEvent.id}-${viewerSource?.eventId === currentLiveEvent.id ? viewerSource.provider : currentLiveEvent.primaryProvider}-${signalReloadKey}`}
+                    event={activeIptvChannel ? undefined : (viewerSource?.eventId === currentLiveEvent.id ? { ...currentLiveEvent, primaryProvider: viewerSource.provider } : currentLiveEvent)}
                     isTheaterMode={isTheaterMode}
                     setIsTheaterMode={setIsTheaterMode}
                     homeScore={activeIptvChannel ? 0 : currentHomeScore}
@@ -1565,12 +1559,10 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                             overlayScoreboardVisible: false,
                             lowLatencyMode: true,
                           }
-                        : { ...streamSettings, title: currentLiveEvent.title, homeClubId: currentLiveEvent.homeTeam, awayClubId: currentLiveEvent.awayTeam, tournamentName: currentLiveEvent.tournamentName || '', customVideoUrl: getStreamUrlForEvent(currentLiveEvent), activeStreamSource: 'obs', backupVideoUrl: '' }
+                        : { ...streamSettings, title: currentLiveEvent.title, homeClubId: currentLiveEvent.homeTeam, awayClubId: currentLiveEvent.awayTeam, tournamentName: currentLiveEvent.tournamentName || '', customVideoUrl: getStreamUrlForEvent(viewerSource?.eventId === currentLiveEvent.id ? { ...currentLiveEvent, primaryProvider: viewerSource.provider } : currentLiveEvent), activeStreamSource: 'obs', backupVideoUrl: '' }
                     }
                     onProviderChange={(newProv) => {
-                      setLiveEvents((prev) =>
-                        prev.map((e) => (e.id === (currentLiveEvent?.id || activeEventId) ? { ...e, primaryProvider: newProv } : e))
-                      );
+                      if (currentLiveEvent) setViewerSource({ eventId: currentLiveEvent.id, provider: newProv });
                     }}
                   />
                 ) : (
