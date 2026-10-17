@@ -848,16 +848,6 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       {/* Se eliminó el formulario duplicado de equipos, título, torneo y API.
           El marcador inferior es el único editor visual de goles y minuto.
           La configuración de las tres señales permanece en el panel de transmisión. */}
-      <div className="bg-[#0b1222] border border-slate-800 rounded-2xl p-4 space-y-3">
-        <h4 className="text-sm font-bold text-white">Guardar marcador</h4>
-        <p className="text-xs text-slate-400">Los cambios del marcador se sincronizan con el partido seleccionado.</p>
-        <button type="button" onClick={() => { void handleSubmit({ preventDefault: () => {} } as React.FormEvent); }} disabled={isSaving}
-          className="w-full py-3 rounded-xl bg-emerald-500 text-black font-bold text-sm disabled:opacity-50">
-          {isSaving ? 'Guardando...' : 'Guardar cambios'}
-        </button>
-        {errorMsg && <p className="text-xs text-red-300">{errorMsg}</p>}
-        {saveSuccess && <p className="text-xs text-emerald-300">Marcador guardado.</p>}
-      </div>
       <div className="space-y-4">
         {/* SECCIÓN LIMPIEZA Y REINICIO DE PARTIDO (EVENTOS Y CHAT) */}
         {(onClearEvents || onClearChat) && (
