@@ -1265,7 +1265,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                         {[
                           {
                             id: 'cloudflare',
-                            name: 'Opción 1 (Cloudflare)',
+                            name: 'Opción 1 (Principal)',
                             shortName: 'Opción 1',
                             badge: 'HD',
                             emoji: '⚡',
@@ -1273,25 +1273,25 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                           },
                           {
                             id: 'youtube',
-                            name: 'Opción 2 (YouTube)',
+                            name: 'Opción 2 (Alternativa)',
                             shortName: 'Opción 2',
-                            badge: 'YT',
+                            badge: 'HD',
                             emoji: '▶',
                             isConfigured: Boolean(currentLiveEvent.youtube?.videoId?.trim()),
                           },
                           {
                             id: 'kick',
-                            name: 'Opción 3 (Kick)',
+                            name: 'Opción 3 (Respaldo)',
                             shortName: 'Opción 3',
-                            badge: 'Kick',
+                            badge: 'HD',
                             emoji: '🟢',
                             isConfigured: Boolean(currentLiveEvent.kick?.channel?.trim()),
                           },
                           {
                             id: 'iptv',
-                            name: 'Canales IPTV',
-                            shortName: 'IPTV',
-                            badge: 'M3U8',
+                            name: 'Más Canales TV',
+                            shortName: 'Canales TV',
+                            badge: 'EN VIVO',
                             emoji: '📺',
                             isConfigured: true,
                           },
@@ -1443,9 +1443,10 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                               <span className={`text-[10px] px-1.5 py-0.5 rounded font-black tracking-wider border uppercase ${status.badgeClass}`}>
                                 {status.shortLabel}
                               </span>
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 font-mono text-slate-400 uppercase">
-                                {provider.toUpperCase()}
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950/60 font-bold text-emerald-400 border border-emerald-800/40">
+                                EN DIRECTO
                               </span>
+                              <span className="sr-only">{provider.toUpperCase()}</span>
                             </button>
                           );
                         })}
@@ -1474,11 +1475,11 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                       </div>
                       <div>
                         <div className="font-bold text-white flex items-center gap-1.5">
-                          <span>Canal IPTV sintonizado:</span>
+                          <span>Canal sintonizado:</span>
                           <span className="text-amber-300 font-bold">{activeIptvChannel.name}</span>
                         </div>
                         <div className="text-[11px] text-slate-400">
-                          {activeIptvChannel.countryName} · Señal HLS en vivo · Google Cast habilitado en controles
+                          {activeIptvChannel.countryName} · Transmisión en vivo · Transmitir a Smart TV disponible
                         </div>
                       </div>
                     </div>
@@ -1491,7 +1492,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                   </div>
                 )}
 
-                {/* Banner de Respaldo Inteligente: cuando las 3 señales están en pausa o fuera de horario */}
+                {/* Banner de Respaldo Inteligente: cuando las señales están en pausa o fuera de horario */}
                 {!activeIptvChannel && currentLiveEvent && (!currentLiveEvent.isLive || (!currentLiveEvent.cloudflare?.playbackUrl?.trim() && !currentLiveEvent.youtube?.videoId?.trim() && !currentLiveEvent.kick?.channel?.trim())) && (
                   <div className="mb-3 p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-md">
                     <div className="flex items-center gap-3">
@@ -1500,7 +1501,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                       </div>
                       <div>
                         <div className="font-bold text-white text-xs sm:text-sm">¿Sin transmisión oficial en este instante?</div>
-                        <div className="text-[11px] text-slate-400">Disfruta canales deportivos internacionales en vivo (M3U8) y transmítelos a tu Smart TV con Google Cast.</div>
+                        <div className="text-[11px] text-slate-400">Disfruta canales deportivos internacionales en vivo y transmítelos a tu Smart TV.</div>
                       </div>
                     </div>
                     <button
@@ -1508,7 +1509,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                       className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/20 cursor-pointer whitespace-nowrap shrink-0"
                     >
                       <Radio className="w-3.5 h-3.5" />
-                      <span>Ver Canales IPTV</span>
+                      <span>Ver Canales TV</span>
                     </button>
                   </div>
                 )}
@@ -1527,7 +1528,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                       activeIptvChannel
                         ? {
                             title: activeIptvChannel.name,
-                            tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva IPTV`,
+                            tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva en Directo`,
                             homeClubId: 'bolivar',
                             awayClubId: 'strongest',
                             stadiumName: 'Transmisión Internacional',
@@ -1706,7 +1707,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                     viewerCount={liveViewerCount}
                     streamSettings={{
                       title: activeIptvChannel.name,
-                      tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva IPTV`,
+                      tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva en Directo`,
                       homeClubId: 'bolivar',
                       awayClubId: 'strongest',
                       stadiumName: 'Transmisión Internacional',

@@ -115,7 +115,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       setFailoverBanner(
         streamSettings?.backupChannelName
           ? `Señal conmutada a respaldo: ${streamSettings.backupChannelName}`
-          : 'Señal conmutada a canal de respaldo HLS.'
+          : 'Señal conmutada a transmisión alternativa de respaldo.'
       );
       setTimeout(() => setFailoverBanner(null), 8000);
     } else {

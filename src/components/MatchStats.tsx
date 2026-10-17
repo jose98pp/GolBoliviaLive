@@ -326,12 +326,13 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
             {apiDetails?.stats ? (
               <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 self-start sm:self-auto">
                 <Sparkles className="w-3 h-3 text-emerald-400" />
-                <span>Datos Oficiales API ESPN</span>
+                <span>Estadísticas Oficiales en Directo</span>
+                <span className="sr-only">Datos Oficiales API ESPN</span>
               </span>
             ) : isLoadingApi ? (
               <span className="text-[10px] text-slate-400 flex items-center gap-1">
                 <RefreshCw className="w-3 h-3 animate-spin" />
-                <span>Consultando API deportiva...</span>
+                <span>Actualizando estadísticas...</span>
               </span>
             ) : null}
           </div>
@@ -390,7 +391,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
               {hasApiLineups ? (
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
                   <Sparkles className="w-3 h-3 text-emerald-400" />
-                  <span>Confirmadas vía ESPN API</span>
+                  <span>Alineaciones Confirmadas</span>
                 </span>
               ) : null}
             </div>

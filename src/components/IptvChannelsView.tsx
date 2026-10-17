@@ -102,7 +102,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
             </h2>
           </div>
           <p className="text-xs text-slate-400 max-w-xl">
-            Transmisiones deportivas de libre acceso vía M3U8 (`iptv-org`). Selecciona un canal para sintonizarlo en el reproductor principal con Google Cast y pantalla completa.
+            Transmisiones deportivas en vivo. Selecciona cualquier canal para verlo en el reproductor principal con soporte para Smart TV y pantalla completa.
           </p>
         </div>
 
@@ -314,7 +314,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
                         {channel.isCustom ? (
                           <span className="text-amber-400/90 font-medium">Señal Verificada</span>
                         ) : (
-                          <span>Señal HLS</span>
+                          <span>En Vivo</span>
                         )}
                       </span>
                     )}

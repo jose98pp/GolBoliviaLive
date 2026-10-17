@@ -140,7 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Radio className="w-4 h-4 text-amber-400" />
-            <span>Canales IPTV</span>
+            <span>Canales TV</span>
           </button>
           <button
             onClick={() => setActiveTab('exclusive')}
@@ -338,9 +338,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <div className="flex items-center gap-2.5">
                 <Radio className="w-4 h-4 text-amber-400" />
-                <span>Canales IPTV Deportivos</span>
+                <span>Canales Deportivos TV</span>
               </div>
-              <span className="text-[10px] text-amber-400 font-mono font-bold">M3U8</span>
+              <span className="text-[10px] text-amber-400 font-mono font-bold">EN VIVO</span>
             </button>
 
             <button

@@ -103,25 +103,25 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
               switch (event.primaryProvider) {
                 case 'cloudflare':
                   return {
-                    label: '☁ Cloudflare Stream',
+                    label: '⚡ Transmisión Principal HD',
                     icon: <Zap className="w-3.5 h-3.5 text-sky-400" />,
                     bg: 'bg-sky-950/70 border-sky-500/40 text-sky-300',
                   };
                 case 'youtube':
                   return {
-                    label: '▶ YouTube Live',
+                    label: '▶ Señal Alternativa',
                     icon: <Tv className="w-3.5 h-3.5 text-red-400" />,
                     bg: 'bg-red-950/70 border-red-500/40 text-red-300',
                   };
                 case 'kick':
                   return {
-                    label: '🟢 Kick Streaming',
+                    label: '🟢 Señal Rápida',
                     icon: <Radio className="w-3.5 h-3.5 text-[#53fc18]" />,
                     bg: 'bg-emerald-950/70 border-emerald-500/40 text-[#53fc18]',
                   };
                 default:
                   return {
-                    label: '☁ Cloudflare Stream',
+                    label: '⚡ Transmisión en Directo',
                     icon: <Zap className="w-3.5 h-3.5 text-sky-400" />,
                     bg: 'bg-slate-900 border-slate-700 text-slate-300',
                   };
@@ -202,11 +202,9 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
 
               {/* Bottom Row: High Contrast Action Button */}
               <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-3">
-                <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <span>Respaldos:</span>
-                  <span className="font-mono text-slate-300 uppercase">
-                    {(event.fallbackOrder || []).filter((p) => p !== (event.primaryProvider || 'cloudflare')).join(', ') || 'Ninguno'}
-                  </span>
+                <div className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Fútbol Boliviano HD</span>
                 </div>
 
                 <button

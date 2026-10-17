@@ -75,24 +75,6 @@ export const QualitySelector: React.FC<QualitySelectorProps> = ({
             {latencyMode === 'ultra-low' ? 'ACTIVADO' : 'ESTÁNDAR'}
           </span>
         </button>
-
-        {/* Telemetry overlay toggle */}
-        <button
-          type="button"
-          onClick={() => {
-            onToggleStats();
-            onClose();
-          }}
-          className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition-colors cursor-pointer mt-1"
-        >
-          <div className="flex items-center gap-2">
-            <Sliders className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Estadísticas Técnicas</span>
-          </div>
-          <span className="text-[10px] text-cyan-400 font-bold">
-            {showStatsOverlay ? 'OCULTAR' : 'VER'}
-          </span>
-        </button>
       </div>
     </div>
   );

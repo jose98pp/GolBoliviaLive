@@ -51,7 +51,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="text-[10px] tracking-tight mt-1">Chat</span>
         </button>
 
-        {/* Canales IPTV */}
+        {/* Canales TV */}
         <button
           onClick={() => setActiveTab('iptv')}
           className={`flex-1 flex flex-col items-center justify-center min-h-[44px] cursor-pointer transition-colors ${
@@ -61,7 +61,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           }`}
         >
           <Radio className="w-5 h-5" />
-          <span className="text-[10px] tracking-tight mt-1">IPTV</span>
+          <span className="text-[10px] tracking-tight mt-1">Canales TV</span>
         </button>
 
         {/* Exclusive VIP */}

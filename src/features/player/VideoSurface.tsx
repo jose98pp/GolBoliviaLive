@@ -361,7 +361,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         <div className="absolute inset-0 z-25 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-center p-4">
           <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-2" />
           <span className="text-xs font-bold text-white uppercase tracking-wider">
-            Reconectando con el servidor HLS...
+            Reconectando con la transmisión...
           </span>
           <span className="text-[10px] text-slate-400 mt-1">Sincronizando señal en vivo</span>
         </div>
