@@ -7,7 +7,7 @@ export const iptvRouter = express.Router();
 
 const SPORTS_M3U_URL = 'https://iptv-org.github.io/iptv/categories/sports.m3u';
 const BOLIVIA_M3U_URL = 'https://iptv-org.github.io/iptv/countries/bo.m3u';
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 horas
+const CACHE_TTL_MS = 15 * 60 * 1000; // Refrescar enlaces deportivos cada 15 minutos
 const CUSTOM_CHANNELS_FILE = path.join(process.cwd(), 'data', 'custom-iptv-channels.json');
 
 function loadCustomChannels(): IptvChannel[] {
@@ -309,7 +309,7 @@ export function parseM3uSports(m3uText: string, defaultCountry?: string): IptvCh
 async function fetchM3uList(url: string, defaultCountry?: string): Promise<IptvChannel[]> {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
+    const timeout = setTimeout(() => controller.abort(), 4500); // Limitar espera del catálogo externo
 
     const resp = await fetch(url, {
       signal: controller.signal,
@@ -388,6 +388,12 @@ export function getOrRefreshSportsChannels(force = false): Promise<IptvChannel[]
   // Si ya hay una promesa de actualización en curso, compartirla entre solicitudes concurrentes
   if (activeFetchPromise) {
     return activeFetchPromise;
+  }
+
+  // Stale-while-revalidate: responder con el catálogo actual sin bloquear al usuario.
+  if (cachedChannels.length > 0 && !force) {
+    activeFetchPromise = refreshSportsChannels().finally(() => { activeFetchPromise = null; });
+    return Promise.resolve(cachedChannels);
   }
 
   activeFetchPromise = refreshSportsChannels()
