@@ -262,6 +262,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       {/* Real Video Element for HLS / Custom Stream */}
       {sourceInfo.type === 'hls' && (
         <video
+          id="player-golbolivia"
           ref={videoRef}
           playsInline
           muted={isMuted}

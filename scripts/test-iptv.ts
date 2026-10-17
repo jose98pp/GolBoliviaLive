@@ -8,6 +8,7 @@ import {
   getCustomChannelsForTest,
   CURATED_FALLBACK_CHANNELS,
   iptvRouter,
+  parseM3uSports,
 } from '../src/services/iptvBackend';
 import { iptvService } from '../src/services/iptvService';
 import type { IptvChannel } from '../src/types/iptv';
@@ -435,6 +436,38 @@ http://cdn.origin.com/live/segment002.ts`;
   assert(
     alreadyProxied === '/api/proxy?url=http%3A%2F%2Ftest',
     'Evita doble envoltura si la URL ya está usando /api/proxy'
+  );
+
+  // ── 8. Pruebas de Canales Destacados y Carga M3U con bo.m3u ──
+  console.log('\n--- 8. Pruebas de Canales Destacados y bo.m3u ---');
+
+  const mainChannel = CURATED_FALLBACK_CHANNELS[0];
+  assert(
+    Boolean(mainChannel && mainChannel.name === 'Señal Principal - Fútbol Boliviano'),
+    'CURATED_FALLBACK_CHANNELS incluye "Señal Principal - Fútbol Boliviano" como primer canal',
+    mainChannel?.name
+  );
+  assert(
+    mainChannel.country === 'BO',
+    'Señal Principal tiene país BO (Bolivia)'
+  );
+
+  // Probar parseM3uSports con defaultCountry='BO'
+  const mockBoM3u = `#EXTM3U
+#EXTINF:-1 tvg-id="Unitel.bo" tvg-name="Unitel" tvg-logo="https://unitel.bo/logo.png" group-title="General",Unitel HD
+https://stream.unitel.bo/live.m3u8
+#EXTINF:-1 tvg-id="BoliviaTV.bo" tvg-name="Bolivia TV" tvg-logo="https://boliviatv.bo/logo.png" group-title="TV Abierta",Bolivia TV 7.1
+https://stream.boliviatv.bo/live.m3u8`;
+
+  const parsedBo = parseM3uSports(mockBoM3u, 'BO');
+  assert(parsedBo.length === 2, 'parseM3uSports extrae los canales de la lista M3U', `Total: ${parsedBo.length}`);
+  assert(
+    parsedBo.every((c: IptvChannel) => c.country === 'BO' && c.countryName === 'Bolivia'),
+    'parseM3uSports asigna país BO y Bolivia automáticamente cuando defaultCountry="BO"'
+  );
+  assert(
+    parsedBo[0].name === 'Unitel HD' && parsedBo[0].group === 'General',
+    'Conserva nombre y group-title de Unitel'
   );
 
   console.log('\n====================================================');

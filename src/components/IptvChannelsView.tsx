@@ -137,13 +137,14 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
+              id="buscador-canales"
               type="text"
               value={searchQuery}
               onChange={(e) => {
                 const val = e.target.value;
                 startTransition(() => setSearchQuery(val));
               }}
-              placeholder="Buscar canal deportivo (ej. Claro, Red Bull, TyC, Win, FIFA, Teledeporte)..."
+              placeholder="Buscar canal o partido..."
               className="w-full pl-10 pr-9 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/30 transition-all"
             />
             {searchQuery && (
@@ -227,7 +228,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+        <div id="grilla-canales" className="grid-canales grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
           {filteredChannels.map((channel) => {
             const isPlaying = activeStreamUrl === channel.streamUrl;
             const isFav = favoriteIds.includes(channel.id);
@@ -236,7 +237,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
               <div
                 key={channel.id}
                 onClick={() => onSelectChannel(channel)}
-                className={`group relative p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between overflow-hidden ${
+                className={`canal-card group relative p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between overflow-hidden ${
                   isPlaying
                     ? 'bg-amber-500/10 border-amber-500/80 shadow-md shadow-amber-500/10 ring-1 ring-amber-500/50'
                     : 'bg-slate-900/80 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900'
@@ -257,8 +258,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
                           alt={channel.name}
                           referrerPolicy="no-referrer"
                           onError={(e) => {
-                            // Fallback on broken image
-                            (e.target as HTMLElement).style.display = 'none';
+                            (e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/60?text=TV';
                           }}
                           className="w-full h-full object-contain"
                         />

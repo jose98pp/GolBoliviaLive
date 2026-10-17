@@ -1084,6 +1084,7 @@ import fs from "node:fs";
 import path from "node:path";
 var iptvRouter = express.Router();
 var SPORTS_M3U_URL = "https://iptv-org.github.io/iptv/categories/sports.m3u";
+var BOLIVIA_M3U_URL = "https://iptv-org.github.io/iptv/countries/bo.m3u";
 var CACHE_TTL_MS = 6 * 60 * 60 * 1e3;
 var CUSTOM_CHANNELS_FILE = path.join(process.cwd(), "data", "custom-iptv-channels.json");
 function loadCustomChannels() {
@@ -1114,6 +1115,19 @@ var cachedChannels = [];
 var lastFetchTime = 0;
 var activeFetchPromise = null;
 var CURATED_FALLBACK_CHANNELS = [
+  {
+    id: "bo-senal-principal-futbol",
+    name: "Se\xF1al Principal - F\xFAtbol Boliviano",
+    logo: "https://golbolivialive-beta.vercel.app/favicon.svg",
+    group: "Bolivia",
+    country: "BO",
+    countryName: "Bolivia",
+    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    resolution: "1080p",
+    isFavorite: true,
+    isDemoFeed: false,
+    notes: "Transmisi\xF3n en vivo oficial destacada del f\xFAtbol boliviano."
+  },
   {
     id: "claro-sports-latam",
     name: "Claro Sports Latam",
@@ -1286,7 +1300,7 @@ function inferCountry(tvgCountry, tvgId, name, group) {
   }
   return { code: "INT", name: "Internacional" };
 }
-function parseM3uSports(m3uText) {
+function parseM3uSports(m3uText, defaultCountry) {
   const lines = m3uText.split(/\r?\n/);
   const channels = [];
   let currentExtInf = null;
@@ -1305,13 +1319,13 @@ function parseM3uSports(m3uText) {
         tvgId: tvgIdMatch ? tvgIdMatch[1] : "",
         tvgName: tvgNameMatch ? tvgNameMatch[1] : channelName,
         tvgLogo: tvgLogoMatch ? tvgLogoMatch[1] : "",
-        tvgCountry: tvgCountryMatch ? tvgCountryMatch[1] : "",
-        groupTitle: groupTitleMatch ? groupTitleMatch[1] : "Sports",
+        tvgCountry: tvgCountryMatch ? tvgCountryMatch[1] : defaultCountry || "",
+        groupTitle: groupTitleMatch ? groupTitleMatch[1] : defaultCountry === "BO" ? "TV Abierta" : "Sports",
         channelName
       };
     } else if (line.startsWith("http://") || line.startsWith("https://")) {
       if (currentExtInf) {
-        const countryInfo = inferCountry(
+        const countryInfo = defaultCountry && defaultCountry.toUpperCase() === "BO" ? { code: "BO", name: "Bolivia" } : inferCountry(
           currentExtInf.tvgCountry,
           currentExtInf.tvgId,
           currentExtInf.channelName,
@@ -1322,7 +1336,7 @@ function parseM3uSports(m3uText) {
           id,
           name: currentExtInf.channelName || currentExtInf.tvgName || "Canal Deportivo",
           logo: currentExtInf.tvgLogo || "",
-          group: currentExtInf.groupTitle || "Sports",
+          group: currentExtInf.groupTitle || (countryInfo.code === "BO" ? "Bolivia" : "Sports"),
           country: countryInfo.code,
           countryName: countryInfo.name,
           streamUrl: line,
@@ -1334,11 +1348,11 @@ function parseM3uSports(m3uText) {
   }
   return channels;
 }
-async function refreshSportsChannels() {
+async function fetchM3uList(url, defaultCountry) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8e3);
-    const resp = await fetch(SPORTS_M3U_URL, {
+    const resp = await fetch(url, {
       signal: controller.signal,
       headers: {
         "User-Agent": "GolBolivia/2026.1 (IPTV-Sports-Aggregator)"
@@ -1349,19 +1363,39 @@ async function refreshSportsChannels() {
       throw new Error(`HTTP error ${resp.status}`);
     }
     const text = await resp.text();
-    const parsed = parseM3uSports(text);
-    if (parsed.length > 0) {
+    return parseM3uSports(text, defaultCountry);
+  } catch (err) {
+    console.warn(`[IPTV Backend] Advertencia al sincronizar lista externa (${url}):`, err?.message || err);
+    return [];
+  }
+}
+async function refreshSportsChannels() {
+  try {
+    const [boResult, sportsResult] = await Promise.allSettled([
+      fetchM3uList(BOLIVIA_M3U_URL, "BO"),
+      fetchM3uList(SPORTS_M3U_URL)
+    ]);
+    const boChannels = boResult.status === "fulfilled" ? boResult.value : [];
+    const sportsChannels = sportsResult.status === "fulfilled" ? sportsResult.value : [];
+    const combinedParsed = [...boChannels, ...sportsChannels];
+    if (combinedParsed.length > 0) {
       const uniqueUrls = /* @__PURE__ */ new Set([
         ...customChannels.map((c) => c.streamUrl),
         ...CURATED_FALLBACK_CHANNELS.map((c) => c.streamUrl)
       ]);
-      const filteredParsed = parsed.filter((c) => !uniqueUrls.has(c.streamUrl));
+      const filteredParsed = [];
+      for (const ch of combinedParsed) {
+        if (!uniqueUrls.has(ch.streamUrl)) {
+          uniqueUrls.add(ch.streamUrl);
+          filteredParsed.push(ch);
+        }
+      }
       cachedChannels = [...customChannels, ...CURATED_FALLBACK_CHANNELS, ...filteredParsed];
       lastFetchTime = Date.now();
       return cachedChannels;
     }
   } catch (err) {
-    console.warn("[IPTV Backend] Advertencia al sincronizar lista externa sports.m3u:", err?.message || err);
+    console.warn("[IPTV Backend] Advertencia al sincronizar listas M3U externas:", err?.message || err);
   }
   if (cachedChannels.length === 0) {
     cachedChannels = [...customChannels, ...CURATED_FALLBACK_CHANNELS];
