@@ -437,7 +437,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     }
   };
 
-  const autoSaveStatus = useAutoSave({ isDirty, changeKey: formKey, save: () => handleSubmit() });
+  const autoSaveStatus = useAutoSave({ isDirty: false, changeKey: formKey, save: () => Promise.resolve(true) });
 
   const homeClub = clubs[homeClubId] || { name: 'Local', badgeEmoji: '⚽', city: 'Bolivia', primaryColor: '#0284c7' };
   const awayClub = clubs[awayClubId] || { name: 'Visitante', badgeEmoji: '⚽', city: 'Bolivia', primaryColor: '#eab308' };
