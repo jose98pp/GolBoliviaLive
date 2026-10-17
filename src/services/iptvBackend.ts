@@ -1,7 +1,17 @@
 import express, { Request, Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { IptvChannel } from '../types/iptv';\nimport { isSafeIptvUrl } from '../../api/proxy.js';
+import type { IptvChannel } from '../types/iptv';\n// Validate public HTTP(S) hostnames before probing user-supplied streams.
+function isSafeIptvUrl(input: string): boolean {
+  try {
+    const u = new URL(input);
+    if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) return false;
+    const h = u.hostname.toLowerCase().replace(/\\.$/, '');
+    if (h === 'localhost' || /\\.(?:local|internal|localhost|test|invalid)$/.test(h) || h.includes(':') || /^\\d+$/.test(h)) return false;
+    if (/^(?:0|10|127|169\\.254|172\\.(?:1[6-9]|2\\d|3[01])|192\\.168|100\\.(?:6[4-9]|[7-9]\\d|1[01]\\d|12[0-7])|198\\.(?:18|19)|224|23\\d|24\\d|25[0-5])\\./.test(h)) return false;
+    return /^[a-z0-9-]+(?:\\.[a-z0-9-]+)+$/.test(h);
+  } catch { return false; }
+}
 
 export const iptvRouter = express.Router();
 
