@@ -8,6 +8,27 @@ let memoryCache: IptvChannel[] | null = null;
 
 export const iptvService = {
   /**
+   * Obtiene los canales cacheados de forma síncrona inmediata desde memoria o localStorage.
+   * Permite renderizado en 0ms sin pantallas de carga en el frontend.
+   */
+  getCachedChannelsSync(): IptvChannel[] {
+    if (memoryCache && memoryCache.length > 0) return memoryCache;
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            memoryCache = parsed;
+            return parsed;
+          }
+        }
+      } catch {}
+    }
+    return [];
+  },
+
+  /**
    * Obtiene la lista completa de canales IPTV deportivos (vía backend proxy con fallback)
    * Guarda siempre el catálogo completo en la caché antes de filtrar por país o búsqueda,
    * evitando que una primera búsqueda filtrada contamine la caché global.

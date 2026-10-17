@@ -1436,6 +1436,9 @@ iptvRouter.get("/sports", async (req, res) => {
         (c) => c.name.toLowerCase().includes(q) || c.countryName.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)
       );
     }
+    if (typeof res.setHeader === "function") {
+      res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=3600");
+    }
     res.json({
       success: true,
       total: filtered.length,
@@ -1607,16 +1610,25 @@ async function handler(req, res) {
     return res.status(400).json({ error: "URL malformada o inv\xE1lida" });
   }
   try {
+    let fetchOrigin = "";
+    try {
+      fetchOrigin = new URL(targetUrl).origin;
+    } catch {
+    }
     const fetchHeaders = {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
       Accept: "*/*",
-      "Accept-Language": "es,en;q=0.9"
+      "Accept-Language": "es,en;q=0.9",
+      ...fetchOrigin && {
+        Referer: `${fetchOrigin}/`,
+        Origin: fetchOrigin
+      }
     };
     if (req.headers && req.headers["range"]) {
       fetchHeaders["Range"] = req.headers["range"];
     }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 18e3);
+    const timeout = setTimeout(() => controller.abort(), 1e4);
     const response = await fetch(targetUrl, {
       method: req.method === "HEAD" ? "HEAD" : "GET",
       headers: fetchHeaders,
@@ -1624,9 +1636,9 @@ async function handler(req, res) {
       signal: controller.signal
     });
     clearTimeout(timeout);
-    const contentType = response.headers.get("content-type") || "";
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
     const cleanUrl = targetUrl.toLowerCase().split("?")[0];
-    const isM3u8 = contentType.toLowerCase().includes("mpegurl") || contentType.toLowerCase().includes("x-mpegurl") || cleanUrl.endsWith(".m3u8");
+    let isM3u8 = contentType.includes("mpegurl") || contentType.includes("x-mpegurl") || cleanUrl.endsWith(".m3u8") || cleanUrl.endsWith(".m3u") || targetUrl.toLowerCase().includes(".m3u8");
     if (req.method === "HEAD") {
       res.setHeader(
         "Content-Type",
@@ -1639,10 +1651,20 @@ async function handler(req, res) {
       const finalBaseUrl = response.url || targetUrl;
       const rewritten = rewriteM3u8Content(text, finalBaseUrl);
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Cache-Control", "public, max-age=1, s-maxage=1, stale-while-revalidate=3");
       return res.status(response.status).send(rewritten);
     }
-    const body = await response.arrayBuffer();
+    const rawBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(rawBuffer);
+    const headerPrefix = buffer.slice(0, 32).toString("utf-8");
+    if (headerPrefix.includes("#EXTM3U")) {
+      const text = buffer.toString("utf-8");
+      const finalBaseUrl = response.url || targetUrl;
+      const rewritten = rewriteM3u8Content(text, finalBaseUrl);
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=1, s-maxage=1, stale-while-revalidate=3");
+      return res.status(response.status).send(rewritten);
+    }
     let outputType = contentType;
     if (!outputType || outputType === "application/octet-stream") {
       if (cleanUrl.endsWith(".ts")) outputType = "video/mp2t";
@@ -1651,11 +1673,11 @@ async function handler(req, res) {
       else outputType = "application/octet-stream";
     }
     res.setHeader("Content-Type", outputType);
-    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800");
     if (response.headers.get("content-range")) {
       res.setHeader("Content-Range", response.headers.get("content-range"));
     }
-    return res.status(response.status).send(Buffer.from(body));
+    return res.status(response.status).send(buffer);
   } catch (error) {
     return res.status(502).json({
       error: "Error al conectar con el stream origen",

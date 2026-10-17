@@ -470,6 +470,45 @@ https://stream.boliviatv.bo/live.m3u8`;
     'Conserva nombre y group-title de Unitel'
   );
 
+  // 8.3 Prueba de getCachedChannelsSync para renderizado en 0ms
+  const syncChannels = iptvService.getCachedChannelsSync();
+  assert(
+    Array.isArray(syncChannels),
+    'getCachedChannelsSync devuelve un array inmediatamente de forma síncrona'
+  );
+
+  // 8.4 Prueba de respuesta M3U8 en proxyHandler con cabeceras de caché Edge
+  let proxyM3u8Headers: Record<string, string> = {};
+  let proxyM3u8Body = '';
+  const mockResM3u8: any = {
+    setHeader: (k: string, v: string) => { proxyM3u8Headers[k.toLowerCase()] = v; },
+    status: () => mockResM3u8,
+    send: (b: any) => { proxyM3u8Body = b.toString(); return mockResM3u8; },
+    json: () => mockResM3u8,
+  };
+
+  (globalThis as any).fetch = async () => ({
+    ok: true,
+    status: 200,
+    headers: new Map([['content-type', 'application/vnd.apple.mpegurl']]),
+    text: async () => '#EXTM3U\n#EXTINF:4.0,\nsegment1.ts',
+    url: 'https://cdn.origin.com/stream/playlist.m3u8',
+  });
+
+  await proxyHandler({ method: 'GET', query: { url: 'https://cdn.origin.com/stream/playlist.m3u8' } } as any, mockResM3u8);
+  assert(
+    proxyM3u8Headers['content-type']?.includes('application/vnd.apple.mpegurl'),
+    'Proxy establece Content-Type de playlist M3U8'
+  );
+  assert(
+    proxyM3u8Headers['cache-control']?.includes('public'),
+    'Proxy configura cabecera Cache-Control para optimización Edge en M3U8'
+  );
+  assert(
+    proxyM3u8Body.includes('/api/proxy?url='),
+    'Proxy reescribe segmentos dentro del playlist M3U8'
+  );
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS CON ÉXITO: ${passedTests}/${totalTests}`);
   console.log('====================================================\n');

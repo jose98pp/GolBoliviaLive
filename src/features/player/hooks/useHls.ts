@@ -98,14 +98,18 @@ export function useHls({
         lowLatencyMode: true,
         backBufferLength: 60,
         maxBufferLength: 30,
+        maxMaxBufferLength: 60,
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 6,
-        manifestLoadingTimeOut: 12000,
-        manifestLoadingMaxRetry: 3,
-        levelLoadingTimeOut: 12000,
-        levelLoadingMaxRetry: 3,
-        fragLoadingTimeOut: 15000,
-        fragLoadingMaxRetry: 3,
+        // Detección veloz de fallos y cambio inmediato de canal (sin esperas de 12s)
+        manifestLoadingTimeOut: 4000,
+        manifestLoadingMaxRetry: 1,
+        levelLoadingTimeOut: 4500,
+        levelLoadingMaxRetry: 1,
+        fragLoadingTimeOut: 6000,
+        fragLoadingMaxRetry: 2,
+        startLevel: -1,
+        progressive: true,
       });
 
       hlsRef.current = hls;
@@ -138,12 +142,39 @@ export function useHls({
       });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
+        // Rescate veloz e instantáneo: Si el manifiesto falla por CORS, 403 o error de red
+        // (incluso antes de que hls.js agote todos sus reintentos y emita fatal),
+        // cambiar inmediatamente a /api/proxy para que el canal cargue en milisegundos
+        const isManifestError =
+          data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+          data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
+          data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR;
+
+        if (
+          isManifestError &&
+          !proxyAttemptedRef.current &&
+          rawTarget &&
+          !rawTarget.includes('/api/proxy') &&
+          !effectiveSrc.includes('/api/proxy')
+        ) {
+          proxyAttemptedRef.current = true;
+          const proxiedUrl = getProxiedStreamUrl(rawTarget, true);
+          hls.loadSource(proxiedUrl);
+          hls.startLoad();
+          return;
+        }
+
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               networkErrorCountRef.current += 1;
               // Si falla por CORS o bloqueo de red en HTTPS directo y aún no se probó el proxy, rescatarlo vía /api/proxy
-              if (!proxyAttemptedRef.current && rawTarget && !rawTarget.includes('/api/proxy') && !effectiveSrc.includes('/api/proxy')) {
+              if (
+                !proxyAttemptedRef.current &&
+                rawTarget &&
+                !rawTarget.includes('/api/proxy') &&
+                !effectiveSrc.includes('/api/proxy')
+              ) {
                 proxyAttemptedRef.current = true;
                 const proxiedUrl = getProxiedStreamUrl(rawTarget, true);
                 hls.loadSource(proxiedUrl);

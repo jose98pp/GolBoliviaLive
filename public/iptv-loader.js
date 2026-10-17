@@ -81,7 +81,12 @@ function reproducirCanal(url, nombre) {
     hlsInstance = new window.Hls({
       enableWorker: true,
       lowLatencyMode: true,
-      backBufferLength: 60
+      backBufferLength: 60,
+      manifestLoadingTimeOut: 4000,
+      manifestLoadingMaxRetry: 1,
+      levelLoadingTimeOut: 4500,
+      fragLoadingTimeOut: 6000,
+      fragLoadingMaxRetry: 2,
     });
     hlsInstance.loadSource(streamUrl);
     hlsInstance.attachMedia(video);
@@ -89,6 +94,18 @@ function reproducirCanal(url, nombre) {
       video.play().catch(() => console.log("Esperando interacción del usuario para reproducir"));
     });
     hlsInstance.on(window.Hls.Events.ERROR, (_, data) => {
+      const isManifestError =
+        data?.details === window.Hls.ErrorDetails?.MANIFEST_LOAD_ERROR ||
+        data?.details === window.Hls.ErrorDetails?.MANIFEST_LOAD_TIMEOUT ||
+        data?.details === window.Hls.ErrorDetails?.MANIFEST_PARSING_ERROR;
+
+      if (isManifestError && !streamUrl.includes('/api/proxy')) {
+        const proxied = `/api/proxy?url=${encodeURIComponent(url)}`;
+        hlsInstance.loadSource(proxied);
+        hlsInstance.startLoad();
+        return;
+      }
+
       if (data?.fatal && data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
         if (!streamUrl.includes('/api/proxy')) {
           const proxied = `/api/proxy?url=${encodeURIComponent(url)}`;

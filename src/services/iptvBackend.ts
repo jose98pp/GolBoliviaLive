@@ -428,6 +428,10 @@ iptvRouter.get('/sports', async (req: Request, res: Response) => {
       );
     }
 
+    if (typeof res.setHeader === 'function') {
+      res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600');
+    }
+
     res.json({
       success: true,
       total: filtered.length,

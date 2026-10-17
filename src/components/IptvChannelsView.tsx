@@ -27,19 +27,22 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
   activeStreamUrl,
   onOpenCast,
 }) => {
-  const [channels, setChannels] = useState<IptvChannel[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [channels, setChannels] = useState<IptvChannel[]>(() => iptvService.getCachedChannelsSync());
+  const [loading, setLoading] = useState<boolean>(() => iptvService.getCachedChannelsSync().length === 0);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCountry, setSelectedCountry] = useState<IptvCountryCode>('ALL');
   const [showOnlyFavorites, setShowOnlyFavorites] = useState<boolean>(false);
-  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => iptvService.getFavoriteChannelIds());
   const [, startTransition] = useTransition();
 
-  // Cargar canales iniciales
+  // Cargar canales iniciales con patrón SWR (Stale-While-Revalidate)
   const loadChannels = async (force = false) => {
-    if (force) setIsRefreshing(true);
-    else setLoading(true);
+    if (force) {
+      setIsRefreshing(true);
+    } else if (channels.length === 0) {
+      setLoading(true);
+    }
 
     try {
       const data = await iptvService.getChannels({ forceRefresh: force });

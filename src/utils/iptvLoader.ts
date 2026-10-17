@@ -93,6 +93,11 @@ export function reproducirCanal(url: string, nombre: string): void {
       enableWorker: true,
       lowLatencyMode: true,
       backBufferLength: 60,
+      manifestLoadingTimeOut: 4000,
+      manifestLoadingMaxRetry: 1,
+      levelLoadingTimeOut: 4500,
+      fragLoadingTimeOut: 6000,
+      fragLoadingMaxRetry: 2,
     });
     globalHlsInstance = hls;
 
@@ -105,6 +110,18 @@ export function reproducirCanal(url: string, nombre: string): void {
     });
 
     hls.on(HlsClass.Events.ERROR, (_: any, data: any) => {
+      const isManifestError =
+        data?.details === HlsClass.ErrorDetails?.MANIFEST_LOAD_ERROR ||
+        data?.details === HlsClass.ErrorDetails?.MANIFEST_LOAD_TIMEOUT ||
+        data?.details === HlsClass.ErrorDetails?.MANIFEST_PARSING_ERROR;
+
+      if (isManifestError && !streamUrl.includes('/api/proxy')) {
+        const proxied = getProxiedStreamUrl(url, true);
+        hls.loadSource(proxied);
+        hls.startLoad();
+        return;
+      }
+
       if (data?.fatal) {
         switch (data.type) {
           case HlsClass.ErrorTypes.NETWORK_ERROR:
