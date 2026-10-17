@@ -1,13 +1,23 @@
 import express, { Request, Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { IptvChannel } from '../types/iptv';
+import type { IptvChannel } from '../types/iptv';\n// Validate public HTTP(S) hostnames before probing user-supplied streams.
+function isSafeIptvUrl(input: string): boolean {
+  try {
+    const u = new URL(input);
+    if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) return false;
+    const h = u.hostname.toLowerCase().replace(/\\.$/, '');
+    if (h === 'localhost' || /\\.(?:local|internal|localhost|test|invalid)$/.test(h) || h.includes(':') || /^\\d+$/.test(h)) return false;
+    if (/^(?:0|10|127|169\\.254|172\\.(?:1[6-9]|2\\d|3[01])|192\\.168|100\\.(?:6[4-9]|[7-9]\\d|1[01]\\d|12[0-7])|198\\.(?:18|19)|224|23\\d|24\\d|25[0-5])\\./.test(h)) return false;
+    return /^[a-z0-9-]+(?:\\.[a-z0-9-]+)+$/.test(h);
+  } catch { return false; }
+}
 
 export const iptvRouter = express.Router();
 
 const SPORTS_M3U_URL = 'https://iptv-org.github.io/iptv/categories/sports.m3u';
 const BOLIVIA_M3U_URL = 'https://iptv-org.github.io/iptv/countries/bo.m3u';
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 horas
+const CACHE_TTL_MS = 15 * 60 * 1000; // Refrescar enlaces deportivos cada 15 minutos
 const CUSTOM_CHANNELS_FILE = path.join(process.cwd(), 'data', 'custom-iptv-channels.json');
 
 function loadCustomChannels(): IptvChannel[] {
@@ -309,7 +319,7 @@ export function parseM3uSports(m3uText: string, defaultCountry?: string): IptvCh
 async function fetchM3uList(url: string, defaultCountry?: string): Promise<IptvChannel[]> {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
+    const timeout = setTimeout(() => controller.abort(), 4500); // Limitar espera del catálogo externo
 
     const resp = await fetch(url, {
       signal: controller.signal,
@@ -388,6 +398,12 @@ export function getOrRefreshSportsChannels(force = false): Promise<IptvChannel[]
   // Si ya hay una promesa de actualización en curso, compartirla entre solicitudes concurrentes
   if (activeFetchPromise) {
     return activeFetchPromise;
+  }
+
+  // Stale-while-revalidate: responder con el catálogo actual sin bloquear al usuario.
+  if (cachedChannels.length > 0 && !force) {
+    activeFetchPromise = refreshSportsChannels().finally(() => { activeFetchPromise = null; });
+    return Promise.resolve(cachedChannels);
   }
 
   activeFetchPromise = refreshSportsChannels()
@@ -478,7 +494,7 @@ iptvRouter.post('/custom', (req: Request, res: Response) => {
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ success: false, error: 'El nombre del canal es requerido.' });
     }
-    if (!streamUrl || typeof streamUrl !== 'string' || !streamUrl.trim().startsWith('http')) {
+    if (!streamUrl || typeof streamUrl !== 'string' || !isSafeIptvUrl(streamUrl)) {
       return res.status(400).json({ success: false, error: 'La URL del stream debe comenzar con http:// o https://' });
     }
 
@@ -532,7 +548,7 @@ iptvRouter.delete('/custom/:id', (req: Request, res: Response) => {
 // POST /api/iptv/probe - Probar conectividad y latencia de señal .m3u8 en vivo
 iptvRouter.post('/probe', async (req: Request, res: Response) => {
   const { streamUrl } = req.body || {};
-  if (!streamUrl || typeof streamUrl !== 'string') {
+  if (!streamUrl || typeof streamUrl !== 'string' || !isSafeIptvUrl(streamUrl)) {
     return res.status(400).json({ success: false, error: 'streamUrl es requerido' });
   }
 
@@ -543,14 +559,14 @@ iptvRouter.post('/probe', async (req: Request, res: Response) => {
     const resp = await fetch(streamUrl, {
       method: 'GET',
       signal: controller.signal,
-      headers: { 'User-Agent': 'GolBolivia/2026.1 (Channel-Probe)' },
+      redirect: 'error',\n      headers: { 'User-Agent': 'GolBolivia/2026.1 (Channel-Probe)' },
     });
     clearTimeout(timeout);
     const latencyMs = Date.now() - startTime;
 
     res.json({
       success: true,
-      reachable: resp.ok || resp.status < 400,
+      reachable: resp.ok && /mpegurl|x-mpegurl/i.test(resp.headers.get('content-type') || ''),
       status: resp.status,
       statusText: resp.statusText,
       contentType: resp.headers.get('content-type') || '',
