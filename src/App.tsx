@@ -26,6 +26,7 @@ import { useRealPresence } from './hooks/useRealPresence';
 import { useClubs } from './hooks/useClubs';
 import { apiClient } from './services/apiClient';
 import { getMatchSlug, findEventBySlug } from './utils/slug';
+import { getStreamUrlForEvent } from './utils/streamUtils';
 import {
   getMatchStatusInfo,
   filterMatchesByCategory,
@@ -405,8 +406,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
           // 1. Fusionamos con validación de versiones (los items existentes no retroceden).
           // 2. Eliminamos items locales que el servidor ya no tiene (eliminados mientras offline).
           setLiveEvents((prev) => {
-            const serverIds = new Set(data.liveEvents.map((e: any) => e.id));
-            return mergeConfirmedEvents(prev, data.liveEvents);
+              return mergeConfirmedEvents(prev, data.liveEvents);
           });
         } else if (Array.isArray(data.liveEvents) && data.liveEvents.length === 0) {
           // Servidor confirmó lista vacía (todos eliminados)
@@ -477,7 +477,6 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       } else if (type === 'LIVE_EVENTS_UPDATED') {
         if (Array.isArray(data)) {
           setLiveEvents((prev) => {
-            const incomingIds = new Set(data.map((e: any) => e.id));
             const merged = mergeConfirmedEvents(prev, data);
             try {
               localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
@@ -523,7 +522,6 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((fbEvents) => {
       if (Array.isArray(fbEvents)) {
         setLiveEvents((prev) => {
-          const incomingIds = new Set(fbEvents.map((e: any) => e.id));
           const merged = mergeConfirmedEvents(prev, fbEvents);
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
@@ -537,7 +535,6 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     apiClient.getLiveEvents().then((evts) => {
       if (Array.isArray(evts)) {
         setLiveEvents((prev) => {
-          const incomingIds = new Set(evts.map((e: any) => e.id));
           const merged = mergeConfirmedEvents(prev, evts);
           try {
             localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
