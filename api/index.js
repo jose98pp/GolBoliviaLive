@@ -2235,7 +2235,8 @@ function persistState() {
     console.error("[GolBolivia Backend] Error al guardar estado en disco:", err);
   }
 }
-loadPersistedState();
+ensureStateLoaded().catch(() => {
+});
 var viewerSessions = /* @__PURE__ */ new Map();
 function purgeExpiredViewers() {
   const now = Date.now();

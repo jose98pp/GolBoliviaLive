@@ -578,7 +578,7 @@ function persistState(): void {
 }
 
 // Cargar estado persistido al arrancar
-loadPersistedState();
+ensureStateLoaded().catch(() => {});
 
 // Real active viewers sessions tracker (heartbeat every 15s)
 const viewerSessions = new Map<string, number>();
