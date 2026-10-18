@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAutoSave } from '../hooks/useAutoSave';
-import { AutoSaveIndicator } from './AutoSaveIndicator';
 import {
   Trophy,
   MapPin,
@@ -84,12 +82,15 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   events = [],
 }) => {
   const { clubs } = useClubs();
+  const clubKeys = Object.keys(clubs);
+  const defaultHomeClubId = activeEvent?.homeTeam || streamSettings?.homeClubId || clubKeys[0] || 'bolivar';
+  const defaultAwayClubId = activeEvent?.awayTeam || streamSettings?.awayClubId || clubKeys[1] || 'strongest';
 
   // Internal form fields
   const [title, setTitle] = useState(activeEvent?.title || streamSettings?.title || '');
   const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName || streamSettings?.tournamentName || '');
-  const [homeClubId, setHomeClubId] = useState(activeEvent?.homeTeam || streamSettings?.homeClubId || '');
-  const [awayClubId, setAwayClubId] = useState(activeEvent?.awayTeam || streamSettings?.awayClubId || '');
+  const [homeClubId, setHomeClubId] = useState(defaultHomeClubId);
+  const [awayClubId, setAwayClubId] = useState(defaultAwayClubId);
   const [stadiumName, setStadiumName] = useState(activeEvent?.stadiumName || streamSettings?.stadiumName || '');
   const [altitudeMeters, setAltitudeMeters] = useState(streamSettings?.altitudeMeters || 0);
   const [officialAnnouncement, setOfficialAnnouncement] = useState(streamSettings?.officialAnnouncement || '');
@@ -108,52 +109,31 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
   const prevEventIdRef = useRef(activeEventId);
 
-  // Sync state when selected match changes
+  // Sync state ONLY when user explicitly switches to another match
   useEffect(() => {
     if (prevEventIdRef.current !== activeEventId) {
       prevEventIdRef.current = activeEventId;
       setIsDirty(false);
       const srcTitle = activeEvent?.title || streamSettings?.title || '';
       const srcTourn = activeEvent?.tournamentName || streamSettings?.tournamentName || '';
-      const srcHome = activeEvent?.homeTeam || streamSettings?.homeClubId || '';
-      const srcAway = activeEvent?.awayTeam || streamSettings?.awayClubId || '';
+      const srcHome = activeEvent?.homeTeam || streamSettings?.homeClubId || defaultHomeClubId;
+      const srcAway = activeEvent?.awayTeam || streamSettings?.awayClubId || defaultAwayClubId;
       const srcStadium = activeEvent?.stadiumName || streamSettings?.stadiumName || '';
       const srcPeriod = (activeEvent?.period || streamSettings?.period || '1T') as MatchPeriod;
       const srcIsLive = activeEvent?.isLive ?? streamSettings?.isLive ?? true;
 
-      if (srcTitle) setTitle(srcTitle);
-      if (srcTourn) setTournamentName(srcTourn);
-      if (srcHome) setHomeClubId(srcHome);
-      if (srcAway) setAwayClubId(srcAway);
-      if (srcStadium) setStadiumName(srcStadium);
+      setTitle(srcTitle);
+      setTournamentName(srcTourn);
+      setHomeClubId(srcHome);
+      setAwayClubId(srcAway);
+      setStadiumName(srcStadium);
       setPeriod(srcPeriod);
       setIsLiveMatch(srcIsLive);
       setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
       setLocalAwayScore(activeEvent?.awayScore ?? awayScore);
       setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
-    } else if (!isDirty) {
-      if (activeEvent?.title) setTitle(activeEvent.title);
-      else if (streamSettings?.title) setTitle(streamSettings.title);
-
-      if (activeEvent?.tournamentName) setTournamentName(activeEvent.tournamentName);
-      else if (streamSettings?.tournamentName) setTournamentName(streamSettings.tournamentName);
-
-      if (activeEvent?.homeTeam) setHomeClubId(activeEvent.homeTeam);
-      else if (streamSettings?.homeClubId) setHomeClubId(streamSettings.homeClubId);
-
-      if (activeEvent?.awayTeam) setAwayClubId(activeEvent.awayTeam);
-      else if (streamSettings?.awayClubId) setAwayClubId(streamSettings.awayClubId);
-
-      if (activeEvent?.stadiumName) setStadiumName(activeEvent.stadiumName);
-      else if (streamSettings?.stadiumName) setStadiumName(streamSettings.stadiumName);
-
-      if (activeEvent?.period) setPeriod(activeEvent.period as MatchPeriod);
-      if (activeEvent?.isLive !== undefined) setIsLiveMatch(activeEvent.isLive);
-      setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
-      setLocalAwayScore(activeEvent?.awayScore ?? awayScore);
-      setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
     }
-  }, [activeEventId, activeEvent, streamSettings, isDirty, homeScore, awayScore, matchMinute]);
+  }, [activeEventId, activeEvent, streamSettings, defaultHomeClubId, defaultAwayClubId, homeScore, awayScore, matchMinute]);
 
   // Free Football API (ESPN) state
   const [apiLeague, setApiLeague] = useState<string>('bol.1');
@@ -344,8 +324,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     const cleanTitle = title.trim();
     const cleanTournament = tournamentName.trim();
     const cleanStadium = stadiumName.trim();
-    const cleanHomeId = homeClubId.trim().toLowerCase();
-    const cleanAwayId = awayClubId.trim().toLowerCase();
+    const effectiveHomeId = (homeClubId || defaultHomeClubId).trim().toLowerCase();
+    const effectiveAwayId = (awayClubId || defaultAwayClubId).trim().toLowerCase();
     const alt = Number(altitudeMeters);
 
     // Validations
@@ -353,7 +333,11 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setErrorMsg('El título del partido debe tener al menos 3 caracteres.');
       return false;
     }
-    if (cleanHomeId === cleanAwayId) {
+    if (!effectiveHomeId || !effectiveAwayId) {
+      setErrorMsg('Debes seleccionar un club local y un club visitante.');
+      return false;
+    }
+    if (effectiveHomeId === effectiveAwayId) {
       setErrorMsg('El club local y visitante no pueden ser el mismo equipo.');
       return false;
     }
@@ -373,8 +357,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     const fullEventPayload: LiveEvent = {
       id: activeId,
       title: cleanTitle,
-      homeTeam: cleanHomeId,
-      awayTeam: cleanAwayId,
+      homeTeam: effectiveHomeId,
+      awayTeam: effectiveAwayId,
       tournamentName: cleanTournament || 'Liga Tigo División Profesional',
       stadiumName: cleanStadium || 'Estadio Departamental',
       isLive: isLiveMatch,
@@ -414,8 +398,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       const streamPayload: Partial<StreamSettings> = {
         title: cleanTitle,
         tournamentName: cleanTournament,
-        homeClubId: cleanHomeId,
-        awayClubId: cleanAwayId,
+        homeClubId: effectiveHomeId,
+        awayClubId: effectiveAwayId,
         stadiumName: cleanStadium,
         altitudeMeters: Math.round(alt),
         officialAnnouncement: officialAnnouncement.trim().slice(0, 200),
@@ -434,7 +418,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         onUpdateLiveEvent(fullEventPayload);
       }
 
-      setIsDirty(formKeyRef.current !== savedFormKey);
+      setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 5000);
       return true;
@@ -446,8 +430,6 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setIsSaving(false);
     }
   };
-
-  const autoSaveStatus = useAutoSave({ isDirty, changeKey: formKey, save: () => handleSubmit() });
 
   const homeClub = clubs[homeClubId] || { name: 'Local', badgeEmoji: '⚽', city: 'Bolivia', primaryColor: '#0284c7' };
   const awayClub = clubs[awayClubId] || { name: 'Visitante', badgeEmoji: '⚽', city: 'Bolivia', primaryColor: '#eab308' };
@@ -1113,8 +1095,15 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           {/* Submit Action Button */}
           <div className="pt-2 space-y-2">
             <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
-              <span>Los cambios se guardan solos al dejar de escribir.</span>
-              <AutoSaveIndicator status={autoSaveStatus} />
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span>Haz clic en "GUARDAR DATOS" para registrar y publicar los cambios en vivo.</span>
+              </span>
+              {isDirty && (
+                <span className="text-[10px] text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-bold">
+                  Cambios pendientes de guardar
+                </span>
+              )}
             </div>
             <button
               type="submit"
@@ -1129,7 +1118,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               ) : (
                 <>
                   <Save className="w-4 h-4 text-black" />
-                  <span>GUARDAR AHORA</span>
+                  <span>GUARDAR DATOS DEL PARTIDO</span>
                 </>
               )}
             </button>
