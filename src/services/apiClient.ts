@@ -784,13 +784,13 @@ class GolBoliviaApiClient {
       const res = await fetch('/api/live-events');
       if (res.ok) {
         const data = await res.json();
-        if (data && Array.isArray(data.events)) {
+        if (data && Array.isArray(data.events) && data.events.length > 0) {
           return data.events;
         }
       }
     } catch {}
 
-    // 2. Try Firestore
+    // 2. Try Firestore fallback if server was empty or unreachable
     try {
       const fbEvents = await getLiveEventsFromFirebase();
       if (fbEvents && fbEvents.length > 0) {
@@ -798,7 +798,7 @@ class GolBoliviaApiClient {
       }
     } catch {}
 
-    // 4. Do not return default sample matches automatically
+    // 3. Do not return default sample matches automatically
     return [];
   }
 

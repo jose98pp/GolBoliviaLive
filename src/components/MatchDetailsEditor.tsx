@@ -88,10 +88,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   // Internal form fields
   const [title, setTitle] = useState(activeEvent?.title || streamSettings?.title || '');
   const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName || streamSettings?.tournamentName || '');
-  const [homeClubId, setHomeClubId] = useState(activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar');
-  const [awayClubId, setAwayClubId] = useState(activeEvent?.awayTeam || streamSettings?.awayClubId || 'strongest');
+  const [homeClubId, setHomeClubId] = useState(activeEvent?.homeTeam || streamSettings?.homeClubId || '');
+  const [awayClubId, setAwayClubId] = useState(activeEvent?.awayTeam || streamSettings?.awayClubId || '');
   const [stadiumName, setStadiumName] = useState(activeEvent?.stadiumName || streamSettings?.stadiumName || '');
-  const [altitudeMeters, setAltitudeMeters] = useState(streamSettings?.altitudeMeters || 3637);
+  const [altitudeMeters, setAltitudeMeters] = useState(activeEvent?.altitudeMeters || streamSettings?.altitudeMeters || 0);
   const [officialAnnouncement, setOfficialAnnouncement] = useState(streamSettings?.officialAnnouncement || '');
   const [isLiveMatch, setIsLiveMatch] = useState<boolean>(activeEvent?.isLive ?? streamSettings?.isLive ?? true);
   const [period, setPeriod] = useState<MatchPeriod>((activeEvent?.period as MatchPeriod) || streamSettings?.period || '1T');
@@ -115,17 +115,17 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setIsDirty(false);
       const srcTitle = activeEvent?.title || streamSettings?.title || '';
       const srcTourn = activeEvent?.tournamentName || streamSettings?.tournamentName || '';
-      const srcHome = activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar';
-      const srcAway = activeEvent?.awayTeam || streamSettings?.awayClubId || 'strongest';
+      const srcHome = activeEvent?.homeTeam || streamSettings?.homeClubId || '';
+      const srcAway = activeEvent?.awayTeam || streamSettings?.awayClubId || '';
       const srcStadium = activeEvent?.stadiumName || streamSettings?.stadiumName || '';
       const srcPeriod = (activeEvent?.period || streamSettings?.period || '1T') as MatchPeriod;
       const srcIsLive = activeEvent?.isLive ?? streamSettings?.isLive ?? true;
 
-      setTitle(srcTitle);
-      setTournamentName(srcTourn);
-      setHomeClubId(srcHome);
-      setAwayClubId(srcAway);
-      setStadiumName(srcStadium);
+      if (srcTitle) setTitle(srcTitle);
+      if (srcTourn) setTournamentName(srcTourn);
+      if (srcHome) setHomeClubId(srcHome);
+      if (srcAway) setAwayClubId(srcAway);
+      if (srcStadium) setStadiumName(srcStadium);
       setPeriod(srcPeriod);
       setIsLiveMatch(srcIsLive);
       setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
@@ -133,10 +133,20 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
     } else if (!isDirty) {
       if (activeEvent?.title) setTitle(activeEvent.title);
+      else if (streamSettings?.title) setTitle(streamSettings.title);
+
       if (activeEvent?.tournamentName) setTournamentName(activeEvent.tournamentName);
+      else if (streamSettings?.tournamentName) setTournamentName(streamSettings.tournamentName);
+
       if (activeEvent?.homeTeam) setHomeClubId(activeEvent.homeTeam);
+      else if (streamSettings?.homeClubId) setHomeClubId(streamSettings.homeClubId);
+
       if (activeEvent?.awayTeam) setAwayClubId(activeEvent.awayTeam);
+      else if (streamSettings?.awayClubId) setAwayClubId(streamSettings.awayClubId);
+
       if (activeEvent?.stadiumName) setStadiumName(activeEvent.stadiumName);
+      else if (streamSettings?.stadiumName) setStadiumName(streamSettings.stadiumName);
+
       if (activeEvent?.period) setPeriod(activeEvent.period as MatchPeriod);
       if (activeEvent?.isLive !== undefined) setIsLiveMatch(activeEvent.isLive);
       setLocalHomeScore(activeEvent?.homeScore ?? homeScore);

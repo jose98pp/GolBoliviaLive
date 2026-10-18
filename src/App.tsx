@@ -202,10 +202,9 @@ export default function App() {
 
 function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   const docId = e?.id || `partido-00${idx + 1}`;
-  const home = e?.homeTeam || (docId === 'partido-002' ? 'blooming' : 'bolivar');
-  const away = e?.awayTeam || (docId === 'partido-002' ? 'oriente' : 'strongest');
-  const defaultTitle = docId === 'partido-002' ? 'Blooming vs Oriente Petrolero' : 'Bolívar vs The Strongest';
-  const title = (typeof e?.title === 'string' && e.title.trim()) || defaultTitle;
+  const home = (typeof e?.homeTeam === 'string' && e.homeTeam.trim()) || '';
+  const away = (typeof e?.awayTeam === 'string' && e.awayTeam.trim()) || '';
+  const title = (typeof e?.title === 'string' && e.title.trim()) || (home && away ? `${home} vs ${away}` : `Partido ${idx + 1}`);
 
   return {
     ...e,
@@ -283,10 +282,29 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     apiClient.getLiveState()
       .then((data) => {
         if (data.streamSettings) {
-          setStreamSettings((prev) => ({ ...prev, ...data.streamSettings }));
-          try {
-            localStorage.setItem('golbolivia_stream_settings', JSON.stringify(data.streamSettings));
-          } catch {}
+          setStreamSettings((prev) => {
+            const incoming = data.streamSettings;
+            const updated = { ...prev };
+            if (incoming.title) updated.title = incoming.title;
+            if (incoming.tournamentName) updated.tournamentName = incoming.tournamentName;
+            if (incoming.homeClubId) updated.homeClubId = incoming.homeClubId;
+            if (incoming.awayClubId) updated.awayClubId = incoming.awayClubId;
+            if (incoming.stadiumName) updated.stadiumName = incoming.stadiumName;
+            if (incoming.altitudeMeters) updated.altitudeMeters = incoming.altitudeMeters;
+            if (incoming.customVideoUrl) updated.customVideoUrl = incoming.customVideoUrl;
+            if (incoming.backupVideoUrl) updated.backupVideoUrl = incoming.backupVideoUrl;
+            if (incoming.backupChannelName) updated.backupChannelName = incoming.backupChannelName;
+            if (incoming.activeStreamSource) updated.activeStreamSource = incoming.activeStreamSource;
+            if (incoming.period) updated.period = incoming.period;
+            if (incoming.isLive !== undefined) updated.isLive = incoming.isLive;
+            if (incoming.broadcastMode) updated.broadcastMode = incoming.broadcastMode;
+            if (incoming.chatMode) updated.chatMode = incoming.chatMode;
+            if (incoming.officialAnnouncement !== undefined) updated.officialAnnouncement = incoming.officialAnnouncement;
+            try {
+              localStorage.setItem('golbolivia_stream_settings', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
         }
         if (Array.isArray(data.events)) {
           setEvents(data.events);

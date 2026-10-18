@@ -2066,18 +2066,18 @@ var state = {
   liveEvents: [],
   streamSettings: {
     title: "",
-    tournamentName: "Liga Tigo Divisi\xF3n Profesional - Torneo Clausura",
-    homeClubId: "bolivar",
-    awayClubId: "strongest",
-    stadiumName: "Estadio Hernando Siles - La Paz",
-    altitudeMeters: 3637,
+    tournamentName: "",
+    homeClubId: "",
+    awayClubId: "",
+    stadiumName: "",
+    altitudeMeters: 0,
     period: "1T",
     isLive: false,
     rtmpServer: "rtmp://localhost:1935/live",
     streamKey: "bolivia",
     customVideoUrl: process.env.STREAM_URL || process.env.DEFAULT_CUSTOM_VIDEO_URL || "",
     chatMode: "all",
-    officialAnnouncement: "Transmisi\xF3n Oficial en HD para toda Bolivia por GolBolivia TV.",
+    officialAnnouncement: "",
     broadcastMode: "obs_custom",
     overlayScoreboardVisible: true,
     lowLatencyMode: true,
@@ -2101,23 +2101,23 @@ var state = {
     updatedAt: Date.now()
   },
   matchStats: {
-    possession: [56, 44],
-    shots: [15, 9],
-    shotsOnTarget: [7, 4],
-    corners: [6, 3],
-    fouls: [11, 14],
-    yellowCards: [2, 3],
+    possession: [50, 50],
+    shots: [0, 0],
+    shotsOnTarget: [0, 0],
+    corners: [0, 0],
+    fouls: [0, 0],
+    yellowCards: [0, 0],
     redCards: [0, 0],
-    offsides: [2, 1],
-    passes: [412, 318],
-    passAccuracy: [86, 80]
+    offsides: [0, 0],
+    passes: [0, 0],
+    passAccuracy: [0, 0]
   },
   events: [],
   chatMessages: []
 };
 var DATA_DIR = process.env.VERCEL ? path2.resolve("/tmp", "data") : path2.resolve(appDirname, "data");
 var STATE_FILE = path2.join(DATA_DIR, "stream-state.json");
-function loadPersistedState() {
+function loadPersistedStateSync() {
   try {
     if (!fs2.existsSync(DATA_DIR)) {
       fs2.mkdirSync(DATA_DIR, { recursive: true });
@@ -2149,67 +2149,72 @@ function loadPersistedState() {
           state.chatMessages = saved.chatMessages;
         }
         console.log(`[GolBolivia Backend] Estado persistido cargado con \xE9xito desde ${STATE_FILE}`);
-        console.log(`[GolBolivia Backend] Se\xF1al activa: ${state.streamSettings.customVideoUrl || "(simulaci\xF3n)"}`);
       }
     }
   } catch (err) {
-    console.error("[GolBolivia Backend] Error al cargar estado persistido:", err);
+    console.error("[GolBolivia Backend] Error al cargar estado persistido local:", err);
   }
-  getStreamSettingsFromFirebase().then((fbSettings) => {
-    if (fbSettings && Object.keys(fbSettings).length > 0) {
-      state.streamSettings = { ...state.streamSettings, ...fbSettings };
-      console.log(`[GolBolivia Backend] Sincronizado desde Firebase Firestore: ${fbSettings.title || ""}`);
-    }
-  }).catch(() => {
-  });
-  getDonationQrFromFirebase().then((fbQr) => {
-    if (fbQr && fbQr.imageUrl) {
-      state.streamSettings.donationQr = fbQr;
-      console.log("[GolBolivia Backend] C\xF3digo QR de donaciones cargado desde Firebase Firestore.");
-    }
-  }).catch(() => {
-  });
-  getClubsFromFirebase().then((fbClubs) => {
-    if (fbClubs && Object.keys(fbClubs).length > 0) {
-      state.clubs = { ...state.clubs, ...fbClubs };
-    }
-  }).catch(() => {
-  });
-  getMatchEventsFromFirebase().then((fbEvents) => {
-    if (Array.isArray(fbEvents)) {
-      state.events = fbEvents;
-      console.log(`[GolBolivia Backend] Eventos de partido sincronizados desde Firebase: ${fbEvents.length}`);
-    }
-  }).catch(() => {
-  });
-  getChatMessagesFromFirebase().then((fbChat) => {
-    if (Array.isArray(fbChat)) {
-      state.chatMessages = fbChat;
-      console.log(`[GolBolivia Backend] Mensajes de chat sincronizados desde Firebase: ${fbChat.length}`);
-    }
-  }).catch(() => {
-  });
-  getLiveEventsFromFirebase().then((fbEvents) => {
-    if (Array.isArray(fbEvents) && fbEvents.length > 0) {
-      const validEvents = fbEvents.filter((e) => e && e.id && e.homeTeam && e.awayTeam && e.title);
-      if (validEvents.length > 0) {
-        state.liveEvents = validEvents;
-        console.log(`[GolBolivia Backend] Partidos liveEvents cargados desde Firebase (fuente \xFAnica): ${validEvents.length} partidos v\xE1lidos (${fbEvents.length - validEvents.length} docs hu\xE9rfanos ignorados)`);
-      } else {
-        console.log("[GolBolivia Backend] Firebase tiene docs pero sin datos de partido v\xE1lidos. Lista de partidos vac\xEDa.");
-        state.liveEvents = [];
-      }
-    } else {
-      console.log("[GolBolivia Backend] Ning\xFAn partido encontrado en Firebase Firestore. El sistema esperar\xE1 configuraci\xF3n de producci\xF3n (sin creaci\xF3n autom\xE1tica de partido-001).");
-      state.liveEvents = [];
-    }
-  }).catch((err) => {
-    console.warn("[GolBolivia Backend] Error conectando con Firebase en inicio. El servidor arranca con lista de partidos vac\xEDa:", err.message || err);
-    if (state.liveEvents.length === 0) {
-      console.log("[GolBolivia Backend] Lista de partidos vac\xEDa tras fallo de Firebase. Use el panel admin para crear partidos reales.");
-    }
-  });
 }
+var stateInitialized = false;
+var stateInitPromise = null;
+async function ensureStateLoaded() {
+  if (stateInitialized) return;
+  if (!stateInitPromise) {
+    stateInitPromise = (async () => {
+      loadPersistedStateSync();
+      try {
+        await Promise.allSettled([
+          getStreamSettingsFromFirebase().then((fbSettings) => {
+            if (fbSettings && Object.keys(fbSettings).length > 0) {
+              state.streamSettings = { ...state.streamSettings, ...fbSettings };
+              console.log(`[GolBolivia Backend] Sincronizado desde Firebase Firestore: ${fbSettings.title || ""}`);
+            }
+          }),
+          getDonationQrFromFirebase().then((fbQr) => {
+            if (fbQr && fbQr.imageUrl) {
+              state.streamSettings.donationQr = fbQr;
+            }
+          }),
+          getClubsFromFirebase().then((fbClubs) => {
+            if (fbClubs && Object.keys(fbClubs).length > 0) {
+              state.clubs = { ...state.clubs, ...fbClubs };
+            }
+          }),
+          getMatchEventsFromFirebase().then((fbEvents) => {
+            if (Array.isArray(fbEvents)) {
+              state.events = fbEvents;
+            }
+          }),
+          getChatMessagesFromFirebase().then((fbChat) => {
+            if (Array.isArray(fbChat)) {
+              state.chatMessages = fbChat;
+            }
+          }),
+          getLiveEventsFromFirebase().then((fbEvents) => {
+            if (Array.isArray(fbEvents) && fbEvents.length > 0) {
+              const validEvents = fbEvents.filter((e) => e && e.id && e.homeTeam && e.awayTeam && e.title);
+              if (validEvents.length > 0) {
+                state.liveEvents = validEvents;
+                console.log(`[GolBolivia Backend] Partidos cargados desde Firestore: ${validEvents.length}`);
+              } else {
+                state.liveEvents = [];
+              }
+            } else {
+              state.liveEvents = [];
+            }
+          })
+        ]);
+      } catch (err) {
+        console.warn("[GolBolivia Backend] Advertencia al sincronizar estado desde Firebase:", err?.message || err);
+      } finally {
+        stateInitialized = true;
+      }
+    })();
+  }
+  return stateInitPromise;
+}
+ensureStateLoaded().catch(() => {
+});
 function persistState() {
   try {
     if (!fs2.existsSync(DATA_DIR)) {
@@ -2373,7 +2378,8 @@ async function persistStreamSettingsToFirestore(operator) {
     throw err;
   }
 }
-app2.get(["/api/events", "/events"], (req, res) => {
+app2.get(["/api/events", "/events"], async (req, res) => {
+  await ensureStateLoaded();
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
@@ -2406,7 +2412,8 @@ data: ${JSON.stringify({
     sseClients.delete(res);
   });
 });
-app2.get(["/api/live", "/live"], (_req, res) => {
+app2.get(["/api/live", "/live"], async (_req, res) => {
+  await ensureStateLoaded();
   const publicPayload = getPublicStreamPayload();
   res.json({
     live: state.streamSettings.isLive,
@@ -2430,7 +2437,8 @@ app2.get(["/api/live", "/live"], (_req, res) => {
     serverTimestamp: Date.now()
   });
 });
-app2.get(["/api/streams", "/streams"], (_req, res) => {
+app2.get(["/api/streams", "/streams"], async (_req, res) => {
+  await ensureStateLoaded();
   const publicPayload = getPublicStreamPayload();
   res.json({
     live: state.streamSettings.isLive,
@@ -2641,7 +2649,8 @@ app2.post(
     });
   }
 );
-app2.get(["/api/live-events", "/live-events"], (_req, res) => {
+app2.get(["/api/live-events", "/live-events"], async (_req, res) => {
+  await ensureStateLoaded();
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.json({
     success: true,
@@ -2649,7 +2658,8 @@ app2.get(["/api/live-events", "/live-events"], (_req, res) => {
     updatedAt: Date.now()
   });
 });
-app2.get(["/api/live-events/:id", "/live-events/:id"], (req, res) => {
+app2.get(["/api/live-events/:id", "/live-events/:id"], async (req, res) => {
+  await ensureStateLoaded();
   const event = state.liveEvents.find((e) => e.id === req.params.id);
   if (!event) {
     res.status(404).json({ error: "Partido no encontrado" });
@@ -2895,7 +2905,8 @@ app2.delete(
     res.json({ success: true, message: "Partido eliminado correctamente.", events: state.liveEvents, deletedId: id });
   }
 );
-app2.get(["/api/scoreboard", "/scoreboard"], (_req, res) => {
+app2.get(["/api/scoreboard", "/scoreboard"], async (_req, res) => {
+  await ensureStateLoaded();
   res.json({ scoreboard: state.scoreboard, events: state.liveEvents });
 });
 app2.post(
