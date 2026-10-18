@@ -200,11 +200,10 @@ export default function App() {
   }, [sessionId]);
 
 function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
-  const docId = e?.id || `partido-00${idx + 1}`;
+  const docId = e?.id || '';
   const home = typeof e?.homeTeam === 'string' ? e.homeTeam : '';
   const away = typeof e?.awayTeam === 'string' ? e.awayTeam : '';
-  const defaultTitle = home && away ? `${home} vs ${away}` : '';
-  const title = typeof e?.title === 'string' ? e.title.trim() : defaultTitle;
+  const title = typeof e?.title === 'string' ? e.title.trim() : '';
 
   return {
     ...e,
@@ -219,34 +218,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 }
 
   // Multi-Provider Live Events (Cloudflare, YouTube, Kick)
-  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>(() => {
-    try {
-      const saved = localStorage.getItem('golbolivia_live_events');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const valid = parsed.filter((item: any) => item && item.id && (item.title || (item.homeTeam && item.awayTeam)));
-          return valid.map((item, idx) => sanitizeClientEvent(item, idx));
-        }
-      }
-    } catch {}
-    // No utilizar datos predeterminados de demostración en modo de producción/estado inicial.
-    // Esperar a la carga del backend (API) y mostrar estado vacío si no existen partidos.
-    return [];
-  });
-  const [activeEventId, setActiveEventId] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('golbolivia_live_events');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const valid = parsed.filter((item: any) => item && item.id && (item.title || (item.homeTeam && item.awayTeam)));
-          if (valid.length > 0) return valid[0].id;
-        }
-      }
-    } catch {}
-    return '';
-  });
+  // Los partidos vienen exclusivamente del backend/Firestore; no rehidratar copias locales.
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
+  const [activeEventId, setActiveEventId] = useState<string>('');
   const activeEventIdRef = useRef(activeEventId);
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [donationQrInfo, setDonationQrInfo] = useState<DonationQrInfo | undefined>(undefined);
@@ -376,7 +350,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
     // Helper para Regla 3: Rechazar datos antiguos usando versión o marca de actualización
     const mergeConfirmedEvents = (prevList: LiveEvent[], incomingList: LiveEvent[]): LiveEvent[] => {
-      const sanitizedIncoming = incomingList.map((e, idx) => sanitizeClientEvent(e, idx));
+      const sanitizedIncoming = incomingList.filter((e) => e?.id && typeof e.title === 'string' && e.title.trim()).map((e, idx) => sanitizeClientEvent(e, idx));
       const result = [...prevList];
       for (const inc of sanitizedIncoming) {
         const idx = result.findIndex((e) => e.id === inc.id);
@@ -389,7 +363,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
           // Regla 3 & Problema 5: Rechazar datos antiguos por versión o fecha
           if (incVer > curVer) {
             result[idx] = sanitizeClientEvent({ ...current, ...inc }, idx);
-          } else if (incVer === curVer && incUp >= curUp) {
+          } else if (incVer === curVer && incUp > curUp) {
             result[idx] = sanitizeClientEvent({ ...current, ...inc }, idx);
           }
         } else {
