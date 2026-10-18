@@ -255,13 +255,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
   const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || null;
   const currentHomeClub = (currentLiveEvent?.homeTeam && (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam]))
-    || (streamSettings?.homeClubId && (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId]))
-    || Object.values(clubs)[0]
-    || defaultFallbackClub;
+    || { ...defaultFallbackClub, name: currentLiveEvent?.homeTeam || 'Local', shortName: 'LOC', badgeEmoji: '⚽' };
   const currentAwayClub = (currentLiveEvent?.awayTeam && (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam]))
-    || (streamSettings?.awayClubId && (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId]))
-    || Object.values(clubs)[1]
-    || defaultAwayClub;
+    || { ...defaultAwayClub, name: currentLiveEvent?.awayTeam || 'Visitante', shortName: 'VIS', badgeEmoji: '⚽' };
 
   // Problema 2: Derivar el marcador visible directamente del evento confirmado más reciente, sin estado duplicado
   const currentHomeScore = typeof currentLiveEvent?.homeScore === 'number' ? currentLiveEvent.homeScore : 0;
