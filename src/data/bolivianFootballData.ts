@@ -723,6 +723,14 @@ export const INITIAL_POLL: LivePoll = {
   totalVotes: 1759,
 };
 
+// Encuesta vacía: no se muestra ninguna encuesta hasta que exista una real.
+export const EMPTY_POLL: LivePoll = {
+  id: '',
+  question: '',
+  options: [],
+  totalVotes: 0,
+};
+
 // ── Contenido Exclusivo Club Zone ──
 
 export const EXCLUSIVE_ITEMS: ExclusiveContent[] = [

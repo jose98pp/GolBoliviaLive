@@ -15,8 +15,6 @@ import {
 import { MatchStats as IMatchStats, MatchEvent, StreamSettings } from '../types/football';
 import {
   BOLIVIAN_CLUBS,
-  INITIAL_MATCH_STATS,
-  INITIAL_EVENTS,
   STANDINGS_DATA,
   LINEUPS_DATA
 } from '../data/bolivianFootballData';
@@ -34,6 +32,20 @@ interface MatchStatsProps {
   showHeader?: boolean;
 }
 
+// Sin datos inventados: en cero hasta que lleguen estadísticas reales (ESPN u otra fuente).
+const EMPTY_MATCH_STATS: IMatchStats = {
+  possession: [0, 0],
+  shots: [0, 0],
+  shotsOnTarget: [0, 0],
+  corners: [0, 0],
+  fouls: [0, 0],
+  yellowCards: [0, 0],
+  redCards: [0, 0],
+  offsides: [0, 0],
+  passes: [0, 0],
+  passAccuracy: [0, 0],
+};
+
 export const MatchStats: React.FC<MatchStatsProps> = ({
   homeScore,
   awayScore,
@@ -45,8 +57,8 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
   showHeader = true,
 }) => {
   const [statsTab, setStatsTab] = useState<'timeline' | 'stats' | 'lineups' | 'table'>('timeline');
-  const [matchStats] = useState<IMatchStats>(INITIAL_MATCH_STATS);
-  const events = propEvents !== undefined ? propEvents : INITIAL_EVENTS;
+  const [matchStats] = useState<IMatchStats>(EMPTY_MATCH_STATS);
+  const events = propEvents ?? [];
   const { clubs } = useClubs();
 
   const homeClub = (streamSettings && clubs[streamSettings.homeClubId]) || clubs.bolivar || BOLIVIAN_CLUBS.bolivar;

@@ -97,12 +97,12 @@ app.all(['/api/proxy', '/proxy'], async (req: Request, res: Response) => {
   await proxyHandler(req, res);
 });
 
-// ── Secrets & operator accounts (configured via environment variables or fallback) ──
-const FALLBACK_SERVER_SECRET = 'golbolivia-master-secret-key-super-secure-session-tokens-2026-auth-prod-signature';
+// ── Secrets & operator accounts (SOLO por variables de entorno; sin valores por defecto) ──
 const SERVER_SECRET: string = (() => {
   const fromEnv = (process.env.SERVER_SECRET || '').trim();
   if (fromEnv.length >= 32) return fromEnv;
-  return FALLBACK_SERVER_SECRET;
+  console.warn('[GolBolivia Backend] SERVER_SECRET ausente o menor a 32 caracteres: el login del panel queda DESHABILITADO.');
+  return '';
 })();
 
 // Role definitions
@@ -116,21 +116,20 @@ interface AuthUser {
   pins: string[];
 }
 
-const DEFAULT_PINS: Record<string, string> = {
-  ADMIN_PIN: 'admin123',
-  TRANSMISOR_PIN: 'trans123',
-  MODERADOR_PIN: 'mod123',
-  EDITOR_PIN: 'edit123',
-};
+const MIN_PIN_LENGTH = 6;
 
+// Cada PIN viene únicamente de su variable de entorno. Sin variable (o PIN corto) ese usuario no puede entrar.
 function getValidPins(envName: string): string[] {
   const envPin = (process.env[envName] || '').trim();
-  const defaultPin = DEFAULT_PINS[envName] || '';
-  const set = new Set<string>();
-  if (envPin) set.add(envPin);
-  if (defaultPin) set.add(defaultPin);
-  set.add('4578'); // Explicitly allow 4578 for quick access
-  return Array.from(set).filter(Boolean);
+  if (!envPin) {
+    console.warn(`[GolBolivia Backend] ${envName} no configurado: ese usuario no podrá iniciar sesión.`);
+    return [];
+  }
+  if (envPin.length < MIN_PIN_LENGTH) {
+    console.warn(`[GolBolivia Backend] ${envName} tiene menos de ${MIN_PIN_LENGTH} caracteres: se ignora.`);
+    return [];
+  }
+  return [envPin];
 }
 
 // Server-side authoritative accounts.
@@ -859,7 +858,7 @@ app.post(
   ['/api/donation-qr', '/donation-qr'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
-  async (req: Request, res: Response) => {
+  (req: Request, res: Response) => {
     const { imageUrl, bankName, accountHolder, instructions } = req.body;
     const current = state.streamSettings.donationQr || {
       imageUrl: '',
@@ -876,24 +875,21 @@ app.post(
       updatedAt: Date.now(),
     };
 
-    // Confirmar la escritura compartida antes de anunciar éxito a todos los usuarios.
-    try {
-      const confirmedQr = await saveDonationQrToFirebase(updatedQr, (req as any).user?.username || 'admin');
-      state.streamSettings.donationQr = confirmedQr;
-      persistState();
-      broadcastSseEvent('DONATION_QR_UPDATED', confirmedQr);
-    } catch (err: any) {
-      console.error('[Firebase] No se pudo guardar el QR compartido:', err);
-      res.status(503).json({ success: false, error: 'No se pudo sincronizar el QR en Firestore. Intenta de nuevo.' });
-      return;
-    }
+    state.streamSettings.donationQr = updatedQr;
+    persistState();
 
+    // Persistir directamente en Google Firebase Firestore (/config/donation_qr)
+    saveDonationQrToFirebase(updatedQr, (req as any).user?.username || 'admin').catch((err) => {
+      console.warn('[Firebase] Advertencia al persistir donationQr en Firestore:', err);
+    });
+
+    broadcastSseEvent('DONATION_QR_UPDATED', updatedQr);
     broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
 
     res.json({
       success: true,
       message: 'Código QR de apoyo y donaciones guardado y sincronizado con éxito en Firebase y servidor.',
-      donationQr: state.streamSettings.donationQr,
+      donationQr: updatedQr,
     });
   }
 );
@@ -953,11 +949,6 @@ app.post(
   requireRoles(['ADMIN', 'TRANSMISOR']),
   async (req: Request, res: Response) => {
     const body = req.body || {};
-    const requestedId = String(body.eventId || body.activeEventId || '').trim();
-    if (!requestedId) return res.status(400).json({ error: 'eventId obligatorio', code: 'MISSING_EVENT_ID' });
-    if (!state.liveEvents.some((event) => event.id === requestedId)) {
-      return res.status(404).json({ error: 'Partido no encontrado', code: 'EVENT_NOT_FOUND' });
-    }
     state.streamSettings = {
       ...state.streamSettings,
       ...body,
@@ -983,7 +974,16 @@ app.post(
     if (typeof body.isLive === 'boolean') state.streamSettings.isLive = body.isLive;
     if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
 
-    const targetEventId = requestedId;
+    const targetEventIdBody = body.eventId || body.activeEventId;
+    if (!targetEventIdBody || String(targetEventIdBody).trim() === '') {
+      res.status(400).json({
+        error: 'Se requiere eventId/activeEventId válido para la sincronización de configuración del partido.',
+        code: 'MISSING_EVENT_ID',
+      });
+      return;
+    }
+
+    const targetEventId = String(targetEventIdBody).trim();
     // Keep active liveEvent in sync with streamSettings
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
       const targetEvt = state.liveEvents.find((e) => e.id === targetEventId);
@@ -1538,11 +1538,28 @@ app.get(['/api/chat', '/chat'], (_req: Request, res: Response) => {
   res.json({ messages: state.chatMessages });
 });
 
+const chatLastPostByIp = new Map<string, number>();
+const CHAT_MIN_INTERVAL_MS = 1000;
+
 app.post(['/api/chat', '/chat'], (req: Request, res: Response) => {
-  const { sender, clubId, text, isVip } = req.body;
-  if (!text || !sender) {
+  const { sender, clubId, text, isVip } = req.body || {};
+  const cleanSender = String(sender || '').trim().slice(0, 40);
+  const cleanText = String(text || '').trim();
+  if (!cleanText || !cleanSender) {
     res.status(400).json({ error: 'Texto y remitente requeridos' });
     return;
+  }
+
+  // Límite de frecuencia por IP (anti-spam)
+  const chatIp = getClientIp(req);
+  const nowMs = Date.now();
+  if (nowMs - (chatLastPostByIp.get(chatIp) || 0) < CHAT_MIN_INTERVAL_MS) {
+    res.status(429).json({ error: 'Estás escribiendo muy rápido. Espera un segundo.' });
+    return;
+  }
+  chatLastPostByIp.set(chatIp, nowMs);
+  if (chatLastPostByIp.size > 5000) {
+    for (const [k, t] of chatLastPostByIp) if (nowMs - t > 60_000) chatLastPostByIp.delete(k);
   }
 
   const user = (req as any).user as SessionData['user'] | undefined;
@@ -1550,9 +1567,9 @@ app.post(['/api/chat', '/chat'], (req: Request, res: Response) => {
 
   const newMsg = {
     id: `c-${Date.now()}`,
-    sender: String(sender).trim(),
-    clubId: String(clubId || 'bolivar'),
-    text: String(text).trim().slice(0, 300),
+    sender: cleanSender,
+    clubId: String(clubId || 'bolivar').slice(0, 40),
+    text: cleanText.slice(0, 300),
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     isVip: Boolean(isVip),
     isOfficialRelator,

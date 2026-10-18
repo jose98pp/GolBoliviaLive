@@ -778,7 +778,7 @@ class GolBoliviaApiClient {
   /**
    * Multi-provider Live Events API (Paso 9 & 10)
    */
-   public async getLiveEvents(): Promise<LiveEvent[]> {
+  public async getLiveEvents(): Promise<LiveEvent[]> {
     // 1. Try server endpoint
     try {
       const res = await fetch('/api/live-events');
@@ -798,7 +798,6 @@ class GolBoliviaApiClient {
       }
     } catch {}
 
-    // Sin conexión, no usar partidos locales desactualizados como fuente oficial.
     // 4. Do not return default sample matches automatically
     return [];
   }
@@ -832,19 +831,6 @@ class GolBoliviaApiClient {
     if (resData.version) confirmedEvent.version = resData.version;
     if (resData.updatedAt) confirmedEvent.updatedAt = resData.updatedAt;
 
-    // 2. Keep read-only local storage copy upon confirmed save
-    try {
-      const raw = localStorage.getItem('golbolivia_live_events');
-      let currentEvents: LiveEvent[] = raw ? JSON.parse(raw) : [];
-      const idx = currentEvents.findIndex((e) => e.id === confirmedEvent.id);
-      if (idx >= 0) {
-        currentEvents[idx] = confirmedEvent;
-      } else {
-        currentEvents.push(confirmedEvent);
-      }
-      localStorage.setItem('golbolivia_live_events', JSON.stringify(currentEvents));
-    } catch {}
-
     return confirmedEvent;
   }
 
@@ -860,16 +846,6 @@ class GolBoliviaApiClient {
       const err = await res.json().catch(() => ({ error: `Error HTTP ${res.status} al eliminar partido` }));
       throw new Error(err.error || 'No autorizado o error al eliminar el partido oficial en el servidor');
     }
-
-    // 2. Update read-only local storage copy
-    try {
-      const raw = localStorage.getItem('golbolivia_live_events');
-      if (raw) {
-        const currentEvents: LiveEvent[] = JSON.parse(raw);
-        const filtered = currentEvents.filter((e) => e.id !== eventId);
-        localStorage.setItem('golbolivia_live_events', JSON.stringify(filtered));
-      }
-    } catch {}
 
     return true;
   }

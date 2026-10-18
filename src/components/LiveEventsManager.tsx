@@ -31,16 +31,8 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
   activeEventId,
 }) => {
   const { clubs } = useClubs();
-  const [events, setEvents] = useState<LiveEvent[]>(() => {
-    try {
-      const saved = localStorage.getItem('golbolivia_live_events');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return [];
-  });
+  // Fuente única: servidor/Firebase. Sin copia local que pueda pisar o resucitar partidos.
+  const [events, setEvents] = useState<LiveEvent[]>([]);
   const [selectedId, setSelectedId] = useState<string>(activeEventId || 'partido-001');
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
@@ -104,43 +96,32 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
 
   // Load and subscribe from Firebase & API with safe merge (never erase newly created matches)
   useEffect(() => {
-    const mergeEvents = (incoming: LiveEvent[]) => {
-      if (!incoming || !Array.isArray(incoming) || incoming.length === 0) return;
+    // El servidor es la autoridad: la lista local se reemplaza por la recibida (así los partidos
+    // eliminados desaparecen y no hay datos viejos). Solo se protege el partido que se está editando.
+    const mergeEvents = (incoming: LiveEvent[], allowEmpty: boolean) => {
+      if (!Array.isArray(incoming)) return;
+      if (incoming.length === 0 && !allowEmpty) return;
       setEvents((prev) => {
-        const map = new Map<string, LiveEvent>();
-        // 1. Preserve all existing local matches (including newly created ones)
-        prev.forEach((e) => map.set(e.id, e));
-        // 2. Merge incoming authoritative matches rejecting outdated data (Regla 3)
-        incoming.forEach((e) => {
-          // If the match is currently being edited by user, protect local edits
+        const prevById = new Map<string, LiveEvent>(prev.map((e) => [e.id, e] as [string, LiveEvent]));
+        return incoming.map((e) => {
           if (isDirtyRef.current && formDataRef.current && formDataRef.current.id === e.id) {
-            map.set(e.id, formDataRef.current);
-          } else {
-            const current = map.get(e.id);
-            if (current) {
-              const curVer = current.version || 0;
-              const incVer = e.version || 0;
-              const curUp = current.updatedAt || 0;
-              const incUp = e.updatedAt || 0;
-              // Rechazar datos antiguos
-              if (incVer > curVer || (incVer === curVer && incUp >= curUp) || (incVer === 0 && curVer === 0 && incUp >= curUp)) {
-                map.set(e.id, { ...current, ...e });
-              }
-            } else {
-              map.set(e.id, e);
-            }
+            return formDataRef.current;
           }
+          const current = prevById.get(e.id);
+          if (!current) return e;
+          const curVer = current.version || 0;
+          const incVer = e.version || 0;
+          const curUp = current.updatedAt || 0;
+          const incUp = e.updatedAt || 0;
+          const incomingIsNewer =
+            incVer > curVer || (incVer === curVer && incUp >= curUp);
+          return incomingIsNewer ? { ...current, ...e } : current;
         });
-        const merged = Array.from(map.values());
-        try {
-          localStorage.setItem('golbolivia_live_events', JSON.stringify(merged));
-        } catch {}
-        return merged;
       });
     };
 
-    apiClient.getLiveEvents().then(mergeEvents).catch(() => {});
-    const unsubscribe = apiClient.subscribeMultiLiveEvents(mergeEvents);
+    apiClient.getLiveEvents().then((evts) => mergeEvents(evts, false)).catch(() => {});
+    const unsubscribe = apiClient.subscribeMultiLiveEvents((evts) => mergeEvents(evts, true));
 
     return () => {
       unsubscribe();
@@ -152,7 +133,6 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
     if (isDirtyRef.current && formDataRef.current) {
       setEvents((prev) => {
         const updated = prev.map((e) => (e.id === formDataRef.current.id ? { ...formDataRef.current } : e));
-        try { localStorage.setItem('golbolivia_live_events', JSON.stringify(updated)); } catch {}
         return updated;
       });
     }
@@ -326,9 +306,6 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
         const updated = idx >= 0
           ? prev.map((ev) => (ev.id === savedEvt.id ? savedEvt : ev))
           : [...prev, savedEvt];
-        try {
-          localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
-        } catch {}
         return updated;
       });
       setFormData(savedEvt);
@@ -392,9 +369,6 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
         const updated = idx >= 0
           ? prev.map((ev) => (ev.id === savedEvt.id ? savedEvt : ev))
           : [...prev, savedEvt];
-        try {
-          localStorage.setItem('golbolivia_live_events', JSON.stringify(updated));
-        } catch {}
         return updated;
       });
       setFormData(savedEvt);

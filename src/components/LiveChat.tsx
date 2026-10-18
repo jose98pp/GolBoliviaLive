@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Heart, Flame, Trophy, Shield, DollarSign, BarChart2, Smile, Sparkles, Filter, X, User } from 'lucide-react';
 import { ChatMessage, LivePoll, Club } from '../types/football';
-import { BOLIVIAN_CLUBS, INITIAL_POLL } from '../data/bolivianFootballData';
+import { BOLIVIAN_CLUBS, EMPTY_POLL } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { sendChatMessageToFirebase, subscribeChatMessagesFirebase } from '../services/firebase';
 import { apiClient } from '../services/apiClient';
@@ -65,7 +65,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
   const [showSuperChatModal, setShowSuperChatModal] = useState(false);
   const [superChatAmount, setSuperChatAmount] = useState<number>(20);
   const [superChatMessage, setSuperChatMessage] = useState<string>('');
-  const [poll, setPoll] = useState<LivePoll>(activePoll || INITIAL_POLL);
+  const [poll, setPoll] = useState<LivePoll>(activePoll || EMPTY_POLL);
   const [showPollDrawer, setShowPollDrawer] = useState(false);
 
   const handleUpdateNickname = (name: string) => {
@@ -294,6 +294,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
 
         {/* Action icons: Poll toggle & Filter */}
         <div className="flex items-center gap-1.5">
+          {poll.options.length > 0 && (
           <button
             onClick={() => setShowPollDrawer(!showPollDrawer)}
             className={`p-1.5 rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer ${
@@ -304,6 +305,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
             <BarChart2 className="w-3.5 h-3.5" />
             <span className="hidden sm:inline text-[11px] font-medium">Encuesta</span>
           </button>
+          )}
 
           <button
             onClick={() => setShowSuperChatModal(true)}
@@ -408,7 +410,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
       </div>
 
       {/* LIVE POLL BANNER / DRAWER */}
-      {showPollDrawer && (
+      {showPollDrawer && poll.options.length > 0 && (
         <div className="p-3 bg-gradient-to-br from-[#121b2d] to-[#0c1322] border-b border-amber-600/30 text-xs">
           <div className="flex items-center justify-between mb-2">
             <span className="font-bold text-amber-400 flex items-center gap-1.5 text-[11px] uppercase tracking-wide">

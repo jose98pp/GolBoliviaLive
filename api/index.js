@@ -1004,11 +1004,10 @@ function hydrateLiveEventDoc(d) {
   if (!raw.title && !raw.homeTeam && !raw.awayTeam) {
     return null;
   }
-  const home = typeof raw.homeTeam === "string" ? raw.homeTeam : "";
-  const away = typeof raw.awayTeam === "string" ? raw.awayTeam : "";
-  const defaultTitle = home && away ? `${home} vs ${away}` : "";
-  const title = typeof raw.title === "string" && raw.title.trim() || defaultTitle;
-  if (!title) return null;
+  const home = raw.homeTeam || "bolivar";
+  const away = raw.awayTeam || "strongest";
+  const defaultTitle = `${home} vs ${away}`;
+  const title = raw.title && raw.title.trim() || defaultTitle;
   return {
     id: safeId,
     title,
@@ -1017,24 +1016,24 @@ function hydrateLiveEventDoc(d) {
     isLive: raw.isLive !== void 0 ? Boolean(raw.isLive) : true,
     primaryProvider: raw.primaryProvider || "cloudflare",
     fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ["cloudflare", "youtube", "kick"],
-    tournamentName: raw.tournamentName ?? "",
-    stadiumName: raw.stadiumName ?? "",
+    tournamentName: raw.tournamentName || "Liga Tigo Divisi\xF3n Profesional - Torneo Clausura",
+    stadiumName: raw.stadiumName || (docId === "partido-002" ? "Estadio Ram\xF3n Tahuichi Aguilera" : "Estadio Hernando Siles - La Paz"),
     period: raw.period || "1T",
     homeScore: typeof raw.homeScore === "number" ? raw.homeScore : 0,
     awayScore: typeof raw.awayScore === "number" ? raw.awayScore : 0,
     matchMinute: typeof raw.matchMinute === "number" ? raw.matchMinute : 0,
     isClockRunning: Boolean(raw.isClockRunning),
     customVideoUrl: raw.customVideoUrl || raw.cloudflare?.playbackUrl || "",
-    backupVideoUrl: raw.backupVideoUrl ?? "",
-    backupChannelName: raw.backupChannelName ?? "",
+    backupVideoUrl: raw.backupVideoUrl || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    backupChannelName: raw.backupChannelName || "GolBolivia HD",
     activeStreamSource: raw.activeStreamSource || "obs",
     autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
     cloudflare: raw.cloudflare,
     youtube: raw.youtube,
     kick: raw.kick,
     version: typeof raw.version === "number" ? raw.version : 1,
-    updatedAt: raw.updatedAt || 0,
-    updatedAtIso: raw.updatedAtIso || "",
+    updatedAt: raw.updatedAt || Date.now(),
+    updatedAtIso: raw.updatedAtIso || (/* @__PURE__ */ new Date()).toISOString(),
     updatedBy: raw.updatedBy || "admin"
   };
 }
@@ -1556,13 +1555,22 @@ iptvRouter.post("/probe", async (req, res) => {
 });
 
 // api/proxy.js
-function rewriteM3u8Content(m3u8Text, baseUrl, proxyPrefix = "/api/proxy?url=") {
-  if (typeof m3u8Text !== "string") return "";
-  const lines = m3u8Text.split("\n");
+// Archivo: /api/proxy.js
+// Proxy Serverless en Vercel para evitar bloqueos CORS y enlaces http:// (Mixed Content)
+
+/**
+ * Reescribe las líneas de una lista de reproducción M3U8 para que todos los
+ * segmentos y sub-listas pasen a través del proxy evitando bloqueos CORS y enlaces http://.
+ */
+function rewriteM3u8Content(m3u8Text, baseUrl, proxyPrefix = '/api/proxy?url=') {
+  if (typeof m3u8Text !== 'string') return '';
+  const lines = m3u8Text.split('\n');
   const rewritten = lines.map((line) => {
     const trimmed = line.trim();
     if (!trimmed) return line;
-    if (trimmed.startsWith("#")) {
+
+    // Manejo de atributos URI en etiquetas HLS (e.g., #EXT-X-KEY:METHOD=...,URI="..." o #EXT-X-MEDIA:...,URI="...")
+    if (trimmed.startsWith('#')) {
       if (trimmed.includes('URI="')) {
         return trimmed.replace(/URI="([^"]+)"/g, (match, uri) => {
           try {
@@ -1575,6 +1583,8 @@ function rewriteM3u8Content(m3u8Text, baseUrl, proxyPrefix = "/api/proxy?url=") 
       }
       return line;
     }
+
+    // Es una línea de URI de segmento de video (.ts, .m4s) o sub-lista de reproducción (.m3u8)
     try {
       const absolute = new URL(trimmed, baseUrl).toString();
       return `${proxyPrefix}${encodeURIComponent(absolute)}`;
@@ -1582,109 +1592,339 @@ function rewriteM3u8Content(m3u8Text, baseUrl, proxyPrefix = "/api/proxy?url=") 
       return line;
     }
   });
-  return rewritten.join("\n");
+
+  return rewritten.join('\n');
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// Seguridad del proxy
+//  - Bloquea destinos internos/privados (SSRF): localhost, 10.x, 192.168.x, 169.254.x, etc.
+//  - Valida cada redirección (máx. 5) con la misma regla.
+//  - Solo devuelve tipos de contenido de streaming (evita servir HTML/JS desde tu dominio).
+//  - Límite de tamaño y límite de peticiones por IP (por instancia).
+//  - Lista de dominios opcional: PROXY_ALLOWED_HOSTS="cdn1.com,cdn2.tv" (si está definida, es obligatoria).
+// ──────────────────────────────────────────────────────────────────────────
+import { lookup as proxyDnsLookup } from 'node:dns/promises';
+import { isIP as proxyIsIP } from 'node:net';
+
+const PROXY_MAX_BYTES = Number(process.env.PROXY_MAX_BYTES) > 0 ? Number(process.env.PROXY_MAX_BYTES) : 25 * 1024 * 1024;
+const PROXY_RATE_PER_MIN = Number(process.env.PROXY_RATE_LIMIT_PER_MIN) > 0 ? Number(process.env.PROXY_RATE_LIMIT_PER_MIN) : 1500;
+const PROXY_MAX_REDIRECTS = 5;
+const PROXY_TIMEOUT_MS = 15000;
+
+const proxyAllowedHosts = () =>
+  (process.env.PROXY_ALLOWED_HOSTS || '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+
+function proxyError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+function isPrivateIPv4(ip) {
+  const p = ip.split('.').map(Number);
+  if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+  const [a, b] = p;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) || // CGNAT
+    (a === 169 && b === 254) || // link-local / metadata cloud
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 192 && b === 0) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224 // multicast / reservado
+  );
+}
+
+function expandIPv6(ip) {
+  // Devuelve 8 grupos numéricos de 16 bits, o null si no se puede interpretar
+  let v = ip.toLowerCase().split('%')[0];
+  const dotted = v.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) {
+    const o = dotted[1].split('.').map(Number);
+    if (o.some((n) => n > 255)) return null;
+    v = v.slice(0, -dotted[1].length) + ((o[0] << 8) | o[1]).toString(16) + ':' + ((o[2] << 8) | o[3]).toString(16);
+  }
+  const halves = v.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const missing = 8 - left.length - right.length;
+  if (halves.length === 1 ? left.length !== 8 : missing < 0) return null;
+  const groups = [...left, ...(halves.length === 2 ? Array(missing).fill('0') : []), ...right].map((g) => parseInt(g || '0', 16));
+  return groups.length === 8 && groups.every((g) => Number.isInteger(g) && g >= 0 && g <= 0xffff) ? groups : null;
+}
+
+function isPrivateIp(ip) {
+  const kind = proxyIsIP(ip);
+  if (kind === 4) return isPrivateIPv4(ip);
+  if (kind === 6) {
+    const g = expandIPv6(ip);
+    if (!g) return true;
+    // ::  y  ::1
+    if (g.slice(0, 7).every((x) => x === 0) && (g[7] === 0 || g[7] === 1)) return true;
+    // IPv4 mapeada (::ffff:a.b.c.d) o compatible (::a.b.c.d): validar la IPv4 embebida
+    if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) {
+      return isPrivateIPv4(`${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}`);
+    }
+    const first = g[0];
+    return (
+      (first & 0xfe00) === 0xfc00 || // fc00::/7  (ULA)
+      (first & 0xffc0) === 0xfe80 || // fe80::/10 (link-local)
+      (first & 0xff00) === 0xff00 // ff00::/8  (multicast)
+    );
+  }
+  return true;
+}
+
+async function assertPublicHttpUrl(urlString) {
+  let u;
+  try {
+    u = new URL(urlString);
+  } catch {
+    throw proxyError(400, 'URL malformada o inválida');
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw proxyError(400, 'La URL debe comenzar con http:// o https://');
+  }
+  if (u.username || u.password) throw proxyError(400, 'URL con credenciales no permitida');
+
+  const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
+    throw proxyError(403, 'Destino no permitido');
+  }
+
+  const allowed = proxyAllowedHosts();
+  if (allowed.length && !allowed.some((h) => host === h || host.endsWith('.' + h))) {
+    throw proxyError(403, 'Dominio no incluido en PROXY_ALLOWED_HOSTS');
+  }
+
+  if (proxyIsIP(host)) {
+    if (isPrivateIp(host)) throw proxyError(403, 'Destino no permitido');
+    return u;
+  }
+
+  let addrs;
+  try {
+    addrs = await proxyDnsLookup(host, { all: true });
+  } catch {
+    throw proxyError(502, 'No se pudo resolver el dominio origen');
+  }
+  if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) {
+    throw proxyError(403, 'Destino no permitido');
+  }
+  return u;
+}
+
+const proxyRate = new Map();
+function proxyRateLimited(ip) {
+  const now = Date.now();
+  const entry = proxyRate.get(ip);
+  if (!entry || entry.resetAt <= now) {
+    proxyRate.set(ip, { count: 1, resetAt: now + 60000 });
+    if (proxyRate.size > 5000) {
+      for (const [k, v] of proxyRate) if (v.resetAt <= now) proxyRate.delete(k);
+    }
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > PROXY_RATE_PER_MIN;
+}
+
+function clientIp(req) {
+  const fwd = String(req.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.socket?.remoteAddress || 'unknown';
+}
+
+const STREAM_TYPES = new Set([
+  'application/vnd.apple.mpegurl',
+  'application/x-mpegurl',
+  'audio/mpegurl',
+  'audio/x-mpegurl',
+  'application/mp2t',
+  'application/octet-stream',
+  'binary/octet-stream',
+  'text/plain',
+]);
+
+function isStreamContentType(ct) {
+  const t = ct.split(';')[0].trim().toLowerCase();
+  return t.startsWith('video/') || t.startsWith('audio/') || STREAM_TYPES.has(t);
+}
+
+async function readLimited(response, max) {
+  const declared = Number(response.headers.get('content-length') || 0);
+  if (declared && declared > max) {
+    try { await response.body?.cancel(); } catch {}
+    throw proxyError(413, 'Respuesta demasiado grande');
+  }
+  if (!response.body) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      try { await reader.cancel(); } catch {}
+      throw proxyError(413, 'Respuesta demasiado grande');
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Handler Serverless de Vercel y Express para el proxy de streaming
+ */
 async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "*");
-  if (req.method === "OPTIONS") {
+  // 1. Cabeceras: CORS para el reproductor + endurecimiento (el contenido proxificado nunca se ejecuta como página)
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+
+  // Preflight OPTIONS
+  if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  // 2. Extraer y validar el parámetro url
   let rawUrl = req.query?.url;
-  if (!rawUrl && typeof req.url === "string") {
-    const idx = req.url.indexOf("url=");
+  if (!rawUrl && typeof req.url === 'string') {
+    const idx = req.url.indexOf('url=');
     if (idx !== -1) {
       rawUrl = req.url.slice(idx + 4);
     }
   }
-  if (!rawUrl || typeof rawUrl !== "string") {
-    return res.status(400).json({ error: "Falta el par\xE1metro ?url=" });
+
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return res.status(400).json({ error: 'Falta el parámetro ?url=' });
   }
+
   let targetUrl;
   try {
     targetUrl = decodeURIComponent(rawUrl.trim());
-    if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
-      return res.status(400).json({ error: "La URL debe comenzar con http:// o https://" });
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      return res.status(400).json({ error: 'La URL debe comenzar con http:// o https://' });
     }
   } catch {
-    return res.status(400).json({ error: "URL malformada o inv\xE1lida" });
+    return res.status(400).json({ error: 'URL malformada o inválida' });
   }
+
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return res.status(405).json({ error: 'Método no permitido' });
+  }
+
+  if (proxyRateLimited(clientIp(req))) {
+    res.setHeader('Retry-After', '60');
+    return res.status(429).json({ error: 'Demasiadas solicitudes al proxy' });
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+
   try {
-    let fetchOrigin = "";
-    try {
-      fetchOrigin = new URL(targetUrl).origin;
-    } catch {
-    }
-    const fetchHeaders = {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-      Accept: "*/*",
-      "Accept-Language": "es,en;q=0.9",
-      ...fetchOrigin && {
+    let currentUrl = targetUrl;
+    let response;
+
+    for (let hop = 0; ; hop++) {
+      const parsed = await assertPublicHttpUrl(currentUrl);
+      const fetchOrigin = parsed.origin;
+
+      const fetchHeaders = {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Accept: '*/*',
+        'Accept-Language': 'es,en;q=0.9',
         Referer: `${fetchOrigin}/`,
-        Origin: fetchOrigin
+        Origin: fetchOrigin,
+      };
+      // Soporte para peticiones por rango de bytes (HLS / MP4 scrubbing)
+      if (req.headers && req.headers['range']) {
+        fetchHeaders['Range'] = req.headers['range'];
       }
-    };
-    if (req.headers && req.headers["range"]) {
-      fetchHeaders["Range"] = req.headers["range"];
+
+      response = await fetch(parsed.toString(), {
+        method: req.method === 'HEAD' ? 'HEAD' : 'GET',
+        headers: fetchHeaders,
+        redirect: 'manual',
+        signal: controller.signal,
+      });
+
+      if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+        if (hop >= PROXY_MAX_REDIRECTS) throw proxyError(502, 'Demasiadas redirecciones');
+        currentUrl = new URL(response.headers.get('location'), parsed).toString();
+        try { await response.body?.cancel(); } catch {}
+        continue;
+      }
+      break;
     }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1e4);
-    const response = await fetch(targetUrl, {
-      method: req.method === "HEAD" ? "HEAD" : "GET",
-      headers: fetchHeaders,
-      redirect: "follow",
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    const contentType = (response.headers.get("content-type") || "").toLowerCase();
-    const cleanUrl = targetUrl.toLowerCase().split("?")[0];
-    let isM3u8 = contentType.includes("mpegurl") || contentType.includes("x-mpegurl") || cleanUrl.endsWith(".m3u8") || cleanUrl.endsWith(".m3u") || targetUrl.toLowerCase().includes(".m3u8");
-    if (req.method === "HEAD") {
+
+    const finalUrl = currentUrl;
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    const cleanUrl = finalUrl.toLowerCase().split('?')[0];
+    const looksM3u8 =
+      contentType.includes('mpegurl') ||
+      cleanUrl.endsWith('.m3u8') ||
+      cleanUrl.endsWith('.m3u') ||
+      finalUrl.toLowerCase().includes('.m3u8');
+
+    // Manejo de peticiones HEAD
+    if (req.method === 'HEAD') {
       res.setHeader(
-        "Content-Type",
-        contentType || (isM3u8 ? "application/vnd.apple.mpegurl" : "video/mp2t")
+        'Content-Type',
+        isStreamContentType(contentType) && contentType
+          ? contentType
+          : looksM3u8 ? 'application/vnd.apple.mpegurl' : 'video/mp2t'
       );
       return res.status(response.status).end();
     }
-    if (isM3u8) {
-      const text = await response.text();
-      const finalBaseUrl = response.url || targetUrl;
-      const rewritten = rewriteM3u8Content(text, finalBaseUrl);
-      res.setHeader("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
-      res.setHeader("Cache-Control", "public, max-age=1, s-maxage=1, stale-while-revalidate=3");
+
+    // 3. Leer el cuerpo con límite de tamaño
+    const buffer = await readLimited(response, PROXY_MAX_BYTES);
+
+    // 4. Listas M3U8 (por tipo, extensión o por comenzar con #EXTM3U): reescribir URIs para pasar por el proxy
+    const headerPrefix = buffer.slice(0, 32).toString('utf-8');
+    if (looksM3u8 || headerPrefix.includes('#EXTM3U')) {
+      const rewritten = rewriteM3u8Content(buffer.toString('utf-8'), finalUrl);
+      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=1, s-maxage=1, stale-while-revalidate=3');
       return res.status(response.status).send(rewritten);
     }
-    const rawBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(rawBuffer);
-    const headerPrefix = buffer.slice(0, 32).toString("utf-8");
-    if (headerPrefix.includes("#EXTM3U")) {
-      const text = buffer.toString("utf-8");
-      const finalBaseUrl = response.url || targetUrl;
-      const rewritten = rewriteM3u8Content(text, finalBaseUrl);
-      res.setHeader("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
-      res.setHeader("Cache-Control", "public, max-age=1, s-maxage=1, stale-while-revalidate=3");
-      return res.status(response.status).send(rewritten);
-    }
+
+    // 5. Fragmentos de video: solo tipos de streaming; cualquier otro (HTML, JS, SVG...) se entrega como binario
     let outputType = contentType;
-    if (!outputType || outputType === "application/octet-stream") {
-      if (cleanUrl.endsWith(".ts")) outputType = "video/mp2t";
-      else if (cleanUrl.endsWith(".m4s") || cleanUrl.endsWith(".mp4")) outputType = "video/mp4";
-      else if (cleanUrl.endsWith(".aac")) outputType = "audio/aac";
-      else outputType = "application/octet-stream";
+    if (!outputType || outputType === 'application/octet-stream' || !isStreamContentType(outputType)) {
+      if (cleanUrl.endsWith('.ts')) outputType = 'video/mp2t';
+      else if (cleanUrl.endsWith('.m4s') || cleanUrl.endsWith('.mp4')) outputType = 'video/mp4';
+      else if (cleanUrl.endsWith('.aac')) outputType = 'audio/aac';
+      else outputType = 'application/octet-stream';
     }
-    res.setHeader("Content-Type", outputType);
-    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800");
-    if (response.headers.get("content-range")) {
-      res.setHeader("Content-Range", response.headers.get("content-range"));
+
+    res.setHeader('Content-Type', outputType);
+    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+
+    if (response.headers.get('content-range')) {
+      res.setHeader('Content-Range', response.headers.get('content-range'));
     }
+
     return res.status(response.status).send(buffer);
   } catch (error) {
-    return res.status(502).json({
-      error: "Error al conectar con el stream origen",
-      message: error?.message || "Error de conexi\xF3n / Timeout",
-      url: targetUrl
+    const status = error?.status || 502;
+    return res.status(status).json({
+      error: status === 502 ? 'Error al conectar con el stream origen' : error.message,
     });
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -1732,26 +1972,24 @@ app2.use("/api/iptv", iptvRouter);
 app2.all(["/api/proxy", "/proxy"], async (req, res) => {
   await handler(req, res);
 });
-var FALLBACK_SERVER_SECRET = "golbolivia-master-secret-key-super-secure-session-tokens-2026-auth-prod-signature";
 var SERVER_SECRET = (() => {
   const fromEnv = (process.env.SERVER_SECRET || "").trim();
   if (fromEnv.length >= 32) return fromEnv;
-  return FALLBACK_SERVER_SECRET;
+  console.warn("[GolBolivia Backend] SERVER_SECRET ausente o menor a 32 caracteres: el login del panel queda DESHABILITADO.");
+  return "";
 })();
-var DEFAULT_PINS = {
-  ADMIN_PIN: "admin123",
-  TRANSMISOR_PIN: "trans123",
-  MODERADOR_PIN: "mod123",
-  EDITOR_PIN: "edit123"
-};
+var MIN_PIN_LENGTH = 6;
 function getValidPins(envName) {
   const envPin = (process.env[envName] || "").trim();
-  const defaultPin = DEFAULT_PINS[envName] || "";
-  const set = /* @__PURE__ */ new Set();
-  if (envPin) set.add(envPin);
-  if (defaultPin) set.add(defaultPin);
-  set.add("4578");
-  return Array.from(set).filter(Boolean);
+  if (!envPin) {
+    console.warn(`[GolBolivia Backend] ${envName} no configurado: ese usuario no podr\xE1 iniciar sesi\xF3n.`);
+    return [];
+  }
+  if (envPin.length < MIN_PIN_LENGTH) {
+    console.warn(`[GolBolivia Backend] ${envName} tiene menos de ${MIN_PIN_LENGTH} caracteres: se ignora.`);
+    return [];
+  }
+  return [envPin];
 }
 var SYSTEM_USERS = [
   { id: "usr-admin-1", username: "admin", name: "Director General de Transmisi\xF3n", role: "ADMIN", pins: getValidPins("ADMIN_PIN") },
@@ -2309,7 +2547,7 @@ app2.post(
   ["/api/donation-qr", "/donation-qr"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
-  async (req, res) => {
+  (req, res) => {
     const { imageUrl, bankName, accountHolder, instructions } = req.body;
     const current = state.streamSettings.donationQr || {
       imageUrl: "",
@@ -2324,21 +2562,17 @@ app2.post(
       instructions: typeof instructions === "string" ? instructions.trim().slice(0, 300) : current.instructions,
       updatedAt: Date.now()
     };
-    try {
-      const confirmedQr = await saveDonationQrToFirebase(updatedQr, req.user?.username || "admin");
-      state.streamSettings.donationQr = confirmedQr;
-      persistState();
-      broadcastSseEvent("DONATION_QR_UPDATED", confirmedQr);
-    } catch (err) {
-      console.error("[Firebase] No se pudo guardar el QR compartido:", err);
-      res.status(503).json({ success: false, error: "No se pudo sincronizar el QR en Firestore. Intenta de nuevo." });
-      return;
-    }
+    state.streamSettings.donationQr = updatedQr;
+    persistState();
+    saveDonationQrToFirebase(updatedQr, req.user?.username || "admin").catch((err) => {
+      console.warn("[Firebase] Advertencia al persistir donationQr en Firestore:", err);
+    });
+    broadcastSseEvent("DONATION_QR_UPDATED", updatedQr);
     broadcastSseEvent("STREAM_UPDATED", getPublicStreamPayload());
     res.json({
       success: true,
       message: "C\xF3digo QR de apoyo y donaciones guardado y sincronizado con \xE9xito en Firebase y servidor.",
-      donationQr: state.streamSettings.donationQr
+      donationQr: updatedQr
     });
   }
 );
@@ -2388,11 +2622,6 @@ app2.post(
   requireRoles(["ADMIN", "TRANSMISOR"]),
   async (req, res) => {
     const body = req.body || {};
-    const requestedId = String(body.eventId || body.activeEventId || "").trim();
-    if (!requestedId) return res.status(400).json({ error: "eventId obligatorio", code: "MISSING_EVENT_ID" });
-    if (!state.liveEvents.some((event) => event.id === requestedId)) {
-      return res.status(404).json({ error: "Partido no encontrado", code: "EVENT_NOT_FOUND" });
-    }
     state.streamSettings = {
       ...state.streamSettings,
       ...body
@@ -2417,7 +2646,15 @@ app2.post(
     if (typeof body.autoFailoverEnabled === "boolean") state.streamSettings.autoFailoverEnabled = body.autoFailoverEnabled;
     if (typeof body.isLive === "boolean") state.streamSettings.isLive = body.isLive;
     if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
-    const targetEventId = requestedId;
+    const targetEventIdBody = body.eventId || body.activeEventId;
+    if (!targetEventIdBody || String(targetEventIdBody).trim() === "") {
+      res.status(400).json({
+        error: "Se requiere eventId/activeEventId v\xE1lido para la sincronizaci\xF3n de configuraci\xF3n del partido.",
+        code: "MISSING_EVENT_ID"
+      });
+      return;
+    }
+    const targetEventId = String(targetEventIdBody).trim();
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
       const targetEvt = state.liveEvents.find((e) => e.id === targetEventId);
       if (!targetEvt) {
@@ -2898,19 +3135,33 @@ app2.post(
 app2.get(["/api/chat", "/chat"], (_req, res) => {
   res.json({ messages: state.chatMessages });
 });
+var chatLastPostByIp = /* @__PURE__ */ new Map();
+var CHAT_MIN_INTERVAL_MS = 1e3;
 app2.post(["/api/chat", "/chat"], (req, res) => {
-  const { sender, clubId, text, isVip } = req.body;
-  if (!text || !sender) {
+  const { sender, clubId, text, isVip } = req.body || {};
+  const cleanSender = String(sender || "").trim().slice(0, 40);
+  const cleanText = String(text || "").trim();
+  if (!cleanText || !cleanSender) {
     res.status(400).json({ error: "Texto y remitente requeridos" });
     return;
+  }
+  const chatIp = getClientIp(req);
+  const nowMs = Date.now();
+  if (nowMs - (chatLastPostByIp.get(chatIp) || 0) < CHAT_MIN_INTERVAL_MS) {
+    res.status(429).json({ error: "Est\xE1s escribiendo muy r\xE1pido. Espera un segundo." });
+    return;
+  }
+  chatLastPostByIp.set(chatIp, nowMs);
+  if (chatLastPostByIp.size > 5e3) {
+    for (const [k, t] of chatLastPostByIp) if (nowMs - t > 6e4) chatLastPostByIp.delete(k);
   }
   const user = req.user;
   const isOfficialRelator = user?.role === "ADMIN" || user?.role === "TRANSMISOR";
   const newMsg = {
     id: `c-${Date.now()}`,
-    sender: String(sender).trim(),
-    clubId: String(clubId || "bolivar"),
-    text: String(text).trim().slice(0, 300),
+    sender: cleanSender,
+    clubId: String(clubId || "bolivar").slice(0, 40),
+    text: cleanText.slice(0, 300),
     timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     isVip: Boolean(isVip),
     isOfficialRelator

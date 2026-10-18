@@ -47,8 +47,9 @@ service cloud.firestore {
       allow write: if isBackend();
     }
 
+    // Auditoría: solo el backend puede leerla (contiene operadores y acciones internas).
     match /audit_logs/{logId} {
-      allow read: if true;
+      allow read: if isBackend();
       allow create: if isBackend();
       allow update, delete: if false;
     }
@@ -64,7 +65,13 @@ service cloud.firestore {
                     && request.resource.data.text.size() <= 300
                     && request.resource.data.sender is string
                     && request.resource.data.sender.size() > 0
-                    && request.resource.data.sender.size() <= 40;
+                    && request.resource.data.sender.size() <= 40
+                    && request.resource.data.id.size() <= 80
+                    && (!('isVip' in request.resource.data) || request.resource.data.isVip is bool)
+                    && (!('superChatAmount' in request.resource.data)
+                        || (request.resource.data.superChatAmount is number
+                            && request.resource.data.superChatAmount >= 0
+                            && request.resource.data.superChatAmount <= 1000));
       allow update, delete: if isBackend();
     }
   }
