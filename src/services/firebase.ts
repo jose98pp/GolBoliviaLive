@@ -897,10 +897,10 @@ function hydrateLiveEventDoc(d: any): LiveEvent | null {
   if (!raw.title && !raw.homeTeam && !raw.awayTeam) {
     return null;
   }
-  const home = raw.homeTeam || 'bolivar';
-  const away = raw.awayTeam || 'strongest';
-  const defaultTitle = `${home} vs ${away}`;
-  const title = (raw.title && raw.title.trim()) || defaultTitle;
+  const home = typeof raw.homeTeam === 'string' ? raw.homeTeam : '';
+  const away = typeof raw.awayTeam === 'string' ? raw.awayTeam : '';
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  if (!title) return null;
 
   return {
     id: safeId,
@@ -910,24 +910,24 @@ function hydrateLiveEventDoc(d: any): LiveEvent | null {
     isLive: raw.isLive !== undefined ? Boolean(raw.isLive) : true,
     primaryProvider: raw.primaryProvider || 'cloudflare',
     fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ['cloudflare', 'youtube', 'kick'],
-    tournamentName: raw.tournamentName || 'Liga Tigo División Profesional - Torneo Clausura',
-    stadiumName: raw.stadiumName || (docId === 'partido-002' ? 'Estadio Ramón Tahuichi Aguilera' : 'Estadio Hernando Siles - La Paz'),
+    tournamentName: raw.tournamentName ?? '',
+    stadiumName: raw.stadiumName ?? '',
     period: raw.period || '1T',
     homeScore: typeof raw.homeScore === 'number' ? raw.homeScore : 0,
     awayScore: typeof raw.awayScore === 'number' ? raw.awayScore : 0,
     matchMinute: typeof raw.matchMinute === 'number' ? raw.matchMinute : 0,
     isClockRunning: Boolean(raw.isClockRunning),
     customVideoUrl: raw.customVideoUrl || raw.cloudflare?.playbackUrl || '',
-    backupVideoUrl: raw.backupVideoUrl || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    backupChannelName: raw.backupChannelName || 'GolBolivia HD',
+    backupVideoUrl: raw.backupVideoUrl ?? '',
+    backupChannelName: raw.backupChannelName ?? '',
     activeStreamSource: raw.activeStreamSource || 'obs',
     autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
     cloudflare: raw.cloudflare,
     youtube: raw.youtube,
     kick: raw.kick,
     version: typeof raw.version === 'number' ? raw.version : 1,
-    updatedAt: raw.updatedAt || Date.now(),
-    updatedAtIso: raw.updatedAtIso || new Date().toISOString(),
+    updatedAt: raw.updatedAt || 0,
+    updatedAtIso: raw.updatedAtIso || '',
     updatedBy: raw.updatedBy || 'admin',
   };
 }
