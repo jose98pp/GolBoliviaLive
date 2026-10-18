@@ -785,9 +785,6 @@ class GolBoliviaApiClient {
       if (res.ok) {
         const data = await res.json();
         if (data && Array.isArray(data.events)) {
-          try {
-            localStorage.setItem('golbolivia_live_events', JSON.stringify(data.events));
-          } catch {}
           return data.events;
         }
       }
@@ -797,22 +794,11 @@ class GolBoliviaApiClient {
     try {
       const fbEvents = await getLiveEventsFromFirebase();
       if (fbEvents && fbEvents.length > 0) {
-        try {
-          localStorage.setItem('golbolivia_live_events', JSON.stringify(fbEvents));
-        } catch {}
         return fbEvents;
       }
     } catch {}
 
-    // 3. Try LocalStorage
-    try {
-      const local = localStorage.getItem('golbolivia_live_events');
-      if (local) {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-
+    // Sin conexión, no usar partidos locales desactualizados como fuente oficial.
     // 4. Do not return default sample matches automatically
     return [];
   }
