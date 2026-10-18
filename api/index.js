@@ -1004,10 +1004,11 @@ function hydrateLiveEventDoc(d) {
   if (!raw.title && !raw.homeTeam && !raw.awayTeam) {
     return null;
   }
-  const home = raw.homeTeam || "bolivar";
-  const away = raw.awayTeam || "strongest";
-  const defaultTitle = `${home} vs ${away}`;
-  const title = raw.title && raw.title.trim() || defaultTitle;
+  const home = typeof raw.homeTeam === "string" ? raw.homeTeam : "";
+  const away = typeof raw.awayTeam === "string" ? raw.awayTeam : "";
+  const defaultTitle = home && away ? `${home} vs ${away}` : "";
+  const title = typeof raw.title === "string" && raw.title.trim() || defaultTitle;
+  if (!title) return null;
   return {
     id: safeId,
     title,
@@ -1016,24 +1017,24 @@ function hydrateLiveEventDoc(d) {
     isLive: raw.isLive !== void 0 ? Boolean(raw.isLive) : true,
     primaryProvider: raw.primaryProvider || "cloudflare",
     fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ["cloudflare", "youtube", "kick"],
-    tournamentName: raw.tournamentName || "Liga Tigo Divisi\xF3n Profesional - Torneo Clausura",
-    stadiumName: raw.stadiumName || (docId === "partido-002" ? "Estadio Ram\xF3n Tahuichi Aguilera" : "Estadio Hernando Siles - La Paz"),
+    tournamentName: raw.tournamentName ?? "",
+    stadiumName: raw.stadiumName ?? "",
     period: raw.period || "1T",
     homeScore: typeof raw.homeScore === "number" ? raw.homeScore : 0,
     awayScore: typeof raw.awayScore === "number" ? raw.awayScore : 0,
     matchMinute: typeof raw.matchMinute === "number" ? raw.matchMinute : 0,
     isClockRunning: Boolean(raw.isClockRunning),
     customVideoUrl: raw.customVideoUrl || raw.cloudflare?.playbackUrl || "",
-    backupVideoUrl: raw.backupVideoUrl || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    backupChannelName: raw.backupChannelName || "GolBolivia HD",
+    backupVideoUrl: raw.backupVideoUrl ?? "",
+    backupChannelName: raw.backupChannelName ?? "",
     activeStreamSource: raw.activeStreamSource || "obs",
     autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
     cloudflare: raw.cloudflare,
     youtube: raw.youtube,
     kick: raw.kick,
     version: typeof raw.version === "number" ? raw.version : 1,
-    updatedAt: raw.updatedAt || Date.now(),
-    updatedAtIso: raw.updatedAtIso || (/* @__PURE__ */ new Date()).toISOString(),
+    updatedAt: raw.updatedAt || 0,
+    updatedAtIso: raw.updatedAtIso || "",
     updatedBy: raw.updatedBy || "admin"
   };
 }
@@ -2308,7 +2309,7 @@ app2.post(
   ["/api/donation-qr", "/donation-qr"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
-  (req, res) => {
+  async (req, res) => {
     const { imageUrl, bankName, accountHolder, instructions } = req.body;
     const current = state.streamSettings.donationQr || {
       imageUrl: "",
@@ -2323,17 +2324,21 @@ app2.post(
       instructions: typeof instructions === "string" ? instructions.trim().slice(0, 300) : current.instructions,
       updatedAt: Date.now()
     };
-    state.streamSettings.donationQr = updatedQr;
-    persistState();
-    saveDonationQrToFirebase(updatedQr, req.user?.username || "admin").catch((err) => {
-      console.warn("[Firebase] Advertencia al persistir donationQr en Firestore:", err);
-    });
-    broadcastSseEvent("DONATION_QR_UPDATED", updatedQr);
+    try {
+      const confirmedQr = await saveDonationQrToFirebase(updatedQr, req.user?.username || "admin");
+      state.streamSettings.donationQr = confirmedQr;
+      persistState();
+      broadcastSseEvent("DONATION_QR_UPDATED", confirmedQr);
+    } catch (err) {
+      console.error("[Firebase] No se pudo guardar el QR compartido:", err);
+      res.status(503).json({ success: false, error: "No se pudo sincronizar el QR en Firestore. Intenta de nuevo." });
+      return;
+    }
     broadcastSseEvent("STREAM_UPDATED", getPublicStreamPayload());
     res.json({
       success: true,
       message: "C\xF3digo QR de apoyo y donaciones guardado y sincronizado con \xE9xito en Firebase y servidor.",
-      donationQr: updatedQr
+      donationQr: state.streamSettings.donationQr
     });
   }
 );
@@ -2383,6 +2388,11 @@ app2.post(
   requireRoles(["ADMIN", "TRANSMISOR"]),
   async (req, res) => {
     const body = req.body || {};
+    const requestedId = String(body.eventId || body.activeEventId || "").trim();
+    if (!requestedId) return res.status(400).json({ error: "eventId obligatorio", code: "MISSING_EVENT_ID" });
+    if (!state.liveEvents.some((event) => event.id === requestedId)) {
+      return res.status(404).json({ error: "Partido no encontrado", code: "EVENT_NOT_FOUND" });
+    }
     state.streamSettings = {
       ...state.streamSettings,
       ...body
@@ -2407,15 +2417,7 @@ app2.post(
     if (typeof body.autoFailoverEnabled === "boolean") state.streamSettings.autoFailoverEnabled = body.autoFailoverEnabled;
     if (typeof body.isLive === "boolean") state.streamSettings.isLive = body.isLive;
     if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
-    const targetEventIdBody = body.eventId || body.activeEventId;
-    if (!targetEventIdBody || String(targetEventIdBody).trim() === "") {
-      res.status(400).json({
-        error: "Se requiere eventId/activeEventId v\xE1lido para la sincronizaci\xF3n de configuraci\xF3n del partido.",
-        code: "MISSING_EVENT_ID"
-      });
-      return;
-    }
-    const targetEventId = String(targetEventIdBody).trim();
+    const targetEventId = requestedId;
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
       const targetEvt = state.liveEvents.find((e) => e.id === targetEventId);
       if (!targetEvt) {

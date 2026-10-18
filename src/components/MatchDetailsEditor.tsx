@@ -86,11 +86,11 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const { clubs } = useClubs();
 
   // Internal form fields
-  const [title, setTitle] = useState(activeEvent?.title || streamSettings?.title || '');
-  const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName || streamSettings?.tournamentName || '');
-  const [homeClubId, setHomeClubId] = useState(activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar');
-  const [awayClubId, setAwayClubId] = useState(activeEvent?.awayTeam || streamSettings?.awayClubId || 'strongest');
-  const [stadiumName, setStadiumName] = useState(activeEvent?.stadiumName || streamSettings?.stadiumName || '');
+  const [title, setTitle] = useState(activeEvent?.title ?? '');
+  const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName ?? '');
+  const [homeClubId, setHomeClubId] = useState(activeEvent?.homeTeam ?? '');
+  const [awayClubId, setAwayClubId] = useState(activeEvent?.awayTeam ?? '');
+  const [stadiumName, setStadiumName] = useState(activeEvent?.stadiumName ?? '');
   const [altitudeMeters, setAltitudeMeters] = useState(streamSettings?.altitudeMeters || 3637);
   const [officialAnnouncement, setOfficialAnnouncement] = useState(streamSettings?.officialAnnouncement || '');
   const [isLiveMatch, setIsLiveMatch] = useState<boolean>(activeEvent?.isLive ?? streamSettings?.isLive ?? true);
@@ -113,11 +113,11 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     if (prevEventIdRef.current !== activeEventId) {
       prevEventIdRef.current = activeEventId;
       setIsDirty(false);
-      const srcTitle = activeEvent?.title || streamSettings?.title || '';
-      const srcTourn = activeEvent?.tournamentName || streamSettings?.tournamentName || '';
-      const srcHome = activeEvent?.homeTeam || streamSettings?.homeClubId || 'bolivar';
-      const srcAway = activeEvent?.awayTeam || streamSettings?.awayClubId || 'strongest';
-      const srcStadium = activeEvent?.stadiumName || streamSettings?.stadiumName || '';
+      const srcTitle = activeEvent?.title ?? '';
+      const srcTourn = activeEvent?.tournamentName ?? '';
+      const srcHome = activeEvent?.homeTeam ?? '';
+      const srcAway = activeEvent?.awayTeam ?? '';
+      const srcStadium = activeEvent?.stadiumName ?? '';
       const srcPeriod = (activeEvent?.period || streamSettings?.period || '1T') as MatchPeriod;
       const srcIsLive = activeEvent?.isLive ?? streamSettings?.isLive ?? true;
 
@@ -132,11 +132,11 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setLocalAwayScore(activeEvent?.awayScore ?? awayScore);
       setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
     } else if (!isDirty) {
-      if (activeEvent?.title) setTitle(activeEvent.title);
-      if (activeEvent?.tournamentName) setTournamentName(activeEvent.tournamentName);
-      if (activeEvent?.homeTeam) setHomeClubId(activeEvent.homeTeam);
-      if (activeEvent?.awayTeam) setAwayClubId(activeEvent.awayTeam);
-      if (activeEvent?.stadiumName) setStadiumName(activeEvent.stadiumName);
+      setTitle(activeEvent?.title ?? '');
+      setTournamentName(activeEvent?.tournamentName ?? '');
+      setHomeClubId(activeEvent?.homeTeam ?? '');
+      setAwayClubId(activeEvent?.awayTeam ?? '');
+      setStadiumName(activeEvent?.stadiumName ?? '');
       if (activeEvent?.period) setPeriod(activeEvent.period as MatchPeriod);
       if (activeEvent?.isLive !== undefined) setIsLiveMatch(activeEvent.isLive);
       setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
@@ -953,6 +953,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                   }}
                   className="w-full bg-[#060a14] border border-sky-500/40 focus:border-sky-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
                 >
+                  {!homeClubId && <option value="">Selecciona club local...</option>}
+                  {!clubs[homeClubId] && homeClubId && <option value={homeClubId}>⚽ {homeClubId}</option>}
                   {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
                     leagueClubs.length > 0 && (
                       <optgroup key={leagueTitle} label={leagueTitle}>
@@ -980,6 +982,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                   }}
                   className="w-full bg-[#060a14] border border-amber-500/40 focus:border-amber-400 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none"
                 >
+                  {!awayClubId && <option value="">Selecciona club visitante...</option>}
+                  {!clubs[awayClubId] && awayClubId && <option value={awayClubId}>⚽ {awayClubId}</option>}
                   {Object.entries(groupClubsByLeague(clubs)).map(([leagueTitle, leagueClubs]) => (
                     leagueClubs.length > 0 && (
                       <optgroup key={leagueTitle} label={leagueTitle}>

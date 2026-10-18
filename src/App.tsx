@@ -36,6 +36,7 @@ import { LiveEventsShowcase } from './components/LiveEventsShowcase';
 import { IptvChannelsView } from './components/IptvChannelsView';
 import type { IptvChannel } from './types/iptv';
 import { iptvService } from './services/iptvService';
+import { getStreamUrlForEvent } from './utils/streamUtils';
 import {
   subscribeScoreboardFirebase,
   subscribeMatchEventsFirebase,
@@ -55,9 +56,8 @@ let streamSyncTimer: ReturnType<typeof setTimeout> | undefined;
 export default function App() {
   const { clubs } = useClubs();
   const [activeTab, setActiveTab] = useState<'stream' | 'exclusive' | 'iptv'>('stream');
-  const [activeIptvChannel, setActiveIptvChannel] = useState<IptvChannel | null>(() => {
-    return iptvService.getLastPlayed();
-  });
+  const [activeIptvChannel, setActiveIptvChannel] = useState<IptvChannel | null>(null);
+  const [viewerSource, setViewerSource] = useState<{ eventId: string; provider: StreamProvider } | null>(null);
   const [mobileViewMode, setMobileViewMode] = useState<'stream' | 'chat'>('stream');
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
@@ -95,14 +95,7 @@ export default function App() {
   const handleSelectIptvChannel = (channel: IptvChannel) => {
     setActiveIptvChannel(channel);
     iptvService.saveLastPlayed(channel);
-    setStreamSettings((prev) => ({
-      ...prev,
-      title: channel.name,
-      tournamentName: `${channel.countryName} · Señal Deportiva IPTV`,
-      customVideoUrl: channel.streamUrl,
-      broadcastMode: 'obs_custom',
-      isLive: true,
-    }));
+    // IPTV es una selección de reproducción local: nunca modificar la señal oficial del partido.
     setSignalReloadKey((k) => k + 1);
     setActiveToast({
       id: `tune-${Date.now()}`,
@@ -208,9 +201,9 @@ export default function App() {
 
 function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   const docId = e?.id || `partido-00${idx + 1}`;
-  const home = e?.homeTeam || (docId === 'partido-002' ? 'blooming' : 'bolivar');
-  const away = e?.awayTeam || (docId === 'partido-002' ? 'oriente' : 'strongest');
-  const defaultTitle = docId === 'partido-002' ? 'Blooming vs Oriente Petrolero' : 'Bolívar vs The Strongest';
+  const home = typeof e?.homeTeam === 'string' ? e.homeTeam : '';
+  const away = typeof e?.awayTeam === 'string' ? e.awayTeam : '';
+  const defaultTitle = home && away ? `${home} vs ${away}` : '';
   const title = (typeof e?.title === 'string' && e.title.trim()) || defaultTitle;
 
   return {
@@ -269,7 +262,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     primaryColor: '#0099e6',
     secondaryColor: '#ffffff',
     textColor: '#ffffff',
-    badgeEmoji: '🔵',
+    badgeEmoji: '⚽',
     stadium: 'Estadio Hernando Siles',
     altitudeMeters: 3637,
   };
@@ -281,20 +274,16 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     primaryColor: '#ffcc00',
     secondaryColor: '#000000',
     textColor: '#000000',
-    badgeEmoji: '🟡',
+    badgeEmoji: '⚽',
     stadium: 'Estadio Rafael Mendoza Castellón',
     altitudeMeters: 3600,
   };
 
   const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || null;
   const currentHomeClub = (currentLiveEvent?.homeTeam && (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam]))
-    || (streamSettings?.homeClubId && (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId]))
-    || Object.values(clubs)[0]
-    || defaultFallbackClub;
+    || { ...defaultFallbackClub, name: currentLiveEvent?.homeTeam || 'Local', shortName: 'LOC', badgeEmoji: '⚽' };
   const currentAwayClub = (currentLiveEvent?.awayTeam && (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam]))
-    || (streamSettings?.awayClubId && (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId]))
-    || Object.values(clubs)[1]
-    || defaultAwayClub;
+    || { ...defaultAwayClub, name: currentLiveEvent?.awayTeam || 'Visitante', shortName: 'VIS', badgeEmoji: '⚽' };
 
   // Problema 2: Derivar el marcador visible directamente del evento confirmado más reciente, sin estado duplicado
   const currentHomeScore = typeof currentLiveEvent?.homeScore === 'number' ? currentLiveEvent.homeScore : 0;
@@ -624,6 +613,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         window.history.pushState(null, '', `/live/${slug}`);
       } catch {}
     }
+    setActiveIptvChannel(null);
+    setViewerSource(null);
     setStreamSettings((prev) => ({
       ...prev,
       title: evt.title,
@@ -633,8 +624,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       tournamentName: evt.tournamentName || prev.tournamentName,
       stadiumName: evt.stadiumName || prev.stadiumName,
       period: evt.period || prev.period,
-      customVideoUrl: evt.customVideoUrl || evt.cloudflare?.playbackUrl || prev.customVideoUrl,
-      backupVideoUrl: evt.backupVideoUrl || prev.backupVideoUrl,
+      customVideoUrl: evt.customVideoUrl || evt.cloudflare?.playbackUrl || '',
+      backupVideoUrl: evt.backupVideoUrl || '',
       backupChannelName: evt.backupChannelName || prev.backupChannelName,
       activeStreamSource: evt.activeStreamSource || prev.activeStreamSource,
       autoFailoverEnabled: evt.autoFailoverEnabled ?? prev.autoFailoverEnabled,
@@ -1329,7 +1320,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                             isConfigured: true,
                           },
                         ].map((prov) => {
-                          const isCurrent = prov.id === 'iptv' ? Boolean(activeIptvChannel) : ((currentLiveEvent.primaryProvider || 'cloudflare') === prov.id && !activeIptvChannel);
+                          const isCurrent = prov.id === 'iptv' ? Boolean(activeIptvChannel) : ((viewerSource?.eventId === currentLiveEvent.id ? viewerSource.provider : (currentLiveEvent.primaryProvider || 'cloudflare')) === prov.id && !activeIptvChannel);
                           return (
                             <button
                               key={prov.id}
@@ -1340,8 +1331,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                                   return;
                                 }
                                 setActiveIptvChannel(null);
-                                const updated: LiveEvent = { ...currentLiveEvent, primaryProvider: prov.id as StreamProvider };
-                                handleSelectMatchEvent(updated);
+                                // Selector de fuente local: no persistir ni sobrescribir la configuración oficial.
+                                setViewerSource({ eventId: currentLiveEvent.id, provider: prov.id as StreamProvider });
+                                setSignalReloadKey((k) => k + 1);
                               }}
                               className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                                 isCurrent
@@ -1549,8 +1541,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
                 {currentLiveEvent ? (
                   <UniversalStreamPlayer
-                    key={activeIptvChannel ? `iptv-${activeIptvChannel.id}-${signalReloadKey}` : `${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${signalReloadKey}`}
-                    event={activeIptvChannel ? undefined : currentLiveEvent}
+                    key={activeIptvChannel ? `iptv-${activeIptvChannel.id}-${signalReloadKey}` : `${currentLiveEvent.id}-${viewerSource?.eventId === currentLiveEvent.id ? viewerSource.provider : currentLiveEvent.primaryProvider}-${signalReloadKey}`}
+                    event={activeIptvChannel ? undefined : (viewerSource?.eventId === currentLiveEvent.id ? { ...currentLiveEvent, primaryProvider: viewerSource.provider } : currentLiveEvent)}
                     isTheaterMode={isTheaterMode}
                     setIsTheaterMode={setIsTheaterMode}
                     homeScore={activeIptvChannel ? 0 : currentHomeScore}
@@ -1579,12 +1571,19 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                             overlayScoreboardVisible: false,
                             lowLatencyMode: true,
                           }
-                        : undefined
+                        : {
+                            ...streamSettings,
+                            title: currentLiveEvent.title,
+                            homeClubId: currentLiveEvent.homeTeam,
+                            awayClubId: currentLiveEvent.awayTeam,
+                            tournamentName: currentLiveEvent.tournamentName || '',
+                            customVideoUrl: getStreamUrlForEvent(viewerSource?.eventId === currentLiveEvent.id ? { ...currentLiveEvent, primaryProvider: viewerSource.provider } : currentLiveEvent),
+                            activeStreamSource: 'obs',
+                            backupVideoUrl: '',
+                          }
                     }
                     onProviderChange={(newProv) => {
-                      setLiveEvents((prev) =>
-                        prev.map((e) => (e.id === (currentLiveEvent?.id || activeEventId) ? { ...e, primaryProvider: newProv } : e))
-                      );
+                      if (currentLiveEvent) setViewerSource({ eventId: currentLiveEvent.id, provider: newProv });
                     }}
                   />
                 ) : (

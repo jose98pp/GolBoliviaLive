@@ -859,7 +859,7 @@ app.post(
   ['/api/donation-qr', '/donation-qr'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const { imageUrl, bankName, accountHolder, instructions } = req.body;
     const current = state.streamSettings.donationQr || {
       imageUrl: '',
@@ -876,21 +876,24 @@ app.post(
       updatedAt: Date.now(),
     };
 
-    state.streamSettings.donationQr = updatedQr;
-    persistState();
+    // Confirmar la escritura compartida antes de anunciar éxito a todos los usuarios.
+    try {
+      const confirmedQr = await saveDonationQrToFirebase(updatedQr, (req as any).user?.username || 'admin');
+      state.streamSettings.donationQr = confirmedQr;
+      persistState();
+      broadcastSseEvent('DONATION_QR_UPDATED', confirmedQr);
+    } catch (err: any) {
+      console.error('[Firebase] No se pudo guardar el QR compartido:', err);
+      res.status(503).json({ success: false, error: 'No se pudo sincronizar el QR en Firestore. Intenta de nuevo.' });
+      return;
+    }
 
-    // Persistir directamente en Google Firebase Firestore (/config/donation_qr)
-    saveDonationQrToFirebase(updatedQr, (req as any).user?.username || 'admin').catch((err) => {
-      console.warn('[Firebase] Advertencia al persistir donationQr en Firestore:', err);
-    });
-
-    broadcastSseEvent('DONATION_QR_UPDATED', updatedQr);
     broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
 
     res.json({
       success: true,
       message: 'Código QR de apoyo y donaciones guardado y sincronizado con éxito en Firebase y servidor.',
-      donationQr: updatedQr,
+      donationQr: state.streamSettings.donationQr,
     });
   }
 );
@@ -950,6 +953,11 @@ app.post(
   requireRoles(['ADMIN', 'TRANSMISOR']),
   async (req: Request, res: Response) => {
     const body = req.body || {};
+    const requestedId = String(body.eventId || body.activeEventId || '').trim();
+    if (!requestedId) return res.status(400).json({ error: 'eventId obligatorio', code: 'MISSING_EVENT_ID' });
+    if (!state.liveEvents.some((event) => event.id === requestedId)) {
+      return res.status(404).json({ error: 'Partido no encontrado', code: 'EVENT_NOT_FOUND' });
+    }
     state.streamSettings = {
       ...state.streamSettings,
       ...body,
@@ -975,16 +983,7 @@ app.post(
     if (typeof body.isLive === 'boolean') state.streamSettings.isLive = body.isLive;
     if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
 
-    const targetEventIdBody = body.eventId || body.activeEventId;
-    if (!targetEventIdBody || String(targetEventIdBody).trim() === '') {
-      res.status(400).json({
-        error: 'Se requiere eventId/activeEventId válido para la sincronización de configuración del partido.',
-        code: 'MISSING_EVENT_ID',
-      });
-      return;
-    }
-
-    const targetEventId = String(targetEventIdBody).trim();
+    const targetEventId = requestedId;
     // Keep active liveEvent in sync with streamSettings
     if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
       const targetEvt = state.liveEvents.find((e) => e.id === targetEventId);
