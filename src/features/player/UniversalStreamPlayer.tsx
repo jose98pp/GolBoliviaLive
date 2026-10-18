@@ -46,21 +46,9 @@ export const UniversalStreamPlayer: React.FC<UniversalStreamPlayerProps> = ({
     lowLatencyMode: true,
   };
 
-  const channelOrMatchTitle = effectiveSettings.title
-    ? `En vivo: ${effectiveSettings.title}`
-    : 'Selecciona una señal en vivo';
-
   return (
     <div className="reproductor-wrapper w-full space-y-2">
-      <h2 id="titulo-canal-activo" className="text-xs sm:text-sm font-bold text-slate-200 flex items-center gap-2 px-1">
-        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-        <span>{channelOrMatchTitle}</span>
-        {effectiveSettings.tournamentName && (
-          <span className="text-[11px] text-slate-400 font-normal ml-auto hidden sm:inline">
-            {effectiveSettings.tournamentName}
-          </span>
-        )}
-      </h2>
+      <span id="titulo-canal-activo" className="hidden" aria-hidden="true" />
       <StreamPlayer
         isTheaterMode={isTheaterMode}
         setIsTheaterMode={setIsTheaterMode}

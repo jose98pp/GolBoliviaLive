@@ -117,41 +117,50 @@ class AuthService {
     const cleanPin = (pin || '').trim();
     const cleanUsername = (username || 'admin').trim().toLowerCase();
 
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: cleanPin, username: cleanUsername }),
-      });
+    let lastError = 'No se pudo conectar con el servidor de autenticación. Intenta nuevamente.';
 
-      const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.includes('application/json')) {
-        const data = await res.json();
-        this.token = data.token;
-        this.currentUser = data.user;
+    for (const endpoint of ['/api/auth/login', '/auth/login']) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: cleanPin, username: cleanUsername }),
+        });
 
-        try {
-          sessionStorage.setItem(TOKEN_KEY, data.token);
-          sessionStorage.setItem(USER_KEY, JSON.stringify(data.user));
-          localStorage.setItem(TOKEN_KEY, data.token);
-          localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-        } catch {}
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json();
+          this.token = data.token;
+          this.currentUser = data.user;
 
-        this.notify();
-        return data;
-      }
+          try {
+            sessionStorage.setItem(TOKEN_KEY, data.token);
+            sessionStorage.setItem(USER_KEY, JSON.stringify(data.user));
+            localStorage.setItem(TOKEN_KEY, data.token);
+            localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+          } catch {}
 
-      if (contentType.includes('application/json')) {
-        const errData = await res.json().catch(() => null);
-        if (errData && errData.error) {
-          throw new Error(errData.error);
+          this.notify();
+          return data;
         }
+
+        if (contentType.includes('application/json')) {
+          const errData = await res.json().catch(() => null);
+          if (errData && errData.error) {
+            if (res.status === 404 && endpoint === '/api/auth/login') {
+              lastError = errData.error;
+              continue;
+            }
+            throw new Error(errData.error);
+          }
+        }
+      } catch (err: any) {
+        if (err?.message && !(err instanceof TypeError)) throw err;
+        lastError = err?.message || lastError;
       }
-    } catch (err: any) {
-      if (err?.message && !(err instanceof TypeError)) throw err;
     }
 
-    throw new Error('No se pudo conectar con el servidor de autenticación. Intenta nuevamente.');
+    throw new Error(lastError);
   }
 
   /**

@@ -77,7 +77,14 @@ export default function App() {
   const [signalReloadKey, setSignalReloadKey] = useState<number>(0);
   const [isReloadingSignal, setIsReloadingSignal] = useState<boolean>(false);
 
+  // Helper de resiliencia para proveedores de eventos
+  const getSafeEventProvider = (evt: any): string => {
+    const provider = evt.primaryProvider || 'cloudflare';
+    return provider.toUpperCase();
+  };
+
   const handleToggleChat = () => {
+    // Permite alternar entre Abrir Chat y Ocultar Chat
     setIsChatVisible((prev) => {
       const next = !prev;
       try {
@@ -107,27 +114,11 @@ export default function App() {
       isLive: true,
     }));
     setSignalReloadKey((k) => k + 1);
-    setActiveToast({
-      id: `tune-${Date.now()}`,
-      title: '📺 Sintonizando Canal IPTV',
-      body: `${channel.name} (${channel.countryName}) listo en el reproductor`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      type: 'exclusive',
-      read: false,
-    });
   };
 
   const handleReturnToMatchBroadcast = () => {
     setActiveIptvChannel(null);
     setSignalReloadKey((k) => k + 1);
-    setActiveToast({
-      id: `match-return-${Date.now()}`,
-      title: '⚽ Señal Oficial Restaurada',
-      body: 'Has vuelto a la transmisión oficial del fútbol boliviano',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      type: 'exclusive',
-      read: false,
-    });
   };
 
   // Real-time live connected presence exclusively on this web & app
@@ -1276,32 +1267,20 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                             emoji: '🟢',
                             isConfigured: Boolean(currentLiveEvent.kick?.channel?.trim()),
                           },
-                          {
-                            id: 'iptv',
-                            name: 'Más Canales TV',
-                            shortName: 'Canales TV',
-                            badge: 'EN VIVO',
-                            emoji: '📺',
-                            isConfigured: true,
-                          },
                         ].map((prov) => {
-                          const isCurrent = prov.id === 'iptv' ? Boolean(activeIptvChannel) : ((currentLiveEvent.primaryProvider || 'cloudflare') === prov.id && !activeIptvChannel);
+                          const isCurrent = (currentLiveEvent.primaryProvider || 'cloudflare') === prov.id && !activeIptvChannel;
                           return (
                             <button
                               key={prov.id}
                               type="button"
                               onClick={() => {
-                                if (prov.id === 'iptv') {
-                                  setActiveTab('iptv');
-                                  return;
-                                }
                                 setActiveIptvChannel(null);
                                 const updated: LiveEvent = { ...currentLiveEvent, primaryProvider: prov.id as StreamProvider };
                                 handleSelectMatchEvent(updated);
                               }}
                               className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                                 isCurrent
-                                  ? (prov.id === 'iptv' ? 'bg-amber-400 text-black shadow-md shadow-amber-500/20 font-black ring-1 ring-amber-300' : 'bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-black ring-1 ring-emerald-300')
+                                  ? 'bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-black ring-1 ring-emerald-300'
                                   : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
                               }`}
                             >
@@ -1333,75 +1312,10 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                           </span>
                         </button>
                       </div>
-
-                      {/* Botón de Ocultar / Mostrar Chat (Desktop & Tablet) */}
-                      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                        <button
-                          type="button"
-                          onClick={handleToggleChat}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border shadow-sm ${
-                            isChatVisible
-                              ? 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700/60'
-                              : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/50 ring-1 ring-emerald-400/30'
-                          }`}
-                          title={isChatVisible ? 'Ocultar chat para ver en pantalla ancha' : 'Mostrar chat en vivo'}
-                        >
-                          <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>{isChatVisible ? 'Ocultar Chat' : 'Mostrar Chat'}</span>
-                        </button>
-                      </div>
                     </div>
                   </div>
                 )}
 
-
-                {/* Notificación de canal IPTV sintonizado */}
-                {activeIptvChannel && (
-                  <div className="mb-3 p-3 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/30 border border-amber-500/40 flex items-center justify-between gap-3 text-xs shadow-md">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-                        <Radio className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-white flex items-center gap-1.5">
-                          <span>Canal sintonizado:</span>
-                          <span className="text-amber-300 font-bold">{activeIptvChannel.name}</span>
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          {activeIptvChannel.countryName} · Transmisión en vivo · Transmitir a Smart TV disponible
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleReturnToMatchBroadcast}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors cursor-pointer shrink-0"
-                    >
-                      Volver a Fútbol Boliviano
-                    </button>
-                  </div>
-                )}
-
-                {/* Banner de Respaldo Inteligente: cuando las señales están en pausa o fuera de horario */}
-                {!activeIptvChannel && currentLiveEvent && (!currentLiveEvent.isLive || (!currentLiveEvent.cloudflare?.playbackUrl?.trim() && !currentLiveEvent.youtube?.videoId?.trim() && !currentLiveEvent.kick?.channel?.trim())) && (
-                  <div className="mb-3 p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-md">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-                        <Tv className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-white text-xs sm:text-sm">¿Sin transmisión oficial en este instante?</div>
-                        <div className="text-[11px] text-slate-400">Disfruta canales deportivos internacionales en vivo y transmítelos a tu Smart TV.</div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab('iptv')}
-                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/20 cursor-pointer whitespace-nowrap shrink-0"
-                    >
-                      <Radio className="w-3.5 h-3.5" />
-                      <span>Ver Canales TV</span>
-                    </button>
-                  </div>
-                )}
 
                 {currentLiveEvent ? (
                   <UniversalStreamPlayer
@@ -1568,20 +1482,6 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                       {activeIptvChannel.name} — En Reproducción
                     </h3>
                     <span className="text-xs text-slate-400">({activeIptvChannel.countryName})</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setActiveTab('stream')}
-                      className="text-xs text-amber-400 hover:text-amber-300 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 transition-colors cursor-pointer"
-                    >
-                      Ver con Chat en Vivo
-                    </button>
-                    <button
-                      onClick={() => setActiveIptvChannel(null)}
-                      className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
-                    >
-                      Cerrar Reproductor
-                    </button>
                   </div>
                 </div>
 

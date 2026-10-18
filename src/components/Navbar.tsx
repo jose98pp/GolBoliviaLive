@@ -108,18 +108,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
           </button>
-
-          {/* Audiencia en Tiempo Real - Desktop & Tablet */}
-          <button
-            onClick={openAudienceModal}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-red-950/40 hover:bg-red-900/50 border border-red-700/50 rounded-full text-red-300 hover:text-white text-xs font-semibold tracking-wide transition-all cursor-pointer shadow-sm shadow-red-950/40"
-            title="Audiencia en Tiempo Real"
-          >
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="font-bold text-white font-mono">{displayTotal.toLocaleString()}</span>
-            <span className="text-red-400 text-[11px]">viendo en vivo</span>
-          </button>
-
         </div>
 
         {/* Zone 2: Desktop Navigation Links */}
@@ -155,16 +143,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Zone 3: Actions (Desktop + Mobile) */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Audiencia en Tiempo Real - Mobile ONLY */}
-          <button
-            onClick={openAudienceModal}
-            className="sm:hidden flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-950/70 border border-red-700/60 text-red-300 text-xs font-mono font-bold active:scale-95 transition-transform cursor-pointer"
-            title="Audiencia en Tiempo Real"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-            <Eye className="w-3.5 h-3.5 text-red-400" />
-            <span>{displayTotal >= 1000 ? `${(displayTotal / 1000).toFixed(1)}k` : displayTotal}</span>
-          </button>
 
           {/* Botón Apóyame (Donaciones con QR) */}
           <button
@@ -232,16 +210,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   EN VIVO · Minuto {matchMinute}&apos;
                 </span>
               </div>
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  openAudienceModal();
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-950/70 border border-red-600/40 text-[10px] text-white font-mono font-bold cursor-pointer"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-                <span className="text-red-300">{displayTotal.toLocaleString()} hinchas</span>
-              </button>
             </div>
 
             <div className="flex items-center justify-between text-xs font-bold text-white px-1">
