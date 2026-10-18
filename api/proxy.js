@@ -42,6 +42,20 @@ export function rewriteM3u8Content(m3u8Text, baseUrl, proxyPrefix = '/api/proxy?
 /**
  * Handler Serverless de Vercel y Express para el proxy de streaming
  */
+// Reject local/private destinations before making any outbound request.
+export function isSafeIptvUrl(input) {
+  try {
+    const u = new URL(input);
+    if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) return false;
+    const host = u.hostname.toLowerCase().replace(/\\.$/, '');
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal') || host.endsWith('.test') || host.endsWith('.invalid')) return false;
+    if (host.includes(':') || /^\\d+$/.test(host)) return false;
+    if (/^(?:0|10|127|169\\.254|172\\.(?:1[6-9]|2\\d|3[01])|192\\.168|100\\.(?:6[4-9]|[7-9]\\d|1[01]\\d|12[0-7])|198\\.(?:18|19)|224|23\\d|24\\d|25[0-5])\\./.test(host)) return false;
+    if (/^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(host)) return true;
+    return /^[a-z0-9-]+(?:\\.[a-z0-9-]+)+$/.test(host);
+  } catch { return false; }
+}
+
 export default async function handler(req, res) {
   // 1. Cabeceras universales para permitir reproducción sin bloqueo CORS en GolBolivia LIVE
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -69,7 +83,7 @@ export default async function handler(req, res) {
   let targetUrl;
   try {
     targetUrl = decodeURIComponent(rawUrl.trim());
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+    if (!isSafeIptvUrl(targetUrl)) {
       return res.status(400).json({ error: 'La URL debe comenzar con http:// o https://' });
     }
   } catch {
@@ -104,7 +118,7 @@ export default async function handler(req, res) {
     const response = await fetch(targetUrl, {
       method: req.method === 'HEAD' ? 'HEAD' : 'GET',
       headers: fetchHeaders,
-      redirect: 'follow',
+      redirect: 'error',
       signal: controller.signal,
     });
 
@@ -140,7 +154,10 @@ export default async function handler(req, res) {
     }
 
     // 4. Si el contenido es genérico pero comienza con #EXTM3U, tratar como lista M3U8
+    const size = Number(response.headers.get('content-length') || 0);
+    if (size > 12 * 1024 * 1024) return res.status(413).json({ error: 'Fragmento demasiado grande para el proxy' });
     const rawBuffer = await response.arrayBuffer();
+    if (rawBuffer.byteLength > 12 * 1024 * 1024) return res.status(413).json({ error: 'Fragmento demasiado grande para el proxy' });
     const buffer = Buffer.from(rawBuffer);
 
     // Revisar los primeros 32 bytes en busca de #EXTM3U
@@ -165,7 +182,7 @@ export default async function handler(req, res) {
     }
 
     res.setHeader('Content-Type', outputType);
-    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
+    res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=30');
 
     if (response.headers.get('content-range')) {
       res.setHeader('Content-Range', response.headers.get('content-range'));

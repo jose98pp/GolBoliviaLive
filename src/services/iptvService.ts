@@ -50,7 +50,7 @@ export const iptvService = {
           memoryCache = data.channels;
           try {
             // Guardar hasta 150 canales completos en localStorage para inicio offline instantáneo
-            localStorage.setItem(CACHE_KEY, JSON.stringify(data.channels.slice(0, 150)));
+            localStorage.setItem(CACHE_KEY, JSON.stringify(data.channels));
           } catch {}
         }
       } catch (err) {
