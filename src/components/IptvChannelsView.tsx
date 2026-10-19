@@ -209,9 +209,10 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
             )}
           </div>
 
+          <button type="button" onClick={() => { setShowRecent((v) => !v); setShowOnlyFavorites(false); }} aria-pressed={showRecent} className={`rounded-xl border px-3 py-2.5 text-xs font-semibold ${showRecent ? 'bg-amber-500 text-slate-950 border-amber-400' : 'bg-slate-900 border-slate-800 text-slate-300'}`}>Recientes ({recentChannelIds.length})</button>
           {/* Favorites Filter Button */}
           <button
-            onClick={() => setShowOnlyFavorites((prev) => !prev)}
+            onClick={() => { setShowOnlyFavorites((prev) => !prev); setShowRecent(false); }}
             className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
               showOnlyFavorites
                 ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
@@ -266,7 +267,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
               ? 'Toca la estrella en cualquier canal deportivo para guardarlo en tu lista de acceso rápido.'
               : 'Prueba con otro término de búsqueda o selecciona "Todos los Deportes".'}
           </p>
-          {(searchQuery || selectedCountry !== 'ALL' || showOnlyFavorites) && (
+          {(searchQuery || selectedCountry !== 'ALL' || showOnlyFavorites || showRecent) && (
             <button
               onClick={() => {
                 setSearchQuery('');
