@@ -894,7 +894,7 @@ app.post(
   ['/api/donation-qr', '/donation-qr'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const { imageUrl, bankName, accountHolder, instructions } = req.body;
     const current = state.streamSettings.donationQr || {
       imageUrl: '',
@@ -911,21 +911,24 @@ app.post(
       updatedAt: Date.now(),
     };
 
-    state.streamSettings.donationQr = updatedQr;
+    // Solo publicar el QR si Firestore confirma el guardado.
+    let confirmedQr: DonationQrInfo;
+    try {
+      confirmedQr = await saveDonationQrToFirebase(updatedQr, (req as any).user?.username || 'admin');
+    } catch (err) {
+      console.error('[Firebase] No se pudo guardar QR compartido:', err);
+      res.status(503).json({ success: false, error: 'No se pudo sincronizar el QR. Intenta de nuevo.' });
+      return;
+    }
+    state.streamSettings.donationQr = confirmedQr;
     persistState();
-
-    // Persistir directamente en Google Firebase Firestore (/config/donation_qr)
-    saveDonationQrToFirebase(updatedQr, (req as any).user?.username || 'admin').catch((err) => {
-      console.warn('[Firebase] Advertencia al persistir donationQr en Firestore:', err);
-    });
-
-    broadcastSseEvent('DONATION_QR_UPDATED', updatedQr);
+    broadcastSseEvent('DONATION_QR_UPDATED', confirmedQr);
     broadcastSseEvent('STREAM_UPDATED', getPublicStreamPayload());
 
     res.json({
       success: true,
       message: 'Código QR de apoyo y donaciones guardado y sincronizado con éxito en Firebase y servidor.',
-      donationQr: updatedQr,
+      donationQr: confirmedQr,
     });
   }
 );
