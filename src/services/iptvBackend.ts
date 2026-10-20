@@ -484,14 +484,25 @@ iptvRouter.post('/probe', async (req: Request, res: Response) => {
     });
     clearTimeout(timeout);
     const latencyMs = Date.now() - startTime;
-
+    const contentType = resp.headers.get('content-type') || '';
+    let manifestValid = false;
+    let mediaReferenceFound = false;
+    if (resp.ok && (streamUrl.toLowerCase().includes('.m3u8') || contentType.includes('mpegurl'))) {
+      const text = (await resp.text()).slice(0, 200000);
+      manifestValid = text.trimStart().startsWith('#EXTM3U');
+      mediaReferenceFound = manifestValid && (text.includes('#EXT-X-STREAM-INF') || text.includes('#EXTINF'));
+    } else { await resp.body?.cancel(); }
     res.json({
       success: true,
-      reachable: resp.ok || resp.status < 400,
+      reachable: resp.ok && manifestValid && mediaReferenceFound,
       status: resp.status,
       statusText: resp.statusText,
-      contentType: resp.headers.get('content-type') || '',
+      contentType,
       latencyMs,
+      manifestValid,
+      mediaReferenceFound,
+      playbackVerified: false,
+      error: !resp.ok ? `HTTP ${resp.status}` : !manifestValid ? 'La respuesta no es un manifiesto HLS válido' : !mediaReferenceFound ? 'No se encontraron variantes o segmentos' : undefined,
     });
   } catch (err: any) {
     res.json({
