@@ -1,3 +1,4 @@
+import { authService } from './auth';
 import type { IptvChannel, IptvCountryCode } from '../types/iptv';
 
 const CACHE_KEY = 'golbolivia_iptv_sports_cache_v2'; // invalidar catálogo anterior con canales de demostración incorrectos
@@ -187,6 +188,7 @@ export const iptvService = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${authService.getToken() || ''}`,
       },
       body: JSON.stringify(channelData),
     });
@@ -205,6 +207,7 @@ export const iptvService = {
   async deleteCustomChannel(id: string): Promise<boolean> {
     const res = await fetch(`/api/iptv/custom/${id}`, {
       method: 'DELETE',
+      headers: { Authorization: `Bearer ${authService.getToken() || ''}` },
     });
     if (!res.ok) return false;
     iptvService.clearCache();
@@ -218,7 +221,7 @@ export const iptvService = {
     try {
       const res = await fetch('/api/iptv/probe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authService.getToken() || ''}` },
         body: JSON.stringify({ streamUrl }),
       });
       return await res.json();
