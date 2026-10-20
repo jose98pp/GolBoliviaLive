@@ -794,6 +794,7 @@ function cleanForFirestore<T extends Record<string, any>>(obj: T): T {
       awayTeam: away === home ? `${away}_alt` : away,
       isLive: Boolean(event.isLive),
       primaryProvider: event.primaryProvider,
+      iptvSource: event.iptvSource ? { ...event.iptvSource } : null,
       cloudflare: (event.cloudflare && (event.cloudflare.liveInputId || event.cloudflare.playbackUrl)) ? {
         liveInputId: event.cloudflare.liveInputId || '',
         playbackUrl: event.cloudflare.playbackUrl || '',
@@ -814,6 +815,7 @@ function cleanForFirestore<T extends Record<string, any>>(obj: T): T {
       customVideoUrl: event.customVideoUrl ? event.customVideoUrl.trim().slice(0, 500) : undefined,
       backupVideoUrl: event.backupVideoUrl ? event.backupVideoUrl.trim().slice(0, 500) : undefined,
       backupChannelName: event.backupChannelName ? event.backupChannelName.trim().slice(0, 100) : undefined,
+      broadcastMode: event.broadcastMode || 'obs_custom',
       activeStreamSource: event.activeStreamSource || 'obs',
       autoFailoverEnabled: event.autoFailoverEnabled ?? true,
       isClockRunning: event.isClockRunning ?? false,
@@ -909,6 +911,8 @@ function hydrateLiveEventDoc(d: any): LiveEvent | null {
     awayTeam: away,
     isLive: raw.isLive !== undefined ? Boolean(raw.isLive) : true,
     primaryProvider: raw.primaryProvider || 'cloudflare',
+    iptvSource: raw.iptvSource,
+    broadcastMode: raw.broadcastMode || 'obs_custom',
     fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ['cloudflare', 'youtube', 'kick'],
     tournamentName: raw.tournamentName || 'Liga Tigo División Profesional - Torneo Clausura',
     stadiumName: raw.stadiumName || (docId === 'partido-002' ? 'Estadio Ramón Tahuichi Aguilera' : 'Estadio Hernando Siles - La Paz'),
@@ -918,8 +922,8 @@ function hydrateLiveEventDoc(d: any): LiveEvent | null {
     matchMinute: typeof raw.matchMinute === 'number' ? raw.matchMinute : 0,
     isClockRunning: Boolean(raw.isClockRunning),
     customVideoUrl: raw.customVideoUrl || raw.cloudflare?.playbackUrl || '',
-    backupVideoUrl: raw.backupVideoUrl || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    backupChannelName: raw.backupChannelName || 'GolBolivia HD',
+    backupVideoUrl: raw.backupVideoUrl || '',
+    backupChannelName: raw.backupChannelName || '',
     activeStreamSource: raw.activeStreamSource || 'obs',
     autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
     cloudflare: raw.cloudflare,
@@ -1000,4 +1004,20 @@ export async function clearChatInFirebase(): Promise<void> {
   await writeGate;
   const snap = await getDocs(collection(db, 'chat'));
   await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+}
+
+// Persistencia compartida de canales IPTV administrados (no usar disco efímero de Vercel).
+export async function getCustomIptvChannelsFromFirebase(): Promise<import('../types/iptv').IptvChannel[]> {
+  const snapshot = await getDocs(collection(db, 'iptvCustomChannels'));
+  return snapshot.docs.map((item) => ({ ...item.data(), id: item.id } as import('../types/iptv').IptvChannel));
+}
+
+export async function saveCustomIptvChannelToFirebase(channel: import('../types/iptv').IptvChannel): Promise<void> {
+  await writeGate;
+  await setDoc(doc(db, 'iptvCustomChannels', channel.id), channel);
+}
+
+export async function deleteCustomIptvChannelFromFirebase(id: string): Promise<void> {
+  await writeGate;
+  await deleteDoc(doc(db, 'iptvCustomChannels', id));
 }

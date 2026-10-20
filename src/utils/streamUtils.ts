@@ -10,6 +10,7 @@ export function getStreamUrlForEvent(event?: LiveEvent | null): string {
   const provider: StreamProvider = event.primaryProvider || 'cloudflare';
 
   const getUrlByProvider = (p: StreamProvider): string => {
+    if (p === 'iptv') return event.iptvSource?.streamUrl?.trim() || '';
     if (p === 'kick' && event.kick?.channel?.trim()) {
       const channel = event.kick.channel.trim().replace(/^https?:\/\/(?:www\.)?kick\.com\//, '');
       return `https://kick.com/${channel}`;
@@ -37,7 +38,7 @@ export function getStreamUrlForEvent(event?: LiveEvent | null): string {
   }
 
   // 3. Last resort fallback
-  return event.cloudflare?.playbackUrl?.trim() || '';
+  return event.iptvSource?.streamUrl?.trim() || event.cloudflare?.playbackUrl?.trim() || '';
 }
 
 /**

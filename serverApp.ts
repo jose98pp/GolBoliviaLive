@@ -93,8 +93,6 @@ app.use((_req, res, next) => {
   next();
 });
 
-// 4. Montar router IPTV una vez normalizada la URL y configurado CORS
-app.use('/api/iptv', iptvRouter);
 
 // 5. Proxy de streaming para evitar bloqueos CORS y enlaces http:// (Mixed Content)
 app.all(['/api/proxy', '/proxy'], async (req: Request, res: Response) => {
@@ -316,6 +314,13 @@ function requireRoles(allowedRoles: UserRole[]) {
     next();
   };
 }
+
+// El catálogo es público; importación, diagnósticos remotos y cambios de canales son exclusivos del administrador.
+app.use('/api/iptv', (req: Request, res: Response, next: NextFunction) => {
+  const protectedPath = req.path === '/import-preview' || req.path === '/probe' || req.path === '/custom' && req.method !== 'GET' || req.path.startsWith('/custom/') && req.method !== 'GET';
+  if (!protectedPath) return next();
+  authenticate(req, res, () => requireRoles(['ADMIN', 'TRANSMISOR'])(req, res, next));
+}, iptvRouter);
 
 // --- SERVER-AUTHORITATIVE IN-MEMORY STATE STORE ---
 interface AppState {
@@ -1154,9 +1159,15 @@ app.post(
       homeTeam: cleanHome,
       awayTeam: cleanAway,
       isLive: Boolean(raw.isLive ?? true),
-      primaryProvider: ['cloudflare', 'youtube', 'kick'].includes(raw.primaryProvider)
+      primaryProvider: ['cloudflare', 'youtube', 'kick', 'iptv'].includes(raw.primaryProvider)
         ? raw.primaryProvider
         : 'cloudflare',
+      iptvSource: raw.iptvSource && typeof raw.iptvSource.channelId === 'string' && typeof raw.iptvSource.streamUrl === 'string' && /^https:\/\/[^\s]+\.m3u8(?:[?#][^\s]*)?$/i.test(raw.iptvSource.streamUrl.trim()) ? {
+        channelId: raw.iptvSource.channelId.trim().slice(0, 160),
+        channelName: String(raw.iptvSource.channelName || 'Canal IPTV').trim().slice(0, 120),
+        streamUrl: raw.iptvSource.streamUrl.trim().slice(0, 1500),
+        category: String(raw.iptvSource.category || '').trim().slice(0, 80),
+      } : null,
       cloudflare: raw.cloudflare ? {
         liveInputId: String(raw.cloudflare.liveInputId || '').trim(),
         playbackUrl: String(raw.cloudflare.playbackUrl || '').trim(),
@@ -1168,7 +1179,7 @@ app.post(
         channel: String(raw.kick.channel || '').trim(),
       } : undefined,
       fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0
-        ? raw.fallbackOrder
+        ? raw.fallbackOrder.filter((p: unknown) => ['cloudflare', 'youtube', 'kick', 'iptv'].includes(String(p)))
         : ['cloudflare', 'youtube', 'kick'],
       tournamentName: raw.tournamentName ? String(raw.tournamentName).trim() : undefined,
       stadiumName: raw.stadiumName ? String(raw.stadiumName).trim() : undefined,
@@ -1179,6 +1190,7 @@ app.post(
       customVideoUrl: raw.customVideoUrl ? String(raw.customVideoUrl).trim() : undefined,
       backupVideoUrl: raw.backupVideoUrl ? String(raw.backupVideoUrl).trim() : undefined,
       backupChannelName: raw.backupChannelName ? String(raw.backupChannelName).trim() : undefined,
+      broadcastMode: ['obs_custom', 'simulation', 'pre_match', 'halftime', 'var', 'post_match'].includes(raw.broadcastMode) ? raw.broadcastMode : 'obs_custom',
       activeStreamSource: raw.activeStreamSource || 'obs',
       autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
       isClockRunning: raw.isClockRunning ?? false,
@@ -1267,7 +1279,7 @@ app.post(
     }
 
     // Update primary streamSettings only if this event is explicitly the primary one
-    if (existingIndex === 0 || state.streamSettings.title === safeEvent.title || state.liveEvents.length === 1) {
+    if (state.liveEvents.length === 1 || (existingIndex === 0 && state.liveEvents[0]?.id === safeEvent.id)) {
       state.streamSettings.title = safeEvent.title;
       state.streamSettings.homeClubId = safeEvent.homeTeam;
       state.streamSettings.awayClubId = safeEvent.awayTeam;

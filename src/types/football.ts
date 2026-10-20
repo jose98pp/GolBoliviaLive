@@ -139,7 +139,7 @@ export interface PrivateIngestCredentials {
   playbackUrl: string;
 }
 
-export type StreamProvider = 'cloudflare' | 'youtube' | 'kick';
+export type StreamProvider = 'cloudflare' | 'youtube' | 'kick' | 'iptv';
 
 export interface StreamSettings {
   title: string;
@@ -205,6 +205,13 @@ export interface VipTransaction {
   userNote?: string;
 }
 
+export interface MatchIptvSource {
+  channelId: string;
+  channelName: string;
+  streamUrl: string;
+  category?: string;
+}
+
 export interface LiveEvent {
   id: string;
   title: string;
@@ -212,6 +219,7 @@ export interface LiveEvent {
   awayTeam: string;
   isLive: boolean;
   primaryProvider: StreamProvider;
+  iptvSource?: MatchIptvSource | null;
   cloudflare?: {
     liveInputId: string;
     playbackUrl: string;

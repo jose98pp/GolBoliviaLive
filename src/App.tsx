@@ -619,6 +619,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   }, [liveEvents]);
 
   const handleSelectMatchEvent = (evt: LiveEvent) => {
+    setActiveIptvChannel(null);
+    setActiveTab('stream');
     setActiveEventId(evt.id);
     const slug = getMatchSlug(evt);
     if (typeof window !== 'undefined' && window.history) {
@@ -626,21 +628,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         window.history.pushState(null, '', `/live/${slug}`);
       } catch {}
     }
-    setStreamSettings((prev) => ({
-      ...prev,
-      title: evt.title,
-      homeClubId: evt.homeTeam,
-      awayClubId: evt.awayTeam,
-      isLive: evt.isLive,
-      tournamentName: evt.tournamentName || prev.tournamentName,
-      stadiumName: evt.stadiumName || prev.stadiumName,
-      period: evt.period || prev.period,
-      customVideoUrl: evt.customVideoUrl || evt.cloudflare?.playbackUrl || prev.customVideoUrl,
-      backupVideoUrl: evt.backupVideoUrl || prev.backupVideoUrl,
-      backupChannelName: evt.backupChannelName || prev.backupChannelName,
-      activeStreamSource: evt.activeStreamSource || prev.activeStreamSource,
-      autoFailoverEnabled: evt.autoFailoverEnabled ?? prev.autoFailoverEnabled,
-    }));
+    // La selección del espectador no muta la configuración global ni la de otro partido.
+
   };
 
   // Stream state
@@ -930,7 +919,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     try {
       await apiClient.deleteLiveEvent(id);
     } catch (err: any) {
-      console.warn('[App] Advertencia al eliminar partido en servidor/Firebase:', err.message || err);
+      console.error('[App] No se confirmó la eliminación en Firestore:', err.message || err);
+      throw err; // Propagar el fallo al editor y no modificar la UI.
     }
 
     const remaining = liveEvents.filter((e) => e.id !== id);
@@ -1365,38 +1355,15 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
                 {currentLiveEvent ? (
                   <UniversalStreamPlayer
-                    key={activeIptvChannel ? `iptv-${activeIptvChannel.id}-${signalReloadKey}` : `${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${signalReloadKey}`}
-                    event={activeIptvChannel ? undefined : currentLiveEvent}
+                    key={`${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${currentLiveEvent.iptvSource?.channelId || 'no-iptv'}-${signalReloadKey}`}
+                    event={currentLiveEvent}
                     isTheaterMode={isTheaterMode}
                     setIsTheaterMode={setIsTheaterMode}
-                    homeScore={activeIptvChannel ? 0 : currentHomeScore}
-                    awayScore={activeIptvChannel ? 0 : currentAwayScore}
-                    matchMinute={activeIptvChannel ? 0 : currentMatchMinute}
+                    homeScore={currentHomeScore}
+                    awayScore={currentAwayScore}
+                    matchMinute={currentMatchMinute}
                     viewerCount={liveViewerCount}
-                    streamSettings={
-                      activeIptvChannel
-                        ? {
-                            title: activeIptvChannel.name,
-                            tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva en Directo`,
-                            homeClubId: 'bolivar',
-                            awayClubId: 'strongest',
-                            stadiumName: 'Transmisión Internacional',
-                            altitudeMeters: 0,
-                            period: '2T',
-                            isLive: true,
-                            broadcastMode: 'obs_custom',
-                            customVideoUrl: activeIptvChannel.streamUrl,
-                            backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-                            backupChannelName: 'Respaldo IPTV',
-                            activeStreamSource: 'obs',
-                            autoFailoverEnabled: false,
-                            chatMode: 'all',
-                            officialAnnouncement: `Sintonizando canal deportivo ${activeIptvChannel.name}`,
-                            overlayScoreboardVisible: false,
-                            lowLatencyMode: true,
-                          }
-                        : undefined
-                    }
+
                     onProviderChange={(newProv) => {
                       setLiveEvents((prev) =>
                         prev.map((e) => (e.id === (currentLiveEvent?.id || activeEventId) ? { ...e, primaryProvider: newProv } : e))

@@ -1,3 +1,4 @@
+import { authService } from '../services/auth';
 import React, { useState, useEffect } from 'react';
 import {
   Tv,
@@ -38,12 +39,23 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [playlistMessage, setPlaylistMessage] = useState('');
   const [playlistPreview, setPlaylistPreview] = useState<IptvChannel[]>([]);
+  const [publishingChannelId, setPublishingChannelId] = useState<string | null>(null);
+  const publishPreviewChannel = async (channel: IptvChannel) => {
+    if (!window.confirm(`¿Publicar «${channel.name}» en «${channel.group || 'Sin categoría'}»? Verifica que tienes autorización para distribuir su señal.`)) return;
+    setPublishingChannelId(channel.id);
+    try {
+      await iptvService.addCustomChannel({ name: channel.name, streamUrl: channel.streamUrl, country: channel.country, countryName: channel.countryName, group: channel.group || 'Otros', logo: channel.logo, resolution: channel.resolution, notes: 'Importado desde vista previa de lista M3U' });
+      setPlaylistMessage(`Canal «${channel.name}» guardado en Firestore.`);
+      await loadData();
+    } catch (err) { setPlaylistMessage(err instanceof Error ? err.message : 'No se pudo guardar el canal'); }
+    finally { setPublishingChannelId(null); }
+  };
 
   const previewPlaylist = async () => {
     setPlaylistLoading(true);
     setPlaylistMessage('');
     try {
-      const response = await fetch('/api/iptv/import-preview?lista=' + encodeURIComponent(playlistUrl.trim()));
+      const response = await fetch('/api/iptv/import-preview?lista=' + encodeURIComponent(playlistUrl.trim()), { headers: { Authorization: `Bearer ${authService.getToken() || ''}` } });
       const data = await response.json();
       if (!response.ok || !Array.isArray(data.channels)) throw new Error(data.error || 'No se pudo cargar la lista');
       setPlaylistPreview(data.channels);
@@ -195,7 +207,18 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
           <button type="button" onClick={() => { void previewPlaylist(); }} disabled={playlistLoading || !playlistUrl.trim()} className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg disabled:opacity-50">{playlistLoading ? 'Cargando...' : 'Previsualizar'}</button>
         </div>
         {playlistMessage && <p role="status" className="text-xs text-slate-300">{playlistMessage}</p>}
-        {playlistPreview.length > 0 && <div className="max-h-48 overflow-auto rounded-lg border border-slate-800 p-2 text-xs text-slate-300">{playlistPreview.slice(0, 100).map((channel) => <div key={channel.id} className="py-1 border-b border-slate-800/50">{channel.name} — {channel.countryName}</div>)}{playlistPreview.length > 100 && <p>Mostrando los primeros 100 canales.</p>}</div>}
+        {playlistPreview.length > 0 && <div className="max-h-72 overflow-auto rounded-lg border border-slate-800 p-2 text-xs text-slate-300">
+          <p className="mb-2 text-amber-300">La lista M3U describe canales, pero no garantiza reproducción. Verifica la señal antes de publicarla.</p>
+          {playlistPreview.slice(0, 100).map((channel) => (
+            <div key={channel.id} className="py-2 border-b border-slate-800/50 flex flex-wrap items-center justify-between gap-2">
+              <span>{channel.name} — <strong>{channel.group || 'Sin categoría'}</strong> · {channel.countryName} · {channel.resolution || 'HD'}</span>
+              <button type="button" disabled={probingUrl === channel.streamUrl} onClick={() => { void handleProbeUrl(channel.streamUrl); }} className="px-2 py-1 border border-slate-600 rounded text-amber-300 disabled:opacity-50">Comprobar URL</button>
+              <button type="button" disabled={publishingChannelId !== null} onClick={() => { void publishPreviewChannel(channel); }} className="px-2 py-1 border border-emerald-700 rounded text-emerald-300 disabled:opacity-50">{publishingChannelId === channel.id ? 'Guardando...' : 'Publicar canal'}</button>
+              {probeResult?.url === channel.streamUrl && <span className={probeResult.reachable ? 'text-emerald-400' : 'text-red-400'}>{probeResult.reachable ? 'Servidor accesible (reproducción no confirmada)' : 'No accesible'} {probeResult.latencyMs ? `· ${probeResult.latencyMs} ms` : ''} {probeResult.error || ''}</span>}
+            </div>
+          ))}
+          {playlistPreview.length > 100 && <p>Mostrando los primeros 100 de {playlistPreview.length} canales.</p>}
+        </div>}
       </section>
       {/* Banner Principal */}
       <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">

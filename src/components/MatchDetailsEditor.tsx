@@ -25,6 +25,9 @@ import { StreamSettings, LiveEvent, MatchEvent } from '../types/football';
 import { groupClubsByLeague, PRESET_INTERNATIONAL_MATCHES } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
+import { iptvService } from '../services/iptvService';
+import type { IptvChannel } from '../types/iptv';
+import type { MatchIptvSource, StreamProvider } from '../types/football';
 import { espnFootballApi, ApiMatchSummary } from '../services/espnFootballApi';
 
 export type MatchPeriod = '1T' | 'Descanso' | '2T' | 'Tiempo Extra' | 'Finalizado' | 'Revisión VAR';
@@ -47,7 +50,7 @@ export interface MatchDetailsEditorProps {
   onUpdatePeriod?: (period: MatchPeriod) => void;
   onClearEvents?: () => void;
   onClearChat?: () => void;
-  onDeleteEvent?: (eventId: string) => void;
+  onDeleteEvent?: (eventId: string) => Promise<void> | void;
   events?: MatchEvent[];
 }
 
@@ -102,6 +105,38 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [localAwayScore, setLocalAwayScore] = useState<number>(activeEvent?.awayScore ?? awayScore);
   const [localMinute, setLocalMinute] = useState<number>(activeEvent?.matchMinute ?? matchMinute);
 
+  const [broadcastMode, setBroadcastMode] = useState<string>(activeEvent?.broadcastMode || 'obs_custom');
+  const [iptvChannels, setIptvChannels] = useState<IptvChannel[]>([]);
+  const [iptvLoading, setIptvLoading] = useState(false);
+  const [iptvSource, setIptvSource] = useState<MatchIptvSource | undefined>(activeEvent?.iptvSource || undefined);
+  const [matchPrimaryProvider, setMatchPrimaryProvider] = useState<StreamProvider>(activeEvent?.primaryProvider || 'cloudflare');
+  const [matchFallbackOrder, setMatchFallbackOrder] = useState<StreamProvider[]>(activeEvent?.fallbackOrder || ['cloudflare', 'youtube', 'kick']);
+  const [iptvSearch, setIptvSearch] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    setIptvLoading(true);
+    iptvService.getChannels().then((channels) => { if (!cancelled) setIptvChannels(channels); })
+      .finally(() => { if (!cancelled) setIptvLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+  const selectIptvChannel = (channel: IptvChannel) => {
+    if (!/^https:\/\/[^\s]+\.m3u8(?:[?#][^\s]*)?$/i.test(channel.streamUrl)) {
+      setErrorMsg('Este canal no tiene una URL HTTPS HLS (.m3u8) válida para el reproductor de partidos.');
+      return;
+    }
+    setIptvSource({ channelId: channel.id, channelName: channel.name, streamUrl: channel.streamUrl, category: channel.group });
+    setMatchPrimaryProvider('iptv');
+    setMatchFallbackOrder((prev) => ['iptv', ...prev.filter((p) => p !== 'iptv')]);
+    setErrorMsg(null);
+    setIsDirty(true);
+  };
+  const removeIptvChannel = () => {
+    setIptvSource(undefined);
+    setMatchPrimaryProvider((p) => p === 'iptv' ? 'cloudflare' : p);
+    setMatchFallbackOrder((prev) => prev.filter((p) => p !== 'iptv'));
+    setIsDirty(true);
+  };
+
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -129,6 +164,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setStadiumName(srcStadium);
       setPeriod(srcPeriod);
       setIsLiveMatch(srcIsLive);
+      setBroadcastMode(activeEvent?.broadcastMode || 'obs_custom');
+      setIptvSource(activeEvent?.iptvSource || undefined);
+      setMatchPrimaryProvider(activeEvent?.primaryProvider || 'cloudflare');
+      setMatchFallbackOrder(activeEvent?.fallbackOrder || ['cloudflare', 'youtube', 'kick']);
       setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
       setLocalAwayScore(activeEvent?.awayScore ?? awayScore);
       setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
@@ -232,7 +271,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       })
       .filter((n) => !isNaN(n));
     const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : liveEvents.length + 1;
-    const newId = `partido-${String(nextNum).padStart(3, '0')}`;
+    const newId = `partido-${String(nextNum).padStart(3, '0')}-${Date.now().toString(36)}`;
 
     const newEv: LiveEvent = {
       id: newId,
@@ -272,11 +311,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   };
 
   const handleDeleteCurrentMatch = async (targetId?: string) => {
-    if (liveEvents.length <= 1) {
-      alert('Debe existir al menos un partido registrado en el sistema. Puedes editar el partido actual en el formulario si deseas cambiarlo.');
-      return;
-    }
-    const currentId = targetId || activeEventId || activeEvent?.id || 'partido-001';
+    const currentId = targetId || activeEventId || activeEvent?.id;
+    if (!currentId) { setErrorMsg('Selecciona un partido válido antes de eliminarlo.'); return; }
     const targetEvt = liveEvents.find((e) => e.id === currentId);
     const targetTitle = targetEvt?.title || title || 'este partido';
 
@@ -285,8 +321,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     setIsSaving(true);
     setErrorMsg(null);
     try {
-      await apiClient.deleteLiveEvent(currentId);
-      onDeleteEvent?.(currentId);
+      if (onDeleteEvent) await onDeleteEvent(currentId);
+      else await apiClient.deleteLiveEvent(currentId);
       const remaining = liveEvents.filter((e) => e.id !== currentId);
       if (remaining.length > 0) {
         onSelectEvent?.(remaining[0].id);
@@ -352,7 +388,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     const preservedYoutube = currentEvt?.youtube || streamSettings.youtube || { videoId: '' };
     const preservedKick = currentEvt?.kick || streamSettings.kick || { channel: '' };
     const preservedCustomVideoUrl = currentEvt?.customVideoUrl || streamSettings.customVideoUrl || '';
-    const preservedPrimaryProvider = currentEvt?.primaryProvider || streamSettings.primaryProvider || 'cloudflare';
+    const preservedPrimaryProvider = matchPrimaryProvider;
 
     const fullEventPayload: LiveEvent = {
       id: activeId,
@@ -367,22 +403,24 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       matchMinute: localMinute,
       period,
       primaryProvider: preservedPrimaryProvider,
-      fallbackOrder: currentEvt?.fallbackOrder || streamSettings.fallbackOrder || ['cloudflare', 'youtube', 'kick'],
+      fallbackOrder: matchFallbackOrder,
+      iptvSource: iptvSource || null,
       cloudflare: preservedCloudflare,
       youtube: preservedYoutube,
       kick: preservedKick,
       customVideoUrl: preservedCustomVideoUrl,
       activeStreamSource: currentEvt?.activeStreamSource || streamSettings.activeStreamSource || 'obs',
       autoFailoverEnabled: currentEvt?.autoFailoverEnabled ?? streamSettings.autoFailoverEnabled ?? true,
+      broadcastMode,
       isClockRunning,
       clockUpdatedAt: Date.now(),
       version: typeof currentEvt?.version === 'number' ? currentEvt.version : undefined,
-      force: true,
+      force: false,
     };
 
     try {
       // 1. Guardar partido completo en Firebase y Servidor (apiClient.saveLiveEvent)
-      await apiClient.saveLiveEvent(fullEventPayload);
+      const confirmedEvent = await apiClient.saveLiveEvent(fullEventPayload);
 
       // 2. Actualizar marcador oficial
       await apiClient.updateScoreboard({
@@ -394,28 +432,9 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         isClockRunning,
       });
 
-      // 3. Sincronizar streamSettings para consistencia
-      const streamPayload: Partial<StreamSettings> = {
-        title: cleanTitle,
-        tournamentName: cleanTournament,
-        homeClubId: effectiveHomeId,
-        awayClubId: effectiveAwayId,
-        stadiumName: cleanStadium,
-        altitudeMeters: Math.round(alt),
-        officialAnnouncement: officialAnnouncement.trim().slice(0, 200),
-        homeScore: localHomeScore,
-        awayScore: localAwayScore,
-        matchMinute: localMinute,
-        period,
-        isLive: isLiveMatch,
-      };
-
-      onUpdateStreamSettings(streamPayload);
-      onUpdateScore?.(localHomeScore, localAwayScore);
-      onUpdateMinute?.(localMinute);
-
+      // Los datos oficiales de este partido se guardan por eventId; no actualizar la configuración global.
       if (onUpdateLiveEvent) {
-        onUpdateLiveEvent(fullEventPayload);
+        onUpdateLiveEvent(confirmedEvent);
       }
 
       setIsDirty(false);
@@ -1124,6 +1143,42 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             </button>
           </div>
 
+          <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3 space-y-2">
+            <label htmlFor="event-broadcast-mode" className="text-sm font-bold text-white">Modo de transmisión del partido</label>
+            <select id="event-broadcast-mode" value={broadcastMode} onChange={(e) => { setBroadcastMode(e.target.value); setIsDirty(true); }} className="w-full bg-slate-950 text-white border border-slate-700 rounded-lg p-2">
+              <option value="obs_custom">OBS / señal HLS</option>
+              <option value="simulation">Simulación</option>
+              <option value="pre_match">Previa del partido</option>
+              <option value="halftime">Entretiempo</option>
+              <option value="var">Revisión VAR</option>
+              <option value="post_match">Postpartido</option>
+            </select>
+            <p className="text-xs text-slate-400">Este modo se guarda solo para el partido seleccionado. Las fuentes Cloudflare, YouTube y Kick se configuran por separado.</p>
+          </div>
+          <div className="rounded-xl border border-cyan-700/50 bg-slate-950 p-4 space-y-3">
+            <h4 className="text-sm font-bold text-cyan-300">Señal IPTV temporal de este partido</h4>
+            <p className="text-xs text-slate-400">Selecciona un canal existente; se guarda únicamente una copia de su referencia y URL en este partido. Al eliminar el partido se elimina la asociación, nunca el canal del catálogo. Usa solo señales autorizadas.</p>
+            <input type="search" value={iptvSearch} onChange={(e) => setIptvSearch(e.target.value)} placeholder="Buscar canal por nombre o categoría" className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm" />
+            <select value={iptvSource?.channelId || ''} onChange={(e) => { const ch = iptvChannels.find((c) => c.id === e.target.value); if (ch) selectIptvChannel(ch); }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm" disabled={iptvLoading}>
+              <option value="">{iptvLoading ? 'Cargando catálogo IPTV...' : 'Seleccionar canal IPTV del catálogo'}</option>
+              {iptvChannels.filter((ch) => (ch.name + ' ' + ch.group).toLowerCase().includes(iptvSearch.toLowerCase())).slice(0, 250).map((ch) => <option key={ch.id} value={ch.id}>{ch.name} — {ch.group}</option>)}
+            </select>
+            {iptvSource && <div className="flex flex-wrap gap-2 items-center text-xs text-slate-300"><span>Asignado: <strong className="text-white">{iptvSource.channelName}</strong> ({iptvSource.category || 'Sin categoría'})</span><button type="button" onClick={removeIptvChannel} className="border border-red-700 text-red-300 rounded-lg px-3 py-1">Quitar del partido</button></div>}
+            <label className="block text-xs text-slate-300" htmlFor="match-primary-provider">Señal principal de este partido</label>
+            <select id="match-primary-provider" value={matchPrimaryProvider} onChange={(e) => { setMatchPrimaryProvider(e.target.value as StreamProvider); setIsDirty(true); }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm">
+              <option value="cloudflare">Cloudflare Stream</option><option value="youtube">YouTube</option><option value="kick">Kick</option>
+              {iptvSource && <option value="iptv">Canal IPTV: {iptvSource.channelName}</option>}
+            </select>
+            <label className="block text-xs text-slate-300" htmlFor="match-fallback-order">Orden de respaldo (primero a último)</label>
+            <select id="match-fallback-order" value={matchFallbackOrder.join(',')} onChange={(e) => { setMatchFallbackOrder(e.target.value.split(',') as StreamProvider[]); setIsDirty(true); }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm">
+              <option value="cloudflare,youtube,kick">Cloudflare → YouTube → Kick</option>
+              <option value="youtube,kick,cloudflare">YouTube → Kick → Cloudflare</option>
+              <option value="kick,cloudflare,youtube">Kick → Cloudflare → YouTube</option>
+              {iptvSource && <option value="iptv,cloudflare,youtube,kick">IPTV → Cloudflare → YouTube → Kick</option>}
+              {iptvSource && <option value="cloudflare,iptv,youtube,kick">Cloudflare → IPTV → YouTube → Kick</option>}
+            </select>
+            <p className="text-xs text-amber-300">La verificación real de segmentos y reproducción debe realizarse antes de publicar. El failover automático entre iframe y HLS todavía requiere pruebas.</p>
+          </div>
           {/* Feedback Banners */}
           {saveSuccess && (
             <div className="p-3 bg-emerald-950/90 border border-emerald-500 rounded-xl text-xs text-emerald-200 flex items-center gap-2 shadow-lg animate-fade-in">

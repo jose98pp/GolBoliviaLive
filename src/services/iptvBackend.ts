@@ -1,41 +1,22 @@
 import express, { Request, Response } from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
+import { getCustomIptvChannelsFromFirebase, saveCustomIptvChannelToFirebase, deleteCustomIptvChannelFromFirebase } from './firebase';
 import type { IptvChannel } from '../types/iptv';
 
 export const iptvRouter = express.Router();
-
 const SPORTS_M3U_URL = 'https://iptv-org.github.io/iptv/categories/sports.m3u';
 const BOLIVIA_M3U_URL = 'https://iptv-org.github.io/iptv/countries/bo.m3u';
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 horas
-const CUSTOM_CHANNELS_FILE = path.join(process.cwd(), 'data', 'custom-iptv-channels.json');
-
-function loadCustomChannels(): IptvChannel[] {
-  try {
-    if (fs.existsSync(CUSTOM_CHANNELS_FILE)) {
-      const raw = fs.readFileSync(CUSTOM_CHANNELS_FILE, 'utf-8');
-      const data = JSON.parse(raw);
-      if (Array.isArray(data)) return data;
-    }
-  } catch (err) {
-    console.warn('[IPTV Backend] Advertencia al leer canales personalizados locales:', err);
-  }
-  return [];
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+let customChannels: IptvChannel[] = [];
+let customLoadedAt = 0;
+async function refreshCustomChannels(): Promise<IptvChannel[]> {
+  if (Date.now() - customLoadedAt < 30000) return customChannels;
+  const saved = await getCustomIptvChannelsFromFirebase();
+  customChannels = saved;
+  customLoadedAt = Date.now();
+  return saved;
 }
-
-function saveCustomChannels(channels: IptvChannel[]): void {
-  try {
-    const dir = path.dirname(CUSTOM_CHANNELS_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(CUSTOM_CHANNELS_FILE, JSON.stringify(channels, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[IPTV Backend] Advertencia al persistir canales personalizados locales:', err);
-  }
-}
-
-let customChannels: IptvChannel[] = loadCustomChannels();
 let cachedChannels: IptvChannel[] = [];
 let lastFetchTime = 0;
 let activeFetchPromise: Promise<IptvChannel[]> | null = null;
@@ -213,6 +194,7 @@ async function fetchM3uList(url: string, defaultCountry?: string): Promise<IptvC
 // Fetch and cache combined sports and Bolivian national playlists
 async function refreshSportsChannels(): Promise<IptvChannel[]> {
   try {
+    await refreshCustomChannels();
     const [boResult, sportsResult] = await Promise.allSettled([
       fetchM3uList(BOLIVIA_M3U_URL, 'BO'),
       fetchM3uList(SPORTS_M3U_URL),
@@ -364,7 +346,8 @@ iptvRouter.get('/status', (_req: Request, res: Response) => {
 });
 
 // GET /api/iptv/custom - Obtener canales personalizados cargados desde el dashboard
-iptvRouter.get('/custom', (_req: Request, res: Response) => {
+iptvRouter.get('/custom', async (_req: Request, res: Response) => {
+  try { await refreshCustomChannels(); } catch { return res.status(503).json({ success: false, error: 'No se pudo consultar Firestore' }); }
   res.json({
     success: true,
     total: customChannels.length,
@@ -373,7 +356,7 @@ iptvRouter.get('/custom', (_req: Request, res: Response) => {
 });
 
 // POST /api/iptv/custom - Agregar o actualizar canal IPTV desde el dashboard
-iptvRouter.post('/custom', (req: Request, res: Response) => {
+iptvRouter.post('/custom', async (req: Request, res: Response) => {
   try {
     const { name, streamUrl, country, countryName, group, resolution, logo, notes } = req.body || {};
     if (!name || typeof name !== 'string' || !name.trim()) {
@@ -402,8 +385,9 @@ iptvRouter.post('/custom', (req: Request, res: Response) => {
     };
 
     // Agregar al inicio de canales personalizados
+    await saveCustomIptvChannelToFirebase(newChannel);
     customChannels = [newChannel, ...customChannels.filter((c) => c.streamUrl !== newChannel.streamUrl)];
-    saveCustomChannels(customChannels);
+    customLoadedAt = Date.now();
 
     // Actualizar la caché activa inmediatamente anteponiendo el canal
     cachedChannels = [
@@ -422,13 +406,63 @@ iptvRouter.post('/custom', (req: Request, res: Response) => {
 });
 
 // DELETE /api/iptv/custom/:id - Eliminar canal IPTV personalizado
-iptvRouter.delete('/custom/:id', (req: Request, res: Response) => {
+iptvRouter.delete('/custom/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  customChannels = customChannels.filter((c) => c.id !== id);
-  saveCustomChannels(customChannels);
-  cachedChannels = cachedChannels.filter((c) => c.id !== id);
-  res.json({ success: true, removedId: id });
+  try {
+    await deleteCustomIptvChannelFromFirebase(id);
+    customChannels = customChannels.filter((c) => c.id !== id);
+    customLoadedAt = Date.now();
+    cachedChannels = cachedChannels.filter((c) => c.id !== id);
+    res.json({ success: true, removedId: id });
+  } catch { res.status(503).json({ success: false, error: 'No se pudo eliminar el canal en Firestore' }); }
 });
+
+// Diagnóstico por ID del catálogo: no acepta URLs arbitrarias del cliente.
+// Verifica que el manifiesto HLS sea accesible y tenga estructura M3U, no solo HTTP 200.
+iptvRouter.get('/diagnostics/:id', async (req: Request, res: Response) => {
+  const channel = [...customChannels, ...cachedChannels].find((c) => c.id === req.params.id);
+  if (!channel) return res.status(404).json({ success: false, status: 'not_found', error: 'Canal no encontrado' });
+  let url: URL;
+  try { url = new URL(channel.streamUrl); } catch { return res.status(422).json({ success: false, status: 'invalid_url' }); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || !url.hostname.includes('.')) {
+    return res.status(422).json({ success: false, status: 'unsupported_url' });
+  }
+  // El diagnóstico público solo permite fuentes externas curadas, nunca URLs personalizadas (SSRF).
+  if (!CURATED_FALLBACK_CHANNELS.some((c) => c.id === channel.id && c.streamUrl === channel.streamUrl)) {
+    return res.status(403).json({ success: false, status: 'requires_admin_validation', error: 'Diagnóstico remoto no habilitado para fuentes externas no verificadas' });
+  }
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(url.href, { signal: controller.signal, redirect: 'error' });
+    const latencyMs = Date.now() - started;
+    if (!response.ok) return res.json({ success: true, status: response.status === 403 ? 'restricted' : response.status === 404 ? 'offline' : 'http_error', httpStatus: response.status, latencyMs });
+    const body = (await response.text()).slice(0, 200000);
+    const valid = body.trimStart().startsWith('#EXTM3U') && (body.includes('#EXT-X-STREAM-INF') || body.includes('#EXTINF'));
+    return res.json({ success: true, status: valid ? 'manifest_ok' : 'invalid_manifest', latencyMs, httpStatus: response.status });
+  } catch (error) {
+    return res.json({ success: true, status: controller.signal.aborted ? 'timeout' : 'network_error', latencyMs: Date.now() - started });
+  } finally { clearTimeout(timer); }
+});
+
+// Defensa básica SSRF: no permitir IPs privadas, loopback, link-local ni hostnames internos.
+async function isPublicProbeUrl(value: string): Promise<boolean> {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hostname === 'localhost' || url.hostname.endsWith('.local')) return false;
+    const addresses = await lookup(url.hostname, { all: true });
+    if (!addresses.length) return false;
+    return addresses.every(({ address }) => {
+      if (isIP(address) === 4) {
+        const p = address.split('.').map(Number);
+        return !(p[0] === 0 || p[0] === 10 || p[0] === 127 || p[0] >= 224 || p[0] === 169 && p[1] === 254 || p[0] === 172 && p[1] >= 16 && p[1] <= 31 || p[0] === 192 && p[1] === 168 || p[0] === 100 && p[1] >= 64 && p[1] <= 127 || p[0] === 192 && p[1] === 0);
+      }
+      const ip = address.toLowerCase();
+      return !(/^(::1|::|fc|fd|fe8|fe9|fea|feb)/.test(ip) || ip.startsWith('::ffff:'));
+    });
+  } catch { return false; }
+}
 
 // POST /api/iptv/probe - Probar conectividad y latencia de señal .m3u8 en vivo
 iptvRouter.post('/probe', async (req: Request, res: Response) => {
@@ -437,25 +471,38 @@ iptvRouter.post('/probe', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'streamUrl es requerido' });
   }
 
+  if (!(await isPublicProbeUrl(streamUrl))) return res.status(422).json({ success: false, reachable: false, error: 'URL no permitida: usa HTTPS público.' });
   const startTime = Date.now();
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
+    const timeout = setTimeout(() => controller.abort(), 10000);
     const resp = await fetch(streamUrl, {
       method: 'GET',
+      redirect: 'error',
       signal: controller.signal,
       headers: { 'User-Agent': 'GolBolivia/2026.1 (Channel-Probe)' },
     });
-    clearTimeout(timeout);
     const latencyMs = Date.now() - startTime;
-
+    const contentType = resp.headers.get('content-type') || '';
+    let manifestValid = false;
+    let mediaReferenceFound = false;
+    if (resp.ok && (streamUrl.toLowerCase().includes('.m3u8') || contentType.includes('mpegurl'))) {
+      const text = (await resp.text()).slice(0, 200000);
+      manifestValid = text.trimStart().startsWith('#EXTM3U');
+      mediaReferenceFound = manifestValid && (text.includes('#EXT-X-STREAM-INF') || text.includes('#EXTINF'));
+    } else { await resp.body?.cancel(); }
+    clearTimeout(timeout);
     res.json({
       success: true,
-      reachable: resp.ok || resp.status < 400,
+      reachable: resp.ok && manifestValid && mediaReferenceFound,
       status: resp.status,
       statusText: resp.statusText,
-      contentType: resp.headers.get('content-type') || '',
+      contentType,
       latencyMs,
+      manifestValid,
+      mediaReferenceFound,
+      playbackVerified: false,
+      error: !resp.ok ? `HTTP ${resp.status}` : !manifestValid ? 'La respuesta no es un manifiesto HLS válido' : !mediaReferenceFound ? 'No se encontraron variantes o segmentos' : undefined,
     });
   } catch (err: any) {
     res.json({
