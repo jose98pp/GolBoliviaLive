@@ -1167,7 +1167,7 @@ app.post(
         channelName: String(raw.iptvSource.channelName || 'Canal IPTV').trim().slice(0, 120),
         streamUrl: raw.iptvSource.streamUrl.trim().slice(0, 1500),
         category: String(raw.iptvSource.category || '').trim().slice(0, 80),
-      } : undefined,
+      } : null,
       cloudflare: raw.cloudflare ? {
         liveInputId: String(raw.cloudflare.liveInputId || '').trim(),
         playbackUrl: String(raw.cloudflare.playbackUrl || '').trim(),
