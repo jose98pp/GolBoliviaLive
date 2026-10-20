@@ -232,7 +232,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       })
       .filter((n) => !isNaN(n));
     const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : liveEvents.length + 1;
-    const newId = `partido-${String(nextNum).padStart(3, '0')}`;
+    const newId = `partido-${String(nextNum).padStart(3, '0')}-${Date.now().toString(36)}`;
 
     const newEv: LiveEvent = {
       id: newId,
@@ -272,11 +272,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   };
 
   const handleDeleteCurrentMatch = async (targetId?: string) => {
-    if (liveEvents.length <= 1) {
-      alert('Debe existir al menos un partido registrado en el sistema. Puedes editar el partido actual en el formulario si deseas cambiarlo.');
-      return;
-    }
-    const currentId = targetId || activeEventId || activeEvent?.id || 'partido-001';
+    const currentId = targetId || activeEventId || activeEvent?.id;
+    if (!currentId) { setErrorMsg('Selecciona un partido válido antes de eliminarlo.'); return; }
     const targetEvt = liveEvents.find((e) => e.id === currentId);
     const targetTitle = targetEvt?.title || title || 'este partido';
 
