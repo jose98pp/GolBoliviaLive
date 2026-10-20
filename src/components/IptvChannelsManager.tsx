@@ -195,7 +195,17 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
           <button type="button" onClick={() => { void previewPlaylist(); }} disabled={playlistLoading || !playlistUrl.trim()} className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg disabled:opacity-50">{playlistLoading ? 'Cargando...' : 'Previsualizar'}</button>
         </div>
         {playlistMessage && <p role="status" className="text-xs text-slate-300">{playlistMessage}</p>}
-        {playlistPreview.length > 0 && <div className="max-h-48 overflow-auto rounded-lg border border-slate-800 p-2 text-xs text-slate-300">{playlistPreview.slice(0, 100).map((channel) => <div key={channel.id} className="py-1 border-b border-slate-800/50">{channel.name} — {channel.countryName}</div>)}{playlistPreview.length > 100 && <p>Mostrando los primeros 100 canales.</p>}</div>}
+        {playlistPreview.length > 0 && <div className="max-h-72 overflow-auto rounded-lg border border-slate-800 p-2 text-xs text-slate-300">
+          <p className="mb-2 text-amber-300">La lista M3U describe canales, pero no garantiza reproducción. Verifica la señal antes de publicarla.</p>
+          {playlistPreview.slice(0, 100).map((channel) => (
+            <div key={channel.id} className="py-2 border-b border-slate-800/50 flex flex-wrap items-center justify-between gap-2">
+              <span>{channel.name} — <strong>{channel.group || 'Sin categoría'}</strong> · {channel.countryName} · {channel.resolution || 'HD'}</span>
+              <button type="button" disabled={probingUrl === channel.streamUrl} onClick={() => { void handleProbeUrl(channel.streamUrl); }} className="px-2 py-1 border border-slate-600 rounded text-amber-300 disabled:opacity-50">Comprobar URL</button>
+              {probeResult?.url === channel.streamUrl && <span className={probeResult.reachable ? 'text-emerald-400' : 'text-red-400'}>{probeResult.reachable ? 'Servidor accesible (reproducción no confirmada)' : 'No accesible'} {probeResult.latencyMs ? `· ${probeResult.latencyMs} ms` : ''} {probeResult.error || ''}</span>}
+            </div>
+          ))}
+          {playlistPreview.length > 100 && <p>Mostrando los primeros 100 de {playlistPreview.length} canales.</p>}
+        </div>}
       </section>
       {/* Banner Principal */}
       <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
