@@ -39,6 +39,17 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [playlistMessage, setPlaylistMessage] = useState('');
   const [playlistPreview, setPlaylistPreview] = useState<IptvChannel[]>([]);
+  const [publishingChannelId, setPublishingChannelId] = useState<string | null>(null);
+  const publishPreviewChannel = async (channel: IptvChannel) => {
+    if (!window.confirm(`¿Publicar «${channel.name}» en «${channel.group || 'Sin categoría'}»? Verifica que tienes autorización para distribuir su señal.`)) return;
+    setPublishingChannelId(channel.id);
+    try {
+      await iptvService.addCustomChannel({ name: channel.name, streamUrl: channel.streamUrl, country: channel.country, countryName: channel.countryName, group: channel.group || 'Otros', logo: channel.logo, resolution: channel.resolution, notes: 'Importado desde vista previa de lista M3U' });
+      setPlaylistMessage(`Canal «${channel.name}» guardado en Firestore.`);
+      await loadData();
+    } catch (err) { setPlaylistMessage(err instanceof Error ? err.message : 'No se pudo guardar el canal'); }
+    finally { setPublishingChannelId(null); }
+  };
 
   const previewPlaylist = async () => {
     setPlaylistLoading(true);
@@ -202,6 +213,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
             <div key={channel.id} className="py-2 border-b border-slate-800/50 flex flex-wrap items-center justify-between gap-2">
               <span>{channel.name} — <strong>{channel.group || 'Sin categoría'}</strong> · {channel.countryName} · {channel.resolution || 'HD'}</span>
               <button type="button" disabled={probingUrl === channel.streamUrl} onClick={() => { void handleProbeUrl(channel.streamUrl); }} className="px-2 py-1 border border-slate-600 rounded text-amber-300 disabled:opacity-50">Comprobar URL</button>
+              <button type="button" disabled={publishingChannelId !== null} onClick={() => { void publishPreviewChannel(channel); }} className="px-2 py-1 border border-emerald-700 rounded text-emerald-300 disabled:opacity-50">{publishingChannelId === channel.id ? 'Guardando...' : 'Publicar canal'}</button>
               {probeResult?.url === channel.streamUrl && <span className={probeResult.reachable ? 'text-emerald-400' : 'text-red-400'}>{probeResult.reachable ? 'Servidor accesible (reproducción no confirmada)' : 'No accesible'} {probeResult.latencyMs ? `· ${probeResult.latencyMs} ms` : ''} {probeResult.error || ''}</span>}
             </div>
           ))}
