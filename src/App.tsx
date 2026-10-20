@@ -109,7 +109,8 @@ export default function App() {
       const path = window.location.pathname;
       if (!path.startsWith('/tv')) return;
       setActiveTab('iptv');
-      const channelId = path.match(/^\\/tv\\/([^/]+)$/)?.[1];
+      const segments = path.split('/');
+      const channelId = segments.length === 3 && segments[1] === 'tv' ? segments[2] : undefined;
       if (!channelId) { setActiveIptvChannel(null); return; }
       try {
         const channels = await iptvService.getChannels();
