@@ -108,7 +108,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [broadcastMode, setBroadcastMode] = useState<string>(activeEvent?.broadcastMode || 'obs_custom');
   const [iptvChannels, setIptvChannels] = useState<IptvChannel[]>([]);
   const [iptvLoading, setIptvLoading] = useState(false);
-  const [iptvSource, setIptvSource] = useState<MatchIptvSource | undefined>(activeEvent?.iptvSource);
+  const [iptvSource, setIptvSource] = useState<MatchIptvSource | undefined>(activeEvent?.iptvSource || undefined);
   const [matchPrimaryProvider, setMatchPrimaryProvider] = useState<StreamProvider>(activeEvent?.primaryProvider || 'cloudflare');
   const [matchFallbackOrder, setMatchFallbackOrder] = useState<StreamProvider[]>(activeEvent?.fallbackOrder || ['cloudflare', 'youtube', 'kick']);
   const [iptvSearch, setIptvSearch] = useState('');
@@ -165,7 +165,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setPeriod(srcPeriod);
       setIsLiveMatch(srcIsLive);
       setBroadcastMode(activeEvent?.broadcastMode || 'obs_custom');
-      setIptvSource(activeEvent?.iptvSource);
+      setIptvSource(activeEvent?.iptvSource || undefined);
       setMatchPrimaryProvider(activeEvent?.primaryProvider || 'cloudflare');
       setMatchFallbackOrder(activeEvent?.fallbackOrder || ['cloudflare', 'youtube', 'kick']);
       setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
@@ -404,7 +404,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       period,
       primaryProvider: preservedPrimaryProvider,
       fallbackOrder: matchFallbackOrder,
-      iptvSource,
+      iptvSource: iptvSource || null,
       cloudflare: preservedCloudflare,
       youtube: preservedYoutube,
       kick: preservedKick,
