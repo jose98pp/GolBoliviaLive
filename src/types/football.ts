@@ -219,7 +219,7 @@ export interface LiveEvent {
   awayTeam: string;
   isLive: boolean;
   primaryProvider: StreamProvider;
-  iptvSource?: MatchIptvSource;
+  iptvSource?: MatchIptvSource | null;
   cloudflare?: {
     liveInputId: string;
     playbackUrl: string;
