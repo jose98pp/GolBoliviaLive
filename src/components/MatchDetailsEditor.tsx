@@ -382,7 +382,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
     try {
       // 1. Guardar partido completo en Firebase y Servidor (apiClient.saveLiveEvent)
-      await apiClient.saveLiveEvent(fullEventPayload);
+      const confirmedEvent = await apiClient.saveLiveEvent(fullEventPayload);
 
       // 2. Actualizar marcador oficial
       await apiClient.updateScoreboard({
@@ -395,11 +395,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       });
 
       // Los datos oficiales de este partido se guardan por eventId; no actualizar la configuración global.
-      onUpdateScore?.(localHomeScore, localAwayScore);
-      onUpdateMinute?.(localMinute);
-
       if (onUpdateLiveEvent) {
-        onUpdateLiveEvent(fullEventPayload);
+        onUpdateLiveEvent(confirmedEvent);
       }
 
       setIsDirty(false);
