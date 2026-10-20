@@ -1363,7 +1363,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                 )}
 
 
-                {currentLiveEvent ? (
+                {(currentLiveEvent || activeIptvChannel) ? (
                   <UniversalStreamPlayer
                     key={activeIptvChannel ? `iptv-${activeIptvChannel.id}-${signalReloadKey}` : `${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${signalReloadKey}`}
                     event={activeIptvChannel ? undefined : currentLiveEvent}
@@ -1378,16 +1378,16 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                         ? {
                             title: activeIptvChannel.name,
                             tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva en Directo`,
-                            homeClubId: 'bolivar',
-                            awayClubId: 'strongest',
+                            homeClubId: '',
+                            awayClubId: '',
                             stadiumName: 'Transmisión Internacional',
                             altitudeMeters: 0,
                             period: '2T',
                             isLive: true,
                             broadcastMode: 'obs_custom',
                             customVideoUrl: activeIptvChannel.streamUrl,
-                            backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-                            backupChannelName: 'Respaldo IPTV',
+                            backupVideoUrl: '',
+                            backupChannelName: '',
                             activeStreamSource: 'obs',
                             autoFailoverEnabled: false,
                             chatMode: 'all',
