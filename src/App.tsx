@@ -57,10 +57,8 @@ try { localStorage.removeItem('golbolivia_live_events'); } catch {}
 
 export default function App() {
   const { clubs } = useClubs();
-  const [activeTab, setActiveTab] = useState<'stream' | 'exclusive' | 'iptv'>('stream');
-  const [activeIptvChannel, setActiveIptvChannel] = useState<IptvChannel | null>(() => {
-    return iptvService.getLastPlayed();
-  });
+  const [activeTab, setActiveTab] = useState<'stream' | 'exclusive' | 'iptv'>(() => window.location.pathname.startsWith('/tv') ? 'iptv' : 'stream');
+  const [activeIptvChannel, setActiveIptvChannel] = useState<IptvChannel | null>(null);
   const [mobileViewMode, setMobileViewMode] = useState<'stream' | 'chat'>('stream');
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
@@ -102,37 +100,51 @@ export default function App() {
     }, 600);
   };
 
-  const playerSectionRef = useRef<HTMLElement | null>(null);
+  const iptvPlayerRef = useRef<HTMLDivElement | null>(null);
+  const [iptvScrollRequest, setIptvScrollRequest] = useState(0);
 
-  // Al seleccionar un canal, volver al reproductor una vez montada la vista.
+  // Las rutas /tv/:id son independientes de los partidos y sus tres señales.
   useEffect(() => {
-    if (!activeIptvChannel || activeTab !== 'stream') return;
-    const frame = requestAnimationFrame(() => {
-      playerSectionRef.current?.scrollIntoView({
-        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-        block: 'start',
-      });
-    });
+    const resolveTvRoute = async () => {
+      const path = window.location.pathname;
+      if (!path.startsWith('/tv')) return;
+      setActiveTab('iptv');
+      const channelId = path.match(/^\\/tv\\/([^/]+)$/)?.[1];
+      if (!channelId) { setActiveIptvChannel(null); return; }
+      try {
+        const channels = await iptvService.getChannels();
+        const channel = channels.find((c) => c.id === decodeURIComponent(channelId));
+        setActiveIptvChannel(channel || null);
+        if (channel) setIptvScrollRequest((n) => n + 1);
+      } catch { setActiveIptvChannel(null); }
+    };
+    void resolveTvRoute();
+    window.addEventListener('popstate', resolveTvRoute);
+    return () => window.removeEventListener('popstate', resolveTvRoute);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'iptv' || !activeIptvChannel || !iptvScrollRequest) return;
+    const frame = requestAnimationFrame(() => iptvPlayerRef.current?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start',
+    }));
     return () => cancelAnimationFrame(frame);
-  }, [activeIptvChannel, activeTab]);
+  }, [activeTab, activeIptvChannel, iptvScrollRequest]);
 
   const handleSelectIptvChannel = (channel: IptvChannel) => {
     setActiveIptvChannel(channel);
-    setActiveTab('stream');
+    setActiveTab('iptv');
+    window.history.pushState(null, '', `/tv/${encodeURIComponent(channel.id)}`);
     iptvService.saveLastPlayed(channel);
-    setStreamSettings((prev) => ({
-      ...prev,
-      title: channel.name,
-      tournamentName: `${channel.countryName} · Señal Deportiva IPTV`,
-      customVideoUrl: channel.streamUrl,
-      broadcastMode: 'obs_custom',
-      isLive: true,
-    }));
+    setIptvScrollRequest((n) => n + 1);
     setSignalReloadKey((k) => k + 1);
   };
 
   const handleReturnToMatchBroadcast = () => {
     setActiveIptvChannel(null);
+    window.history.pushState(null, '', '/');
+    setActiveTab('stream');
     setSignalReloadKey((k) => k + 1);
   };
 
@@ -1211,7 +1223,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       />
 
       {/* MAIN VIEWPORT BODY */}
-      <main ref={playerSectionRef} className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-5 md:p-6 pb-24 md:pb-8 scroll-mt-20">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-5 md:p-6 pb-24 md:pb-8 scroll-mt-20">
         {activeTab === 'stream' && (
           <div className="space-y-4 sm:space-y-5">
             {/* Split Grid for Stream & Chat */}
@@ -1507,7 +1519,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         {activeTab === 'iptv' && (
           <div className="space-y-6">
             {activeIptvChannel && (
-              <div className="space-y-3">
+              <div ref={iptvPlayerRef} className="space-y-3 scroll-mt-20">
                 <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1530,16 +1542,16 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                     streamSettings={{
                       title: activeIptvChannel.name,
                       tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva en Directo`,
-                      homeClubId: 'bolivar',
-                      awayClubId: 'strongest',
+                      homeClubId: '',
+                      awayClubId: '',
                       stadiumName: 'Transmisión Internacional',
                       altitudeMeters: 0,
                       period: '2T',
                       isLive: true,
                       broadcastMode: 'obs_custom',
                       customVideoUrl: activeIptvChannel.streamUrl,
-                      backupVideoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-                      backupChannelName: 'Respaldo IPTV',
+                      backupVideoUrl: '',
+                      backupChannelName: '',
                       activeStreamSource: 'obs',
                       autoFailoverEnabled: false,
                       chatMode: 'all',
