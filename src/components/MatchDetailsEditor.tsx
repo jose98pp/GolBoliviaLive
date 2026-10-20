@@ -102,6 +102,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [localAwayScore, setLocalAwayScore] = useState<number>(activeEvent?.awayScore ?? awayScore);
   const [localMinute, setLocalMinute] = useState<number>(activeEvent?.matchMinute ?? matchMinute);
 
+  const [broadcastMode, setBroadcastMode] = useState<string>(activeEvent?.broadcastMode || 'obs_custom');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -129,6 +130,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setStadiumName(srcStadium);
       setPeriod(srcPeriod);
       setIsLiveMatch(srcIsLive);
+      setBroadcastMode(activeEvent?.broadcastMode || 'obs_custom');
       setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
       setLocalAwayScore(activeEvent?.awayScore ?? awayScore);
       setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
@@ -371,10 +373,11 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       customVideoUrl: preservedCustomVideoUrl,
       activeStreamSource: currentEvt?.activeStreamSource || streamSettings.activeStreamSource || 'obs',
       autoFailoverEnabled: currentEvt?.autoFailoverEnabled ?? streamSettings.autoFailoverEnabled ?? true,
+      broadcastMode,
       isClockRunning,
       clockUpdatedAt: Date.now(),
       version: typeof currentEvt?.version === 'number' ? currentEvt.version : undefined,
-      force: true,
+      force: false,
     };
 
     try {
@@ -391,23 +394,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         isClockRunning,
       });
 
-      // 3. Sincronizar streamSettings para consistencia
-      const streamPayload: Partial<StreamSettings> = {
-        title: cleanTitle,
-        tournamentName: cleanTournament,
-        homeClubId: effectiveHomeId,
-        awayClubId: effectiveAwayId,
-        stadiumName: cleanStadium,
-        altitudeMeters: Math.round(alt),
-        officialAnnouncement: officialAnnouncement.trim().slice(0, 200),
-        homeScore: localHomeScore,
-        awayScore: localAwayScore,
-        matchMinute: localMinute,
-        period,
-        isLive: isLiveMatch,
-      };
-
-      onUpdateStreamSettings(streamPayload);
+      // Los datos oficiales de este partido se guardan por eventId; no actualizar la configuración global.
       onUpdateScore?.(localHomeScore, localAwayScore);
       onUpdateMinute?.(localMinute);
 
@@ -1121,6 +1108,18 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             </button>
           </div>
 
+          <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3 space-y-2">
+            <label htmlFor="event-broadcast-mode" className="text-sm font-bold text-white">Modo de transmisión del partido</label>
+            <select id="event-broadcast-mode" value={broadcastMode} onChange={(e) => { setBroadcastMode(e.target.value); setIsDirty(true); }} className="w-full bg-slate-950 text-white border border-slate-700 rounded-lg p-2">
+              <option value="obs_custom">OBS / señal HLS</option>
+              <option value="simulation">Simulación</option>
+              <option value="pre_match">Previa del partido</option>
+              <option value="halftime">Entretiempo</option>
+              <option value="var">Revisión VAR</option>
+              <option value="post_match">Postpartido</option>
+            </select>
+            <p className="text-xs text-slate-400">Este modo se guarda solo para el partido seleccionado. Las fuentes Cloudflare, YouTube y Kick se configuran por separado.</p>
+          </div>
           {/* Feedback Banners */}
           {saveSuccess && (
             <div className="p-3 bg-emerald-950/90 border border-emerald-500 rounded-xl text-xs text-emerald-200 flex items-center gap-2 shadow-lg animate-fade-in">
