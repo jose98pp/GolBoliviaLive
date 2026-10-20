@@ -1,41 +1,20 @@
 import express, { Request, Response } from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
+import { getCustomIptvChannelsFromFirebase, saveCustomIptvChannelToFirebase, deleteCustomIptvChannelFromFirebase } from './firebase';
 import type { IptvChannel } from '../types/iptv';
 
 export const iptvRouter = express.Router();
-
 const SPORTS_M3U_URL = 'https://iptv-org.github.io/iptv/categories/sports.m3u';
 const BOLIVIA_M3U_URL = 'https://iptv-org.github.io/iptv/countries/bo.m3u';
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 horas
-const CUSTOM_CHANNELS_FILE = path.join(process.cwd(), 'data', 'custom-iptv-channels.json');
-
-function loadCustomChannels(): IptvChannel[] {
-  try {
-    if (fs.existsSync(CUSTOM_CHANNELS_FILE)) {
-      const raw = fs.readFileSync(CUSTOM_CHANNELS_FILE, 'utf-8');
-      const data = JSON.parse(raw);
-      if (Array.isArray(data)) return data;
-    }
-  } catch (err) {
-    console.warn('[IPTV Backend] Advertencia al leer canales personalizados locales:', err);
-  }
-  return [];
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+let customChannels: IptvChannel[] = [];
+let customLoadedAt = 0;
+async function refreshCustomChannels(): Promise<IptvChannel[]> {
+  if (Date.now() - customLoadedAt < 30000) return customChannels;
+  const saved = await getCustomIptvChannelsFromFirebase();
+  customChannels = saved;
+  customLoadedAt = Date.now();
+  return saved;
 }
-
-function saveCustomChannels(channels: IptvChannel[]): void {
-  try {
-    const dir = path.dirname(CUSTOM_CHANNELS_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(CUSTOM_CHANNELS_FILE, JSON.stringify(channels, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[IPTV Backend] Advertencia al persistir canales personalizados locales:', err);
-  }
-}
-
-let customChannels: IptvChannel[] = loadCustomChannels();
 let cachedChannels: IptvChannel[] = [];
 let lastFetchTime = 0;
 let activeFetchPromise: Promise<IptvChannel[]> | null = null;
@@ -213,6 +192,7 @@ async function fetchM3uList(url: string, defaultCountry?: string): Promise<IptvC
 // Fetch and cache combined sports and Bolivian national playlists
 async function refreshSportsChannels(): Promise<IptvChannel[]> {
   try {
+    await refreshCustomChannels();
     const [boResult, sportsResult] = await Promise.allSettled([
       fetchM3uList(BOLIVIA_M3U_URL, 'BO'),
       fetchM3uList(SPORTS_M3U_URL),
@@ -364,7 +344,8 @@ iptvRouter.get('/status', (_req: Request, res: Response) => {
 });
 
 // GET /api/iptv/custom - Obtener canales personalizados cargados desde el dashboard
-iptvRouter.get('/custom', (_req: Request, res: Response) => {
+iptvRouter.get('/custom', async (_req: Request, res: Response) => {
+  try { await refreshCustomChannels(); } catch { return res.status(503).json({ success: false, error: 'No se pudo consultar Firestore' }); }
   res.json({
     success: true,
     total: customChannels.length,
@@ -373,7 +354,7 @@ iptvRouter.get('/custom', (_req: Request, res: Response) => {
 });
 
 // POST /api/iptv/custom - Agregar o actualizar canal IPTV desde el dashboard
-iptvRouter.post('/custom', (req: Request, res: Response) => {
+iptvRouter.post('/custom', async (req: Request, res: Response) => {
   try {
     const { name, streamUrl, country, countryName, group, resolution, logo, notes } = req.body || {};
     if (!name || typeof name !== 'string' || !name.trim()) {
@@ -402,8 +383,9 @@ iptvRouter.post('/custom', (req: Request, res: Response) => {
     };
 
     // Agregar al inicio de canales personalizados
+    await saveCustomIptvChannelToFirebase(newChannel);
     customChannels = [newChannel, ...customChannels.filter((c) => c.streamUrl !== newChannel.streamUrl)];
-    saveCustomChannels(customChannels);
+    customLoadedAt = Date.now();
 
     // Actualizar la caché activa inmediatamente anteponiendo el canal
     cachedChannels = [
@@ -422,12 +404,15 @@ iptvRouter.post('/custom', (req: Request, res: Response) => {
 });
 
 // DELETE /api/iptv/custom/:id - Eliminar canal IPTV personalizado
-iptvRouter.delete('/custom/:id', (req: Request, res: Response) => {
+iptvRouter.delete('/custom/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  customChannels = customChannels.filter((c) => c.id !== id);
-  saveCustomChannels(customChannels);
-  cachedChannels = cachedChannels.filter((c) => c.id !== id);
-  res.json({ success: true, removedId: id });
+  try {
+    await deleteCustomIptvChannelFromFirebase(id);
+    customChannels = customChannels.filter((c) => c.id !== id);
+    customLoadedAt = Date.now();
+    cachedChannels = cachedChannels.filter((c) => c.id !== id);
+    res.json({ success: true, removedId: id });
+  } catch { res.status(503).json({ success: false, error: 'No se pudo eliminar el canal en Firestore' }); }
 });
 
 // Diagnóstico por ID del catálogo: no acepta URLs arbitrarias del cliente.
