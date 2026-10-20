@@ -1179,6 +1179,7 @@ app.post(
       customVideoUrl: raw.customVideoUrl ? String(raw.customVideoUrl).trim() : undefined,
       backupVideoUrl: raw.backupVideoUrl ? String(raw.backupVideoUrl).trim() : undefined,
       backupChannelName: raw.backupChannelName ? String(raw.backupChannelName).trim() : undefined,
+      broadcastMode: ['obs_custom', 'simulation', 'pre_match', 'halftime', 'var', 'post_match'].includes(raw.broadcastMode) ? raw.broadcastMode : 'obs_custom',
       activeStreamSource: raw.activeStreamSource || 'obs',
       autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
       isClockRunning: raw.isClockRunning ?? false,
