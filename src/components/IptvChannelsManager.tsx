@@ -34,6 +34,25 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
   const [filterCountry, setFilterCountry] = useState<IptvCountryCode>('ALL');
   const [searchFilter, setSearchFilter] = useState<string>('');
   const [onlyCustom, setOnlyCustom] = useState<boolean>(false);
+  const [playlistUrl, setPlaylistUrl] = useState('');
+  const [playlistLoading, setPlaylistLoading] = useState(false);
+  const [playlistMessage, setPlaylistMessage] = useState('');
+  const [playlistPreview, setPlaylistPreview] = useState<IptvChannel[]>([]);
+
+  const previewPlaylist = async () => {
+    setPlaylistLoading(true);
+    setPlaylistMessage('');
+    try {
+      const response = await fetch('/api/iptv/import-preview?lista=' + encodeURIComponent(playlistUrl.trim()));
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data.channels)) throw new Error(data.error || 'No se pudo cargar la lista');
+      setPlaylistPreview(data.channels);
+      setPlaylistMessage(`Vista previa: ${data.channels.length} canales. No se han publicado ni guardado.`);
+    } catch (error) {
+      setPlaylistMessage(error instanceof Error ? error.message : 'Error al cargar la lista');
+      setPlaylistPreview([]);
+    } finally { setPlaylistLoading(false); }
+  };
 
   // Form state
   const [name, setName] = useState('');
@@ -168,6 +187,16 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
 
   return (
     <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-800 bg-[#0a0f1d] p-5 space-y-3">
+        <h3 className="text-sm font-bold text-white">Importar lista M3U — Administración</h3>
+        <p className="text-xs text-slate-400">Vista previa de listas públicas de IPTV-org. La publicación permanente requiere seleccionar y guardar canales en el administrador.</p>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input type="url" value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} aria-label="URL de lista M3U" placeholder="https://iptv-org.github.io/iptv/categories/sports.m3u" className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs" />
+          <button type="button" onClick={() => { void previewPlaylist(); }} disabled={playlistLoading || !playlistUrl.trim()} className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg disabled:opacity-50">{playlistLoading ? 'Cargando...' : 'Previsualizar'}</button>
+        </div>
+        {playlistMessage && <p role="status" className="text-xs text-slate-300">{playlistMessage}</p>}
+        {playlistPreview.length > 0 && <div className="max-h-48 overflow-auto rounded-lg border border-slate-800 p-2 text-xs text-slate-300">{playlistPreview.slice(0, 100).map((channel) => <div key={channel.id} className="py-1 border-b border-slate-800/50">{channel.name} — {channel.countryName}</div>)}{playlistPreview.length > 100 && <p>Mostrando los primeros 100 canales.</p>}</div>}
+      </section>
       {/* Banner Principal */}
       <div className="bg-[#0a0f1d] border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
