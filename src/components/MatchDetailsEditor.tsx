@@ -47,7 +47,7 @@ export interface MatchDetailsEditorProps {
   onUpdatePeriod?: (period: MatchPeriod) => void;
   onClearEvents?: () => void;
   onClearChat?: () => void;
-  onDeleteEvent?: (eventId: string) => void;
+  onDeleteEvent?: (eventId: string) => Promise<void> | void;
   events?: MatchEvent[];
 }
 
@@ -284,8 +284,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     setIsSaving(true);
     setErrorMsg(null);
     try {
-      await apiClient.deleteLiveEvent(currentId);
-      onDeleteEvent?.(currentId);
+      if (onDeleteEvent) await onDeleteEvent(currentId);
+      else await apiClient.deleteLiveEvent(currentId);
       const remaining = liveEvents.filter((e) => e.id !== currentId);
       if (remaining.length > 0) {
         onSelectEvent?.(remaining[0].id);
