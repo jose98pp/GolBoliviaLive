@@ -930,7 +930,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     try {
       await apiClient.deleteLiveEvent(id);
     } catch (err: any) {
-      console.warn('[App] Advertencia al eliminar partido en servidor/Firebase:', err.message || err);
+      console.error('[App] No se confirmó la eliminación en Firestore:', err.message || err);
+      return; // Nunca eliminar solo de la UI si la base de datos rechazó la operación.
     }
 
     const remaining = liveEvents.filter((e) => e.id !== id);
