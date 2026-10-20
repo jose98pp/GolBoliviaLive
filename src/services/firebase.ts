@@ -814,6 +814,7 @@ function cleanForFirestore<T extends Record<string, any>>(obj: T): T {
       customVideoUrl: event.customVideoUrl ? event.customVideoUrl.trim().slice(0, 500) : undefined,
       backupVideoUrl: event.backupVideoUrl ? event.backupVideoUrl.trim().slice(0, 500) : undefined,
       backupChannelName: event.backupChannelName ? event.backupChannelName.trim().slice(0, 100) : undefined,
+      broadcastMode: event.broadcastMode || 'obs_custom',
       activeStreamSource: event.activeStreamSource || 'obs',
       autoFailoverEnabled: event.autoFailoverEnabled ?? true,
       isClockRunning: event.isClockRunning ?? false,
