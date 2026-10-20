@@ -1,3 +1,4 @@
+import { authService } from '../services/auth';
 import React, { useState, useEffect } from 'react';
 import {
   Tv,
@@ -43,7 +44,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
     setPlaylistLoading(true);
     setPlaylistMessage('');
     try {
-      const response = await fetch('/api/iptv/import-preview?lista=' + encodeURIComponent(playlistUrl.trim()));
+      const response = await fetch('/api/iptv/import-preview?lista=' + encodeURIComponent(playlistUrl.trim()), { headers: { Authorization: `Bearer ${authService.getToken() || ''}` } });
       const data = await response.json();
       if (!response.ok || !Array.isArray(data.channels)) throw new Error(data.error || 'No se pudo cargar la lista');
       setPlaylistPreview(data.channels);
