@@ -1159,9 +1159,15 @@ app.post(
       homeTeam: cleanHome,
       awayTeam: cleanAway,
       isLive: Boolean(raw.isLive ?? true),
-      primaryProvider: ['cloudflare', 'youtube', 'kick'].includes(raw.primaryProvider)
+      primaryProvider: ['cloudflare', 'youtube', 'kick', 'iptv'].includes(raw.primaryProvider)
         ? raw.primaryProvider
         : 'cloudflare',
+      iptvSource: raw.iptvSource && typeof raw.iptvSource.channelId === 'string' && typeof raw.iptvSource.streamUrl === 'string' && /^https:\/\/[^\s]+\.m3u8(?:[?#][^\s]*)?$/i.test(raw.iptvSource.streamUrl.trim()) ? {
+        channelId: raw.iptvSource.channelId.trim().slice(0, 160),
+        channelName: String(raw.iptvSource.channelName || 'Canal IPTV').trim().slice(0, 120),
+        streamUrl: raw.iptvSource.streamUrl.trim().slice(0, 1500),
+        category: String(raw.iptvSource.category || '').trim().slice(0, 80),
+      } : undefined,
       cloudflare: raw.cloudflare ? {
         liveInputId: String(raw.cloudflare.liveInputId || '').trim(),
         playbackUrl: String(raw.cloudflare.playbackUrl || '').trim(),
@@ -1173,7 +1179,7 @@ app.post(
         channel: String(raw.kick.channel || '').trim(),
       } : undefined,
       fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0
-        ? raw.fallbackOrder
+        ? raw.fallbackOrder.filter((p: unknown) => ['cloudflare', 'youtube', 'kick', 'iptv'].includes(String(p)))
         : ['cloudflare', 'youtube', 'kick'],
       tournamentName: raw.tournamentName ? String(raw.tournamentName).trim() : undefined,
       stadiumName: raw.stadiumName ? String(raw.stadiumName).trim() : undefined,
