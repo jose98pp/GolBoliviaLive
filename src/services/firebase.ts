@@ -962,6 +962,7 @@ export function subscribeLiveEventsFirebase(
   let revision = 0;
   let lastConfirmedIds: string[] = [];
   let hasConfirmedSnapshot = false;
+  let lastDisplayedCount = 0;
   const colRef = collection(db, 'liveEvents');
   const hydrate = (snap: Awaited<ReturnType<typeof getDocs>>) => {
     const list: LiveEvent[] = [];
@@ -981,7 +982,7 @@ export function subscribeLiveEventsFirebase(
           // No reemplazar una lista ya confirmada por datos potencialmente incompletos.
           if (!hasConfirmedSnapshot && !snap.empty) {
             const cached = hydrate(snap);
-            if (cached.length) callback(cached);
+            if (cached.length) { lastDisplayedCount = cached.length; callback(cached); }
           }
           return;
         }
@@ -989,14 +990,16 @@ export function subscribeLiveEventsFirebase(
         if (incoming.length > 0) {
           hasConfirmedSnapshot = true;
           lastConfirmedIds = incoming.map((event) => event.id);
+          lastDisplayedCount = incoming.length;
           callback(incoming);
           return;
         }
         // Una respuesta vacía aislada no debe apagar la portada si ya había
         // partidos. Confirmar contra el servidor antes de vaciar la UI.
-        if (!hasConfirmedSnapshot || lastConfirmedIds.length === 0) {
+        if (lastDisplayedCount === 0) {
           hasConfirmedSnapshot = true;
           lastConfirmedIds = [];
+          lastDisplayedCount = 0;
           callback([]);
           return;
         }
@@ -1005,6 +1008,7 @@ export function subscribeLiveEventsFirebase(
           const verified = hydrate(verifiedSnap);
           hasConfirmedSnapshot = true;
           lastConfirmedIds = verified.map((event) => event.id);
+          lastDisplayedCount = verified.length;
           callback(verified);
         }).catch((err) => {
           // Conservar el último estado confirmado; el siguiente snapshot reintentará.
