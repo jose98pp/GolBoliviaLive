@@ -960,7 +960,6 @@ export function subscribeLiveEventsFirebase(
 ): () => void {
   let closed = false;
   let revision = 0;
-  let lastConfirmedIds: string[] = [];
   let hasConfirmedSnapshot = false;
   let lastDisplayedCount = 0;
   const colRef = collection(db, 'liveEvents');
@@ -989,7 +988,6 @@ export function subscribeLiveEventsFirebase(
         const incoming = hydrate(snap);
         if (incoming.length > 0) {
           hasConfirmedSnapshot = true;
-          lastConfirmedIds = incoming.map((event) => event.id);
           lastDisplayedCount = incoming.length;
           callback(incoming);
           return;
@@ -998,7 +996,6 @@ export function subscribeLiveEventsFirebase(
         // partidos. Confirmar contra el servidor antes de vaciar la UI.
         if (lastDisplayedCount === 0) {
           hasConfirmedSnapshot = true;
-          lastConfirmedIds = [];
           lastDisplayedCount = 0;
           callback([]);
           return;
@@ -1007,7 +1004,6 @@ export function subscribeLiveEventsFirebase(
           if (closed || currentRevision !== revision) return;
           const verified = hydrate(verifiedSnap);
           hasConfirmedSnapshot = true;
-          lastConfirmedIds = verified.map((event) => event.id);
           lastDisplayedCount = verified.length;
           callback(verified);
         }).catch((err) => {
