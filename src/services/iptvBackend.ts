@@ -430,6 +430,35 @@ iptvRouter.delete('/custom/:id', (req: Request, res: Response) => {
   res.json({ success: true, removedId: id });
 });
 
+// Diagnóstico por ID del catálogo: no acepta URLs arbitrarias del cliente.
+// Verifica que el manifiesto HLS sea accesible y tenga estructura M3U, no solo HTTP 200.
+iptvRouter.get('/diagnostics/:id', async (req: Request, res: Response) => {
+  const channel = [...customChannels, ...cachedChannels].find((c) => c.id === req.params.id);
+  if (!channel) return res.status(404).json({ success: false, status: 'not_found', error: 'Canal no encontrado' });
+  let url: URL;
+  try { url = new URL(channel.streamUrl); } catch { return res.status(422).json({ success: false, status: 'invalid_url' }); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || !url.hostname.includes('.')) {
+    return res.status(422).json({ success: false, status: 'unsupported_url' });
+  }
+  // El diagnóstico público solo permite fuentes externas curadas, nunca URLs personalizadas (SSRF).
+  if (!CURATED_FALLBACK_CHANNELS.some((c) => c.id === channel.id && c.streamUrl === channel.streamUrl)) {
+    return res.status(403).json({ success: false, status: 'requires_admin_validation', error: 'Diagnóstico remoto no habilitado para fuentes externas no verificadas' });
+  }
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(url.href, { signal: controller.signal, redirect: 'error' });
+    const latencyMs = Date.now() - started;
+    if (!response.ok) return res.json({ success: true, status: response.status === 403 ? 'restricted' : response.status === 404 ? 'offline' : 'http_error', httpStatus: response.status, latencyMs });
+    const body = (await response.text()).slice(0, 200000);
+    const valid = body.trimStart().startsWith('#EXTM3U') && (body.includes('#EXT-X-STREAM-INF') || body.includes('#EXTINF'));
+    return res.json({ success: true, status: valid ? 'manifest_ok' : 'invalid_manifest', latencyMs, httpStatus: response.status });
+  } catch (error) {
+    return res.json({ success: true, status: controller.signal.aborted ? 'timeout' : 'network_error', latencyMs: Date.now() - started });
+  } finally { clearTimeout(timer); }
+});
+
 // POST /api/iptv/probe - Probar conectividad y latencia de señal .m3u8 en vivo
 iptvRouter.post('/probe', async (req: Request, res: Response) => {
   const { streamUrl } = req.body || {};
