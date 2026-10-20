@@ -1267,7 +1267,7 @@ app.post(
     }
 
     // Update primary streamSettings only if this event is explicitly the primary one
-    if (existingIndex === 0 || state.streamSettings.title === safeEvent.title || state.liveEvents.length === 1) {
+    if (state.liveEvents.length === 1 || (existingIndex === 0 && state.liveEvents[0]?.id === safeEvent.id)) {
       state.streamSettings.title = safeEvent.title;
       state.streamSettings.homeClubId = safeEvent.homeTeam;
       state.streamSettings.awayClubId = safeEvent.awayTeam;
