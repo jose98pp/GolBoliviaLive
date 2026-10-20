@@ -424,19 +424,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     // 3. Subscribe to Real-Time Server-Sent Events (SSE) strictly matching each event to its match
     const unsubscribeEvents = apiClient.subscribeLiveEvents((type, data) => {
       if (type === 'INITIAL_STATE') {
-        if (Array.isArray(data.liveEvents) && data.liveEvents.length > 0) {
-          // Regla 3 + soporte de eliminaciones: INITIAL_STATE es la vista autoritativa del servidor.
-          // 1. Fusionamos con validación de versiones (los items existentes no retroceden).
-          // 2. Eliminamos items locales que el servidor ya no tiene (eliminados mientras offline).
-          setLiveEvents((prev) => {
-            const serverIds = new Set(data.liveEvents.map((e: any) => e.id));
-            const prevFiltered = prev.filter((p) => serverIds.has(p.id));
-            return mergeConfirmedEvents(prevFiltered, data.liveEvents);
-          });
-        } else if (Array.isArray(data.liveEvents) && data.liveEvents.length === 0) {
-          // Servidor confirmó lista vacía (todos eliminados)
-          setLiveEvents([]);
-        }
+        // Firestore es la fuente autoritativa de partidos. El snapshot SSE puede venir de otra instancia serverless desactualizada.
         if (data.events) setEvents(data.events);
         if (data.stream?.donationQr) {
           setDonationQrInfo(data.stream.donationQr);
@@ -487,23 +475,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
             };
           })
         );
-      } else if (type === 'LIVE_EVENT_DELETED') {
-        const deletedId = (data as any)?.id;
-        if (deletedId) {
-          setLiveEvents((prev) => {
-            const filtered = prev.filter((e) => e.id !== deletedId);
-            return filtered;
-          });
-        }
-      } else if (type === 'LIVE_EVENTS_UPDATED') {
-        if (Array.isArray(data)) {
-          setLiveEvents((prev) => {
-            const incomingIds = new Set(data.map((e: any) => e.id));
-            const prevFiltered = prev.filter((p) => incomingIds.has(p.id));
-            const merged = mergeConfirmedEvents(prevFiltered, data);
-            return merged;
-          });
-        }
+      } else if (type === 'LIVE_EVENT_DELETED' || type === 'LIVE_EVENTS_UPDATED') {
+        // No aplicar snapshots de instancias serverless al listado de Firestore.
+        // Las eliminaciones confirmadas y las altas llegan por subscribeMultiLiveEvents.
       } else if (type === 'MATCH_EVENT_ADDED') {
         setEvents((prev) => [data, ...prev]);
       } else if (type === 'MATCH_EVENT_UPDATED') {
@@ -541,26 +515,14 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
     const unsubscribeMultiLiveEvents = apiClient.subscribeMultiLiveEvents((fbEvents) => {
       if (Array.isArray(fbEvents)) {
-        setLiveEvents((prev) => {
-          const incomingIds = new Set(fbEvents.map((e: any) => e.id));
-          const prevFiltered = prev.filter((p) => incomingIds.has(p.id));
-          const merged = mergeConfirmedEvents(prevFiltered, fbEvents);
-          return merged;
-        });
+        // Snapshot autoritativo de Firestore: las altas y bajas se reflejan juntas.
+        // No mezclar con SSE ni conservar elementos que ya fueron eliminados.
+        setLiveEvents(fbEvents.map((e, idx) => sanitizeClientEvent(e, idx)));
       }
     });
 
-    // Carga inicial sincronizada desde el backend
-    apiClient.getLiveEvents().then((evts) => {
-      if (Array.isArray(evts)) {
-        setLiveEvents((prev) => {
-          const incomingIds = new Set(evts.map((e: any) => e.id));
-          const prevFiltered = prev.filter((p) => incomingIds.has(p.id));
-          const merged = mergeConfirmedEvents(prevFiltered, evts);
-          return merged;
-        });
-      }
-    }).catch(() => {});
+    // No hacer una carga inicial adicional del backend: su respuesta puede llegar
+    // después del snapshot de Firestore y reemplazar una lista más reciente.
 
     // 5. Heartbeat to report real active viewer session to server
     const heartbeatTimer = setInterval(() => {

@@ -962,6 +962,8 @@ export function subscribeLiveEventsFirebase(
     return onSnapshot(
       colRef,
       (snap) => {
+        // Un snapshot vacío servido solo desde caché no demuestra que se hayan borrado partidos.
+        if (snap.empty && snap.metadata.fromCache) return;
         if (!snap.empty) {
           const list: LiveEvent[] = [];
           snap.forEach((d) => {
