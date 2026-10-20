@@ -410,7 +410,8 @@ export function getApprovedPlaylistUrl(value: unknown): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.hostname !== 'iptv-org.github.io' || url.port || url.username || url.password || url.search || url.hash) return null;
-    if (!/^\\/iptv\\/(?:categories|countries)\\/[a-z0-9-]+\\.m3u$/.test(url.pathname)) return null;
+    const parts = url.pathname.split('/');
+    if (parts.length !== 4 || parts[0] !== '' || parts[1] !== 'iptv' || !['categories', 'countries'].includes(parts[2]) || !parts[3].endsWith('.m3u') || !/^[a-z0-9-]+$/.test(parts[3].slice(0, -4))) return null;
     return url.href;
   } catch { return null; }
 }
