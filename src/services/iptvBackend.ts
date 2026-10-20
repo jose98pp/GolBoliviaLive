@@ -482,7 +482,6 @@ iptvRouter.post('/probe', async (req: Request, res: Response) => {
       signal: controller.signal,
       headers: { 'User-Agent': 'GolBolivia/2026.1 (Channel-Probe)' },
     });
-    clearTimeout(timeout);
     const latencyMs = Date.now() - startTime;
     const contentType = resp.headers.get('content-type') || '';
     let manifestValid = false;
@@ -492,6 +491,7 @@ iptvRouter.post('/probe', async (req: Request, res: Response) => {
       manifestValid = text.trimStart().startsWith('#EXTM3U');
       mediaReferenceFound = manifestValid && (text.includes('#EXT-X-STREAM-INF') || text.includes('#EXTINF'));
     } else { await resp.body?.cancel(); }
+    clearTimeout(timeout);
     res.json({
       success: true,
       reachable: resp.ok && manifestValid && mediaReferenceFound,
