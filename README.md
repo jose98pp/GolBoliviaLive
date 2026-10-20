@@ -30,3 +30,21 @@ Las reglas (`firestore.rules`) permiten lectura pública, pero **solo el backend
 4. Publicar las reglas: `firebase deploy --only firestore:rules` (o pegarlas en la consola).
 
 El estado local del servidor (`data/stream-state.json`) contiene la stream key y no se versiona.
+
+## Validación de canales y reproductor
+
+- `bun run lint`: comprobación de TypeScript.
+- `bun run test`: frontend, rutas IPTV con persistencia simulada, caché y recuperación HLS. No necesita credenciales ni escribe en Firebase. Las pruebas HLS usan Chromium con React real y un motor HLS simulado; por defecto buscan `/usr/bin/chromium` (configurable con `CHROMIUM_PATH`).
+- `bun run test:streams`: comprobación independiente con acceso a Internet. Descarga el catálogo, sigue una variante HLS, descarga un segmento y decodifica un fotograma mediante FFmpeg. Requiere `curl` y `ffmpeg`; respeta el proxy y la verificación TLS. Guarda el informe en `/tmp/golbolivia-stream-smoke.json` (configurable con `STREAM_SMOKE_REPORT`). Un bloqueo del proxy se informa por separado de un fallo del origen y produce salida distinta de cero.
+
+El reproductor prueba el proxy una sola vez por fuente, permite dos recuperaciones de red y una de medios, y cambia a un respaldo distinto si está habilitado. Un arranque o bloqueo de reproducción tiene un límite de 30 segundos por fuente. Al agotarse la recuperación muestra el error y permite reintentar manualmente; pausar y reanudar no reinicia esos límites.
+
+En el entorno cloud con Node 24 y un proxy HTTPS configurado, iniciar el servidor con `NODE_USE_ENV_PROXY=1 bun run dev` para que las descargas del backend usen ese proxy. Las pruebas de señales reales necesitan acceso a los dominios de las listas, los manifiestos y sus segmentos; permitir solo el catálogo no permite reproducir los vídeos.
+
+### DNS del entorno cloud
+
+Si el DNS nativo devuelve `ECONNREFUSED`/`EAI_AGAIN`, el inicio del entorno puede cargar `scripts/cloud-dns.mjs` con `NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--import=/workspace/GolBoliviaLive/scripts/cloud-dns.mjs"`. Requiere Node 24, `NODE_USE_ENV_PROXY=1`, acceso HTTPS a `dns.google` y `CLOUD_DNS_ALLOWED_HOSTS` con los nombres exactos de los servidores de vídeo, separados por comas.
+
+El complemento solo interviene cuando falla el DNS nativo para esos nombres. Consulta A y AAAA por HTTPS, verifica la respuesta, comparte solicitudes concurrentes y respeta el TTL hasta cinco minutos. Devuelve todas las direcciones al proxy para que siga rechazando destinos privados; no desactiva la protección SSRF ni la verificación TLS. `bun run test:cloud-dns` comprueba el comportamiento con respuestas simuladas sin acceder a Internet.
+
+Guardar el borrador del entorno no aplica ni publica los permisos de red. Esa acción debe completarse con **Guardar/Publicar** en la interfaz del entorno. Hasta que `dns.google` y los servidores de vídeo sean accesibles, la reproducción real seguirá pendiente aunque las pruebas locales pasen.

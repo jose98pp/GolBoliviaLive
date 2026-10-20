@@ -5,7 +5,17 @@ const CACHE_KEY = 'golbolivia_iptv_sports_cache_v2'; // invalidar catálogo ante
 const FAVORITES_KEY = 'golbolivia_iptv_favorites';
 const LAST_CHANNEL_KEY = 'golbolivia_iptv_last_played';
 
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TIME_KEY = `${CACHE_KEY}_updated_at`;
 let memoryCache: IptvChannel[] | null = null;
+let updatedAt = 0;
+let pendingRequest: Promise<void> | null = null;
+let loadError: string | null = null;
+
+function isChannelList(value: unknown): value is IptvChannel[] {
+  return Array.isArray(value) && value.every((channel) => channel &&
+    ['id', 'name', 'country', 'countryName', 'group', 'streamUrl'].every((key) => typeof channel[key] === 'string'));
+}
 
 export const iptvService = {
   /**
@@ -19,8 +29,9 @@ export const iptvService = {
         const raw = localStorage.getItem(CACHE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (isChannelList(parsed) && parsed.length > 0) {
             memoryCache = parsed;
+            updatedAt = Number(localStorage.getItem(CACHE_TIME_KEY)) || 0;
             return parsed;
           }
         }
@@ -37,32 +48,40 @@ export const iptvService = {
   async getChannels(params?: { country?: IptvCountryCode; query?: string; forceRefresh?: boolean }): Promise<IptvChannel[]> {
     const { country = 'ALL', query = '', forceRefresh = false } = params || {};
 
-    // 1. Si no hay catálogo en memoria o se fuerza refresco, buscar el catálogo COMPLETO
-    if (!memoryCache || forceRefresh) {
+    iptvService.getCachedChannelsSync();
+    if (!memoryCache || forceRefresh || Date.now() - updatedAt >= CACHE_TTL_MS) {
+      if (!pendingRequest) {
+        pendingRequest = (async () => {
+          loadError = null;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000);
+          try {
+            const url = forceRefresh ? '/api/iptv/sports?refresh=true' : '/api/iptv/sports';
+            const res = await fetch(url, {
+              signal: controller.signal,
+              cache: forceRefresh ? 'no-store' : 'default',
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (!isChannelList(data.channels)) throw new Error('Catálogo inválido');
+            memoryCache = data.channels;
+            updatedAt = Date.now();
+            try {
+              localStorage.setItem(CACHE_KEY, JSON.stringify(memoryCache));
+              localStorage.setItem(CACHE_TIME_KEY, String(updatedAt));
+            } catch {}
+          } catch {
+            loadError = 'No pudimos actualizar los canales. Comprueba tu conexión y vuelve a intentarlo.';
+            if (!memoryCache) throw new Error(loadError);
+          } finally {
+            clearTimeout(timeout);
+          }
+        })();
+      }
       try {
-        // Se solicita el catálogo completo sin parámetros de filtro para que la caché siempre sea integral
-        const url = forceRefresh ? '/api/iptv/sports?refresh=true' : '/api/iptv/sports';
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-        const data = await res.json();
-
-        if (Array.isArray(data.channels) && data.channels.length > 0) {
-          // Guardar el catálogo COMPLETO en memoria y en localStorage
-          memoryCache = data.channels;
-          try {
-            // Guardar hasta 150 canales completos en localStorage para inicio offline instantáneo
-            localStorage.setItem(CACHE_KEY, JSON.stringify(data.channels.slice(0, 150)));
-          } catch {}
-        }
-      } catch (err) {
-        console.warn('[iptvService] Error al obtener canales remotos, cargando caché local:', err);
-        // Intentar leer caché local si la red falla
-        if (!memoryCache) {
-          try {
-            const raw = localStorage.getItem(CACHE_KEY);
-            if (raw) memoryCache = JSON.parse(raw);
-          } catch {}
-        }
+        await pendingRequest;
+      } finally {
+        pendingRequest = null;
       }
     }
 
@@ -98,14 +117,19 @@ export const iptvService = {
    */
   clearCache(): void {
     memoryCache = null;
+    updatedAt = 0;
+    loadError = null;
     try {
       localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(CACHE_TIME_KEY);
     } catch {}
   },
 
-  /**
-   * Obtiene la referencia directa a la caché en memoria del catálogo completo
-   */
+  getLoadError(): string | null {
+    return loadError;
+  },
+
+  /** Obtiene la caché del catálogo completo, antes de aplicar filtros. */
   getMemoryCache(): IptvChannel[] | null {
     return memoryCache;
   },
@@ -115,6 +139,7 @@ export const iptvService = {
    */
   setMemoryCache(channels: IptvChannel[] | null): void {
     memoryCache = channels;
+    updatedAt = channels ? Date.now() : 0;
   },
 
   /**
@@ -123,7 +148,8 @@ export const iptvService = {
   getFavoriteChannelIds(): string[] {
     try {
       const raw = localStorage.getItem(FAVORITES_KEY);
-      return raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
     } catch {
       return [];
     }

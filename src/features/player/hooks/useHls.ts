@@ -13,6 +13,10 @@ interface UseHlsOptions {
   onFailoverTriggered?: (source: 'backup' | 'primary') => void;
 }
 
+const MAX_NETWORK_RECOVERIES = 2;
+const MAX_MEDIA_RECOVERIES = 1;
+const STARTUP_TIMEOUT_MS = 30000;
+
 export function useHls({
   videoRef,
   src,
@@ -24,37 +28,17 @@ export function useHls({
   onFailoverTriggered,
 }: UseHlsOptions) {
   const hlsRef = useRef<Hls | null>(null);
-  const [isLoaded, setIsLoaded] = useState<boolean>(false);
+  const [hlsInstance, setHlsInstance] = useState<Hls | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [levels, setLevels] = useState<{ id: number; height: number; bitrate: number }[]>([]);
-  const [currentLevel, setCurrentLevel] = useState<number>(-1); // -1 = auto
-  const [isUsingBackup, setIsUsingBackup] = useState<boolean>(false);
-  const networkErrorCountRef = useRef<number>(0);
-  const proxyAttemptedRef = useRef<boolean>(false);
-  const prevSrcRef = useRef<string | undefined>(undefined);
-
-  // Store latest callbacks in ref so changing inline callback instances never trigger useEffect loops
-  const callbacksRef = useRef({ onError, onSuccess, onFailoverTriggered });
+  const [currentLevel, setCurrentLevel] = useState(-1);
+  const [selection, setSelection] = useState({ src, backup: false });
+  const [attempt, setAttempt] = useState(0);
+  const isUsingBackup = selection.src === src && selection.backup;
+  const callbacksRef = useRef({ onError, onSuccess, onFailoverTriggered, autoplay });
   useEffect(() => {
-    callbacksRef.current = { onError, onSuccess, onFailoverTriggered };
+    callbacksRef.current = { onError, onSuccess, onFailoverTriggered, autoplay };
   });
-
-  // Al cambiar de canal o fuente, reiniciar estados de fallo y proxy para que no quede atascado en backup
-  if (prevSrcRef.current !== src) {
-    prevSrcRef.current = src;
-    if (isUsingBackup) {
-      setIsUsingBackup(false);
-    }
-    networkErrorCountRef.current = 0;
-    proxyAttemptedRef.current = false;
-  }
-
-  const destroyHls = useCallback(() => {
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-    setIsLoaded(false);
-  }, []);
 
   const changeLevel = useCallback((levelIndex: number) => {
     if (hlsRef.current) {
@@ -65,35 +49,98 @@ export function useHls({
 
   useEffect(() => {
     const video = videoRef.current;
-    const rawTarget = (isUsingBackup && backupSrc) ? backupSrc : (src || backupSrc);
-    if (!video || !rawTarget) {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-      setIsLoaded(false);
-      return;
-    }
+    const rawTarget = isUsingBackup && backupSrc ? backupSrc : (src || backupSrc);
+    setIsLoaded(false);
+    setLevels([]);
+    setCurrentLevel(-1);
+    setHlsInstance(null);
+    if (!video || !rawTarget) return;
 
-    // Auto-proxy para fuentes HTTP externas para evitar bloqueos Mixed Content en HTTPS (Vercel)
     const effectiveSrc = getProxiedStreamUrl(rawTarget);
+    let hls: Hls | null = null;
+    let stopped = false;
+    let proxyAttempted = effectiveSrc.includes('/api/proxy');
+    let networkRecoveries = 0;
+    let mediaRecoveries = 0;
+    let startupTimer: ReturnType<typeof setTimeout> | undefined;
 
-    // Limpiar instancia previa y buffer del video
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-    try {
+    const releaseVideo = () => {
       video.pause();
       video.removeAttribute('src');
       video.load();
-    } catch {}
+    };
+    const stop = () => {
+      stopped = true;
+      clearTimeout(startupTimer);
+      startupTimer = undefined;
+      hls?.destroy();
+      if (hlsRef.current === hls) hlsRef.current = null;
+      hls = null;
+      releaseVideo();
+    };
+    const fail = (message: string) => {
+      if (stopped) return;
+      stop();
+      setIsLoaded(false);
+      setHlsInstance(null);
+      if (autoFailover && backupSrc && !isUsingBackup && rawTarget !== backupSrc) {
+        setSelection({ src, backup: true });
+        callbacksRef.current.onFailoverTriggered?.('backup');
+      } else {
+        callbacksRef.current.onError?.(message);
+      }
+    };
+    const armDeadline = () => {
+      if (stopped || startupTimer !== undefined || !callbacksRef.current.autoplay) return;
+      startupTimer = setTimeout(() => {
+        startupTimer = undefined;
+        if (callbacksRef.current.autoplay) fail('La señal no respondió a tiempo. Pulsa Reintentar o selecciona otro canal.');
+      }, STARTUP_TIMEOUT_MS);
+    };
+    const play = () => {
+      if (!callbacksRef.current.autoplay || stopped) return;
+      video.play().catch(() => {
+        if (stopped || !callbacksRef.current.autoplay) return;
+        video.muted = true;
+        video.play().catch(() => {});
+      });
+    };
+    const onPlaying = () => {
+      if (stopped) return;
+      clearTimeout(startupTimer);
+      startupTimer = undefined;
+      setIsLoaded(true);
+      callbacksRef.current.onSuccess?.();
+    };
+    const tryProxy = () => {
+      if (proxyAttempted || stopped) return false;
+      const proxied = getProxiedStreamUrl(rawTarget, true);
+      if (proxied === effectiveSrc) return false;
+      proxyAttempted = true;
+      if (hls) {
+        hls.loadSource(proxied);
+        hls.startLoad();
+      } else {
+        video.src = proxied;
+        video.load();
+      }
+      return true;
+    };
+    const onNativeMetadata = () => {
+      if (!stopped) play();
+    };
+    const onNativeError = () => {
+      if (!stopped && !tryProxy()) fail('No se pudo cargar la señal. Pulsa Reintentar para volver a conectarte.');
+    };
 
-    networkErrorCountRef.current = 0;
+    releaseVideo();
+    video.addEventListener('playing', onPlaying);
+    video.addEventListener('waiting', armDeadline);
+    video.addEventListener('stalled', armDeadline);
+    armDeadline();
 
-    // Check if HLS.js is supported
     if (Hls.isSupported()) {
-      const hls = new Hls({
+      hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
         backBufferLength: 60,
@@ -101,7 +148,6 @@ export function useHls({
         maxMaxBufferLength: 60,
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 6,
-        // Detección veloz de fallos y cambio inmediato de canal (sin esperas de 12s)
         manifestLoadingTimeOut: 10000,
         manifestLoadingMaxRetry: 2,
         levelLoadingTimeOut: 10000,
@@ -111,144 +157,57 @@ export function useHls({
         startLevel: -1,
         progressive: true,
       });
-
-      hlsRef.current = hls;
-
-      hls.loadSource(effectiveSrc);
-      hls.attachMedia(video);
-
-      hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
-        setIsLoaded(true);
-        if (data.levels) {
-          setLevels(
-            data.levels.map((lvl, idx) => ({
-              id: idx,
-              height: lvl.height,
-              bitrate: lvl.bitrate,
-            }))
-          );
-        }
-        if (autoplay) {
-          video.play().catch(() => {
-            video.muted = true;
-            video.play().catch(() => {});
-          });
-        }
-        callbacksRef.current.onSuccess?.();
+      const instance = hls;
+      hlsRef.current = instance;
+      setHlsInstance(instance);
+      instance.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        if (stopped) return;
+        setLevels(data.levels.map((level, id) => ({ id, height: level.height, bitrate: level.bitrate })));
+        play();
       });
-
-      hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
-        setCurrentLevel(data.level);
+      instance.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+        if (!stopped) setCurrentLevel(data.level);
       });
-
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        // Rescate veloz e instantáneo: Si el manifiesto falla por CORS, 403 o error de red
-        // (incluso antes de que hls.js agote todos sus reintentos y emita fatal),
-        // cambiar inmediatamente a /api/proxy para que el canal cargue en milisegundos
-        const isManifestError =
-          data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
-          data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
-          data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR;
-
-        if (
-          isManifestError &&
-          !proxyAttemptedRef.current &&
-          rawTarget &&
-          !rawTarget.includes('/api/proxy') &&
-          !effectiveSrc.includes('/api/proxy')
-        ) {
-          proxyAttemptedRef.current = true;
-          const proxiedUrl = getProxiedStreamUrl(rawTarget, true);
-          hls.loadSource(proxiedUrl);
-          hls.startLoad();
-          return;
-        }
-
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              networkErrorCountRef.current += 1;
-              // Si falla por CORS o bloqueo de red en HTTPS directo y aún no se probó el proxy, rescatarlo vía /api/proxy
-              if (
-                !proxyAttemptedRef.current &&
-                rawTarget &&
-                !rawTarget.includes('/api/proxy') &&
-                !effectiveSrc.includes('/api/proxy')
-              ) {
-                proxyAttemptedRef.current = true;
-                const proxiedUrl = getProxiedStreamUrl(rawTarget, true);
-                hls.loadSource(proxiedUrl);
-                hls.startLoad();
-                return;
-              }
-              if (networkErrorCountRef.current >= 2 && autoFailover && backupSrc && !isUsingBackup && src !== backupSrc) {
-                setIsUsingBackup(true);
-                callbacksRef.current.onFailoverTriggered?.('backup');
-                return;
-              }
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
-              break;
-            default:
-              if (autoFailover && backupSrc && !isUsingBackup && src !== backupSrc) {
-                setIsUsingBackup(true);
-                callbacksRef.current.onFailoverTriggered?.('backup');
-                return;
-              }
-              if (hlsRef.current) {
-                hlsRef.current.destroy();
-                hlsRef.current = null;
-              }
-              setIsLoaded(false);
-              callbacksRef.current.onError?.('Error de conexión con el flujo HLS en vivo.');
-              break;
+      instance.on(Hls.Events.ERROR, (_, data) => {
+        if (stopped) return;
+        const manifestError = [
+          Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
+          Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT,
+          Hls.ErrorDetails.MANIFEST_PARSING_ERROR,
+        ].includes(data.details);
+        if (manifestError && tryProxy()) return;
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          if (tryProxy()) return;
+          if (networkRecoveries++ < MAX_NETWORK_RECOVERIES) {
+            instance.startLoad();
+            return;
           }
-        }
-      });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = effectiveSrc;
-      const onLoadedMetadata = () => {
-        setIsLoaded(true);
-        if (autoplay) {
-          video.play().catch(() => {
-            video.muted = true;
-            video.play().catch(() => {});
-          });
-        }
-        callbacksRef.current.onSuccess?.();
-      };
-      const onVideoError = () => {
-        if (!proxyAttemptedRef.current && rawTarget && !rawTarget.includes('/api/proxy') && !effectiveSrc.includes('/api/proxy')) {
-          proxyAttemptedRef.current = true;
-          video.src = getProxiedStreamUrl(rawTarget, true);
-          video.load();
-          video.play().catch(() => {});
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries++ < MAX_MEDIA_RECOVERIES) {
+          instance.recoverMediaError();
           return;
         }
-        if (autoFailover && backupSrc && !isUsingBackup) {
-          setIsUsingBackup(true);
-          callbacksRef.current.onFailoverTriggered?.('backup');
-        }
-      };
-      video.addEventListener('loadedmetadata', onLoadedMetadata);
-      video.addEventListener('error', onVideoError);
-      return () => {
-        video.removeEventListener('loadedmetadata', onLoadedMetadata);
-        video.removeEventListener('error', onVideoError);
-      };
+        fail('No pudimos recuperar la transmisión. Pulsa Reintentar o selecciona otro canal.');
+      });
+      instance.attachMedia(video);
+      instance.loadSource(effectiveSrc);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.addEventListener('loadedmetadata', onNativeMetadata);
+      video.addEventListener('error', onNativeError);
+      video.src = effectiveSrc;
     } else {
-      callbacksRef.current.onError?.('Tu navegador no es compatible con transmisiones HLS.');
+      fail('Tu navegador no es compatible con transmisiones HLS.');
     }
 
     return () => {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
+      video.removeEventListener('playing', onPlaying);
+      video.removeEventListener('waiting', armDeadline);
+      video.removeEventListener('stalled', armDeadline);
+      video.removeEventListener('loadedmetadata', onNativeMetadata);
+      video.removeEventListener('error', onNativeError);
+      stop();
     };
-  }, [src, backupSrc, isUsingBackup, autoFailover, autoplay]);
+  }, [src, backupSrc, isUsingBackup, autoFailover, attempt, videoRef]);
 
   return {
     isLoaded,
@@ -257,13 +216,18 @@ export function useHls({
     changeLevel,
     isUsingBackup,
     switchToPrimary: () => {
-      setIsUsingBackup(false);
+      setSelection({ src, backup: false });
       callbacksRef.current.onFailoverTriggered?.('primary');
     },
     switchToBackup: () => {
-      setIsUsingBackup(true);
+      if (!backupSrc || backupSrc === src) return;
+      setSelection({ src, backup: true });
       callbacksRef.current.onFailoverTriggered?.('backup');
     },
-    hlsInstance: hlsRef.current,
+    retry: () => {
+      setSelection({ src, backup: false });
+      setAttempt((value) => value + 1);
+    },
+    hlsInstance,
   };
 }

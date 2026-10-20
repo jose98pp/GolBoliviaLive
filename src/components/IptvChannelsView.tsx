@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useTransition } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import {
   Tv,
   Search,
@@ -32,13 +32,17 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [recentChannelIds, setRecentChannelIds] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('golbolivia_iptv_recent_ids') || '[]'); } catch { return []; }
+    try {
+      const ids = JSON.parse(localStorage.getItem('golbolivia_iptv_recent_ids') || '[]');
+      return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+    } catch { return []; }
   });
   const [showRecent, setShowRecent] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState<IptvCountryCode>('ALL');
   const [showOnlyFavorites, setShowOnlyFavorites] = useState<boolean>(false);
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => iptvService.getFavoriteChannelIds());
-  const [, startTransition] = useTransition();
+  const deferredQuery = useDeferredValue(searchQuery);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Cargar canales iniciales con patrón SWR (Stale-While-Revalidate)
   const loadChannels = async (force = false) => {
@@ -48,12 +52,14 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
       setLoading(true);
     }
 
+    setLoadError(null);
     try {
       const data = await iptvService.getChannels({ forceRefresh: force });
       setChannels(data);
+      setLoadError(iptvService.getLoadError());
       setFavoriteIds(iptvService.getFavoriteChannelIds());
     } catch (err) {
-      console.error('[IptvChannelsView] Error cargando canales:', err);
+      setLoadError('No pudimos cargar los canales. Comprueba tu conexión y vuelve a intentarlo.');
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -93,8 +99,8 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
       result = result.filter((c) => c.country === selectedCountry);
     }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
+    if (deferredQuery.trim()) {
+      const q = deferredQuery.toLowerCase().trim();
       result = result.filter(
         (c) =>
           c.name.toLowerCase().includes(q) ||
@@ -104,7 +110,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
     }
 
     return result;
-  }, [channels, selectedCountry, searchQuery, showOnlyFavorites, showRecent, recentChannelIds, favoriteIds]);
+  }, [channels, selectedCountry, deferredQuery, showOnlyFavorites, showRecent, recentChannelIds, favoriteIds]);
 
   return (
     <div className="w-full space-y-6 py-2">
@@ -138,12 +144,13 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
 
           <button
             onClick={() => loadChannels(true)}
-            disabled={isRefreshing}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs font-medium rounded-xl border border-slate-700/60 transition-colors cursor-pointer disabled:opacity-50"
+            disabled={isRefreshing || loading}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs font-medium rounded-xl border border-slate-700/60 transition-colors cursor-pointer disabled:opacity-50 min-h-11 focus-visible:outline-2 focus-visible:outline-amber-300"
+            aria-label="Actualizar lista de canales"
             title="Recargar lista de canales"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-amber-400' : ''}`} />
-            <span className="hidden sm:inline">Actualizar</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin motion-reduce:animate-none text-amber-400' : ''}`} />
+            <span>Actualizar</span>
           </button>
         </div>
       </div>
@@ -158,16 +165,15 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
               id="buscador-canales"
               type="text"
               value={searchQuery}
-              onChange={(e) => {
-                const val = e.target.value;
-                startTransition(() => setSearchQuery(val));
-              }}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Buscar canales por nombre, país o categoría"
               placeholder="Buscar canal o partido..."
               className="w-full pl-10 pr-9 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/30 transition-all"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
+                aria-label="Borrar búsqueda"
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 p-0.5 rounded cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
@@ -178,6 +184,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
           <button type="button" onClick={() => { setShowRecent((v) => !v); setShowOnlyFavorites(false); }} aria-pressed={showRecent} className={`rounded-xl border px-3 py-2.5 text-xs font-semibold ${showRecent ? 'bg-amber-500 text-slate-950 border-amber-400' : 'bg-slate-900 border-slate-800 text-slate-300'}`}>Recientes ({recentChannelIds.length})</button>
           {/* Favorites Filter Button */}
           <button
+            aria-pressed={showOnlyFavorites}
             onClick={() => { setShowOnlyFavorites((prev) => !prev); setShowRecent(false); }}
             className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
               showOnlyFavorites
@@ -198,7 +205,8 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
               return (
                 <button
                   key={country.code}
-                  onClick={() => setSelectedCountry(country.code)}
+                  onClick={() => { setSelectedCountry(country.code); setShowRecent(false); }}
+                  aria-pressed={isActive}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
                     isActive
                       ? 'bg-slate-800 text-amber-300 font-semibold border border-amber-500/40 shadow-sm'
@@ -214,17 +222,26 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
         )}
       </div>
 
+      {loadError && (
+        <div role="alert" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-slate-900 p-4 text-sm text-slate-200">
+          <p>{loadError}{channels.length > 0 ? ' Mostramos la última lista guardada.' : ''}</p>
+          <button type="button" onClick={() => loadChannels(true)} disabled={isRefreshing || loading} className="shrink-0 min-h-11 px-4 rounded-lg bg-amber-500 text-slate-950 font-semibold disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-amber-300">Reintentar</button>
+        </div>
+      )}
+      <p role="status" aria-live="polite" className="text-xs text-slate-400">
+        {loading ? 'Cargando canales…' : isRefreshing ? 'Actualizando sin interrumpir tu selección…' : `${filteredChannels.length} ${filteredChannels.length === 1 ? 'canal disponible' : 'canales disponibles'} en esta lista`}
+      </p>
       {/* Grid of Channels */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
-          <RefreshCw className="w-8 h-8 animate-spin text-amber-500" />
+          <RefreshCw className="w-8 h-8 animate-spin motion-reduce:animate-none text-amber-500" />
           <p className="text-sm font-medium">Sincronizando canales deportivos IPTV...</p>
         </div>
       ) : filteredChannels.length === 0 ? (
         <div className="p-12 text-center bg-slate-900/40 border border-slate-800/80 rounded-2xl space-y-3">
           <Radio className="w-8 h-8 text-slate-600 mx-auto" />
           <h3 className="text-sm font-semibold text-slate-300">
-            {showOnlyFavorites
+            {loadError && channels.length === 0 ? 'La lista no está disponible' : showRecent ? 'Aún no has sintonizado canales' : showOnlyFavorites
               ? 'No tienes canales guardados como favoritos aún'
               : 'No se encontraron canales con los filtros actuales'}
           </h3>
@@ -239,6 +256,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
                 setSearchQuery('');
                 setSelectedCountry('ALL');
                 setShowOnlyFavorites(false);
+                setShowRecent(false);
               }}
               className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-xl transition-colors cursor-pointer"
             >
@@ -274,10 +292,13 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
                       {channel.logo ? (
                         <img
                           src={channel.logo}
+                          loading="lazy"
+                          decoding="async"
                           alt={channel.name}
                           referrerPolicy="no-referrer"
                           onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/60?text=TV';
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/favicon.svg';
                           }}
                           className="w-full h-full object-contain"
                         />
@@ -289,11 +310,13 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
                     <div className="flex items-center gap-1">
                       <button
                         onClick={(e) => handleToggleFavorite(e, channel.id)}
-                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                        className={`p-2.5 min-h-11 min-w-11 flex items-center justify-center focus-visible:outline-2 focus-visible:outline-amber-300 rounded-lg transition-colors cursor-pointer ${
                           isFav
                             ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
                             : 'text-slate-600 hover:text-slate-400 hover:bg-slate-800/50'
                         }`}
+                        aria-pressed={isFav}
+                        aria-label={`${isFav ? 'Quitar de favoritos' : 'Agregar a favoritos'}: ${channel.name}`}
                         title={isFav ? 'Quitar de favoritos' : 'Agregar a favoritos'}
                       >
                         <Star className={`w-3.5 h-3.5 ${isFav ? 'fill-amber-400' : ''}`} />
@@ -342,9 +365,10 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onSelectChannel(channel);
+                      selectChannel(channel);
                     }}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                    aria-label={`Sintonizar ${channel.name}`}
+                    className={`flex items-center gap-1 min-h-11 px-3 py-2 focus-visible:outline-2 focus-visible:outline-amber-300 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                       isPlaying
                         ? 'bg-amber-500 text-slate-950 font-bold'
                         : 'bg-slate-800 group-hover:bg-amber-500 group-hover:text-slate-950 text-slate-300'

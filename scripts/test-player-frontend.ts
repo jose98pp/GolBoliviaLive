@@ -471,7 +471,30 @@ async function runTests() {
     'utf-8'
   );
   assert(appSource.includes('onDeleteLiveEvent={handleDeleteLiveEvent}'), 'Eliminación: App.tsx pasa onDeleteLiveEvent a SecretLoginPage');
-  assert(appSource.includes('const serverIds = new Set(data.liveEvents.map') || appSource.includes('data.liveEvents.length < prev.length ? data.liveEvents'), 'Eliminación: App.tsx reduce lista en INITIAL_STATE sin revivir eliminados');
+  const initialStateBody = appSource.match(/if \(type === 'INITIAL_STATE'\) \{([\s\S]*?)\n      \} else if/);
+  assert(Boolean(initialStateBody), 'INITIAL_STATE: callback SSE localizado');
+  let confirmedEvents: LiveEvent[] = [{ id: 'confirmado', title: 'Partido confirmado' } as LiveEvent];
+  let timeline: unknown = null;
+  let donationQr: unknown = null;
+  const applyInitialState = new Function('data', 'setEvents', 'setDonationQrInfo', 'setLiveEvents', initialStateBody![1]);
+  applyInitialState(
+    { liveEvents: [{ id: 'eliminado' }], events: ['gol'], stream: { donationQr: { url: '/qr.png' } } },
+    (value: unknown) => { timeline = value; },
+    (value: unknown) => { donationQr = value; },
+    () => { throw new Error('Un snapshot SSE no debe reemplazar partidos confirmados por Firestore'); },
+  );
+  assert(confirmedEvents[0].id === 'confirmado', 'INITIAL_STATE no revive partidos eliminados desde un snapshot SSE antiguo');
+  assert(Array.isArray(timeline) && timeline[0] === 'gol', 'INITIAL_STATE conserva actualización de cronología');
+  assert((donationQr as any)?.url === '/qr.png', 'INITIAL_STATE conserva actualización de QR');
+
+  const firestoreBody = appSource.match(/const unsubscribeMultiLiveEvents = apiClient\.subscribeMultiLiveEvents\(\(fbEvents\) => \{([\s\S]*?)\n    \}\);/);
+  assert(Boolean(firestoreBody), 'Firestore: suscripción autoritativa localizada');
+  const applyFirestoreSnapshot = new Function('fbEvents', 'setLiveEvents', 'sanitizeClientEvent', firestoreBody![1]);
+  const replaceEvents = (value: LiveEvent[]) => { confirmedEvents = value; };
+  applyFirestoreSnapshot([{ id: 'nuevo', title: 'Partido nuevo' }], replaceEvents, (event: LiveEvent) => event);
+  assert(confirmedEvents.length === 1 && confirmedEvents[0].id === 'nuevo', 'Snapshot Firestore aplica altas y bajas sin mezclar eventos anteriores');
+  applyFirestoreSnapshot([], replaceEvents, (event: LiveEvent) => event);
+  assert(confirmedEvents.length === 0, 'Snapshot Firestore vacío elimina todos los partidos anteriores');
 
   // Simular eliminación de partido-002 de la lista de eventos
   const initialEventsList: LiveEvent[] = [
@@ -636,7 +659,6 @@ async function runTests() {
   assert(appSource.includes('LiveEventsShowcase'), 'Frontend: App.tsx integra vitrina LiveEventsShowcase');
 
   // IPTV temporal: comprobar que la resolución de señales depende de eventId y no del catálogo global.
-  const { getStreamUrlForEvent } = await import('../src/utils/streamUtils');
   const base = { title: 'Partido', homeTeam: 'bolivar', awayTeam: 'strongest', isLive: true, cloudflare: { liveInputId: '', playbackUrl: 'https://cdn.example.com/cloudflare.m3u8' }, youtube: { videoId: '' }, kick: { channel: '' } };
   const matchA = { ...base, id: 'partido-A', primaryProvider: 'iptv' as const, fallbackOrder: ['iptv', 'cloudflare'] as const, iptvSource: { channelId: 'canal-1', channelName: 'Canal uno', streamUrl: 'https://cdn.example.com/uno.m3u8' } };
   const matchB = { ...base, id: 'partido-B', primaryProvider: 'iptv' as const, fallbackOrder: ['iptv', 'cloudflare'] as const, iptvSource: { channelId: 'canal-2', channelName: 'Canal dos', streamUrl: 'https://cdn.example.com/dos.m3u8' } };

@@ -84,27 +84,27 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     videoRef
   );
 
-  const handleReloadStream = () => {
-    if (videoRef.current) {
-      try {
-        videoRef.current.load();
-        videoRef.current.play().catch(() => {});
-      } catch {}
-    }
-  };
-
   const {
     isReconnecting,
     streamError,
-    triggerRecovery,
+    setStreamError,
     resetRecovery,
-  } = useStreamRecovery(handleReloadStream);
+  } = useStreamRecovery();
+
+  const handleReloadStream = () => {
+    resetRecovery();
+    retryHls();
+  };
+
+  useEffect(() => {
+    resetRecovery();
+  }, [effectiveSrc, streamSettings?.backupVideoUrl, resetRecovery]);
 
   const [failoverBanner, setFailoverBanner] = useState<string | null>(null);
 
   const handleHlsError = useCallback((err: string) => {
-    triggerRecovery(err);
-  }, [triggerRecovery]);
+    setStreamError(err);
+  }, [setStreamError]);
 
   const handleHlsSuccess = useCallback(() => {
     resetRecovery();
@@ -123,7 +123,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     }
   }, [streamSettings?.backupChannelName]);
 
-  const { isLoaded, changeLevel, hlsInstance, isUsingBackup } = useHls({
+  const { isLoaded, changeLevel, hlsInstance, isUsingBackup, retry: retryHls } = useHls({
     videoRef,
     src: effectiveSrc,
     backupSrc: streamSettings?.backupVideoUrl,

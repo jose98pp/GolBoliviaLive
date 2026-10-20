@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Navbar } from './components/Navbar';
 import { UniversalStreamPlayer } from './features/player/UniversalStreamPlayer';
 import { StreamPlayer } from './components/StreamPlayer';
@@ -17,7 +17,6 @@ import { FloatingReactions, FloatingItem } from './components/FloatingReactions'
 import { NotificationItem, StreamSettings, MatchEvent, LivePoll, ChatMessage, LiveEvent, StreamProvider, DonationQrInfo } from './types/football';
 import { BOLIVIAN_CLUBS, EMPTY_POLL } from './data/bolivianFootballData';
 import { MessageSquare, Tv, Activity, ShieldCheck, Video, Flame, MapPin, RefreshCw, Radio } from 'lucide-react';
-import { SecretLoginPage } from './components/SecretLoginPage';
 import { DonationQrModal } from './components/DonationQrModal';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { SocialFollowBanner } from './components/SocialFollowBanner';
@@ -46,6 +45,8 @@ import {
   clearMatchEventsInFirebase,
   clearChatInFirebase,
 } from './services/firebase';
+
+const SecretLoginPage = lazy(() => import('./components/SecretLoginPage').then((module) => ({ default: module.SecretLoginPage })));
 
 // ── Stream config sync (debounced) ──
 const STREAM_SYNC_DEBOUNCE_MS = 800;
@@ -959,6 +960,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   // If user navigated to /login or #/login, render Secret Login Page exclusively
   if (isLoginRoute) {
     return (
+      <Suspense fallback={<div role="status" className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center p-6">Cargando panel de administración…</div>}>
       <SecretLoginPage
         streamSettings={streamSettings}
         onUpdateStreamSettings={handleUpdateStreamSettings}
@@ -1135,6 +1137,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         onReturnToPublic={handleReturnToPublic}
         presenceStats={presence}
       />
+      </Suspense>
     );
   }
 
