@@ -102,8 +102,23 @@ export default function App() {
     }, 600);
   };
 
+  const playerSectionRef = useRef<HTMLElement | null>(null);
+
+  // Al seleccionar un canal, volver al reproductor una vez montada la vista.
+  useEffect(() => {
+    if (!activeIptvChannel || activeTab !== 'stream') return;
+    const frame = requestAnimationFrame(() => {
+      playerSectionRef.current?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeIptvChannel, activeTab]);
+
   const handleSelectIptvChannel = (channel: IptvChannel) => {
     setActiveIptvChannel(channel);
+    setActiveTab('stream');
     iptvService.saveLastPlayed(channel);
     setStreamSettings((prev) => ({
       ...prev,
@@ -1196,7 +1211,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       />
 
       {/* MAIN VIEWPORT BODY */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-5 md:p-6 pb-24 md:pb-8">
+      <main ref={playerSectionRef} className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-5 md:p-6 pb-24 md:pb-8 scroll-mt-20">
         {activeTab === 'stream' && (
           <div className="space-y-4 sm:space-y-5">
             {/* Split Grid for Stream & Chat */}
