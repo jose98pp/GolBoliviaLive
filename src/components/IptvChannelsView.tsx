@@ -31,10 +31,6 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
   const [loading, setLoading] = useState<boolean>(() => iptvService.getCachedChannelsSync().length === 0);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [playlistUrl, setPlaylistUrl] = useState<string>('');
-  const [importError, setImportError] = useState<string>('');
-  const [importLoading, setImportLoading] = useState(false);
-  const [importedCount, setImportedCount] = useState<number | null>(null);
   const [recentChannelIds, setRecentChannelIds] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('golbolivia_iptv_recent_ids') || '[]'); } catch { return []; }
   });
@@ -76,26 +72,6 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
     );
   };
 
-  const importPlaylist = async () => {
-    setImportLoading(true);
-    setImportError('');
-    setImportedCount(null);
-    try {
-      const response = await fetch('/api/iptv/import-preview?lista=' + encodeURIComponent(playlistUrl.trim()));
-      const payload = await response.json();
-      if (!response.ok || !Array.isArray(payload.channels)) throw new Error(payload.error || 'No se pudo cargar la lista');
-      const existing = new Set(channels.map((c) => c.streamUrl));
-      const added = (payload.channels as IptvChannel[]).filter((c) => {
-        if (existing.has(c.streamUrl)) return false;
-        existing.add(c.streamUrl);
-        return true;
-      });
-      setChannels((current) => [...current, ...added]);
-      setImportedCount(added.length);
-    } catch (err) { setImportError(err instanceof Error ? err.message : 'Error importando lista'); }
-    finally { setImportLoading(false); }
-  };
-
   const selectChannel = (channel: IptvChannel) => {
     setRecentChannelIds((prev) => {
       const next = [channel.id, ...prev.filter((id) => id !== channel.id)].slice(0, 12);
@@ -132,16 +108,6 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
 
   return (
     <div className="w-full space-y-6 py-2">
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-2">
-        <h3 className="text-sm font-semibold text-white">Importar lista M3U de IPTV-org</h3>
-        <p className="text-xs text-slate-400">Vista previa temporal de listas públicas de categorías o países. No se guarda en el servidor ni se mezcla con partidos.</p>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input type="url" value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} placeholder="https://iptv-org.github.io/iptv/categories/sports.m3u" aria-label="URL de lista M3U" className="flex-1 min-w-0 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white" />
-          <button type="button" onClick={() => { void importPlaylist(); }} disabled={importLoading || !playlistUrl.trim()} className="rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{importLoading ? 'Cargando...' : 'Vista previa'}</button>
-        </div>
-        {importError && <p role="alert" className="text-xs text-red-300">{importError}</p>}
-        {importedCount !== null && <p role="status" className="text-xs text-emerald-300">{importedCount} canales nuevos añadidos temporalmente.</p>}
-      </section>
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-gradient-to-r from-slate-900/90 via-slate-900/70 to-slate-950/90 border border-slate-800/80 rounded-2xl">
         <div className="space-y-1">
