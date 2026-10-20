@@ -1,6 +1,6 @@
 import type { IptvChannel, IptvCountryCode } from '../types/iptv';
 
-const CACHE_KEY = 'golbolivia_iptv_sports_cache';
+const CACHE_KEY = 'golbolivia_iptv_sports_cache_v2'; // invalidar catálogo anterior con canales de demostración incorrectos
 const FAVORITES_KEY = 'golbolivia_iptv_favorites';
 const LAST_CHANNEL_KEY = 'golbolivia_iptv_last_played';
 
