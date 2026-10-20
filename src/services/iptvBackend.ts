@@ -1,4 +1,6 @@
 import express, { Request, Response } from 'express';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { getCustomIptvChannelsFromFirebase, saveCustomIptvChannelToFirebase, deleteCustomIptvChannelFromFirebase } from './firebase';
 import type { IptvChannel } from '../types/iptv';
 
@@ -444,6 +446,24 @@ iptvRouter.get('/diagnostics/:id', async (req: Request, res: Response) => {
   } finally { clearTimeout(timer); }
 });
 
+// Defensa básica SSRF: no permitir IPs privadas, loopback, link-local ni hostnames internos.
+async function isPublicProbeUrl(value: string): Promise<boolean> {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hostname === 'localhost' || url.hostname.endsWith('.local')) return false;
+    const addresses = await lookup(url.hostname, { all: true });
+    if (!addresses.length) return false;
+    return addresses.every(({ address }) => {
+      if (isIP(address) === 4) {
+        const p = address.split('.').map(Number);
+        return !(p[0] === 0 || p[0] === 10 || p[0] === 127 || p[0] >= 224 || p[0] === 169 && p[1] === 254 || p[0] === 172 && p[1] >= 16 && p[1] <= 31 || p[0] === 192 && p[1] === 168 || p[0] === 100 && p[1] >= 64 && p[1] <= 127 || p[0] === 192 && p[1] === 0);
+      }
+      const ip = address.toLowerCase();
+      return !(/^(::1|::|fc|fd|fe8|fe9|fea|feb)/.test(ip) || ip.startsWith('::ffff:'));
+    });
+  } catch { return false; }
+}
+
 // POST /api/iptv/probe - Probar conectividad y latencia de señal .m3u8 en vivo
 iptvRouter.post('/probe', async (req: Request, res: Response) => {
   const { streamUrl } = req.body || {};
@@ -451,12 +471,14 @@ iptvRouter.post('/probe', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'streamUrl es requerido' });
   }
 
+  if (!(await isPublicProbeUrl(streamUrl))) return res.status(422).json({ success: false, reachable: false, error: 'URL no permitida: usa HTTPS público.' });
   const startTime = Date.now();
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
+    const timeout = setTimeout(() => controller.abort(), 10000);
     const resp = await fetch(streamUrl, {
       method: 'GET',
+      redirect: 'error',
       signal: controller.signal,
       headers: { 'User-Agent': 'GolBolivia/2026.1 (Channel-Probe)' },
     });
