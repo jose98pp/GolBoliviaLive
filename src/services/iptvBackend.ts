@@ -403,6 +403,27 @@ export function getOrRefreshSportsChannels(force = false): Promise<IptvChannel[]
   return activeFetchPromise;
 }
 
+// Importación de catálogos públicos aprobados. Nunca descargar URLs arbitrarias del usuario:
+// evita SSRF, accesos a redes privadas y listas de procedencia desconocida.
+export function getApprovedPlaylistUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 500) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.hostname !== 'iptv-org.github.io' || url.port || url.username || url.password || url.search || url.hash) return null;
+    if (!/^\\/iptv\\/(?:categories|countries)\\/[a-z0-9-]+\\.m3u$/.test(url.pathname)) return null;
+    return url.href;
+  } catch { return null; }
+}
+
+// GET /api/iptv/import-preview?lista=<URL> - Vista previa sin persistencia ni reproducción automática.
+iptvRouter.get('/import-preview', async (req: Request, res: Response) => {
+  const source = getApprovedPlaylistUrl(req.query.lista);
+  if (!source) return res.status(400).json({ success: false, error: 'Solo se admiten listas públicas HTTPS de iptv-org (categorías o países).' });
+  const channels = await fetchM3uList(source);
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300');
+  return res.json({ success: true, source, total: channels.length, channels, persisted: false });
+});
+
 // ── Endpoints ──
 
 // GET /api/iptv/sports - List of all sports channels
