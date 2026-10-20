@@ -1002,3 +1002,19 @@ export async function clearChatInFirebase(): Promise<void> {
   const snap = await getDocs(collection(db, 'chat'));
   await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
 }
+
+// Persistencia compartida de canales IPTV administrados (no usar disco efímero de Vercel).
+export async function getCustomIptvChannelsFromFirebase(): Promise<import('../types/iptv').IptvChannel[]> {
+  const snapshot = await getDocs(collection(db, 'iptvCustomChannels'));
+  return snapshot.docs.map((item) => ({ ...item.data(), id: item.id } as import('../types/iptv').IptvChannel));
+}
+
+export async function saveCustomIptvChannelToFirebase(channel: import('../types/iptv').IptvChannel): Promise<void> {
+  await writeGate;
+  await setDoc(doc(db, 'iptvCustomChannels', channel.id), channel);
+}
+
+export async function deleteCustomIptvChannelFromFirebase(id: string): Promise<void> {
+  await writeGate;
+  await deleteDoc(doc(db, 'iptvCustomChannels', id));
+}
