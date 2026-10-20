@@ -93,8 +93,6 @@ app.use((_req, res, next) => {
   next();
 });
 
-// 4. Montar router IPTV una vez normalizada la URL y configurado CORS
-app.use('/api/iptv', iptvRouter);
 
 // 5. Proxy de streaming para evitar bloqueos CORS y enlaces http:// (Mixed Content)
 app.all(['/api/proxy', '/proxy'], async (req: Request, res: Response) => {
@@ -316,6 +314,13 @@ function requireRoles(allowedRoles: UserRole[]) {
     next();
   };
 }
+
+// El catálogo es público; importación, diagnósticos remotos y cambios de canales son exclusivos del administrador.
+app.use('/api/iptv', (req: Request, res: Response, next: NextFunction) => {
+  const protectedPath = req.path === '/import-preview' || req.path === '/probe' || req.path === '/custom' && req.method !== 'GET' || req.path.startsWith('/custom/') && req.method !== 'GET';
+  if (!protectedPath) return next();
+  authenticate(req, res, () => requireRoles(['ADMIN', 'TRANSMISOR'])(req, res, next));
+}, iptvRouter);
 
 // --- SERVER-AUTHORITATIVE IN-MEMORY STATE STORE ---
 interface AppState {
