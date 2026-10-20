@@ -794,7 +794,7 @@ function cleanForFirestore<T extends Record<string, any>>(obj: T): T {
       awayTeam: away === home ? `${away}_alt` : away,
       isLive: Boolean(event.isLive),
       primaryProvider: event.primaryProvider,
-      iptvSource: event.iptvSource ? { ...event.iptvSource } : undefined,
+      iptvSource: event.iptvSource ? { ...event.iptvSource } : null,
       cloudflare: (event.cloudflare && (event.cloudflare.liveInputId || event.cloudflare.playbackUrl)) ? {
         liveInputId: event.cloudflare.liveInputId || '',
         playbackUrl: event.cloudflare.playbackUrl || '',
