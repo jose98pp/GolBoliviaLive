@@ -619,6 +619,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   }, [liveEvents]);
 
   const handleSelectMatchEvent = (evt: LiveEvent) => {
+    setActiveIptvChannel(null);
+    setActiveTab('stream');
     setActiveEventId(evt.id);
     const slug = getMatchSlug(evt);
     if (typeof window !== 'undefined' && window.history) {
@@ -1351,40 +1353,17 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                 )}
 
 
-                {(currentLiveEvent || activeIptvChannel) ? (
+                {currentLiveEvent ? (
                   <UniversalStreamPlayer
-                    key={activeIptvChannel ? `iptv-${activeIptvChannel.id}-${signalReloadKey}` : `${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${signalReloadKey}`}
-                    event={activeIptvChannel ? undefined : currentLiveEvent}
+                    key={`${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${currentLiveEvent.iptvSource?.channelId || 'no-iptv'}-${signalReloadKey}`}
+                    event={currentLiveEvent}
                     isTheaterMode={isTheaterMode}
                     setIsTheaterMode={setIsTheaterMode}
-                    homeScore={activeIptvChannel ? 0 : currentHomeScore}
-                    awayScore={activeIptvChannel ? 0 : currentAwayScore}
-                    matchMinute={activeIptvChannel ? 0 : currentMatchMinute}
+                    homeScore={currentHomeScore}
+                    awayScore={currentAwayScore}
+                    matchMinute={currentMatchMinute}
                     viewerCount={liveViewerCount}
-                    streamSettings={
-                      activeIptvChannel
-                        ? {
-                            title: activeIptvChannel.name,
-                            tournamentName: `${activeIptvChannel.countryName} · Señal Deportiva en Directo`,
-                            homeClubId: '',
-                            awayClubId: '',
-                            stadiumName: 'Transmisión Internacional',
-                            altitudeMeters: 0,
-                            period: '2T',
-                            isLive: true,
-                            broadcastMode: 'obs_custom',
-                            customVideoUrl: activeIptvChannel.streamUrl,
-                            backupVideoUrl: '',
-                            backupChannelName: '',
-                            activeStreamSource: 'obs',
-                            autoFailoverEnabled: false,
-                            chatMode: 'all',
-                            officialAnnouncement: `Sintonizando canal deportivo ${activeIptvChannel.name}`,
-                            overlayScoreboardVisible: false,
-                            lowLatencyMode: true,
-                          }
-                        : undefined
-                    }
+
                     onProviderChange={(newProv) => {
                       setLiveEvents((prev) =>
                         prev.map((e) => (e.id === (currentLiveEvent?.id || activeEventId) ? { ...e, primaryProvider: newProv } : e))
