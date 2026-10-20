@@ -931,7 +931,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       await apiClient.deleteLiveEvent(id);
     } catch (err: any) {
       console.error('[App] No se confirmó la eliminación en Firestore:', err.message || err);
-      return; // Nunca eliminar solo de la UI si la base de datos rechazó la operación.
+      throw err; // Propagar el fallo al editor y no modificar la UI.
     }
 
     const remaining = liveEvents.filter((e) => e.id !== id);
