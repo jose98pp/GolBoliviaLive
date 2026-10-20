@@ -626,21 +626,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         window.history.pushState(null, '', `/live/${slug}`);
       } catch {}
     }
-    setStreamSettings((prev) => ({
-      ...prev,
-      title: evt.title,
-      homeClubId: evt.homeTeam,
-      awayClubId: evt.awayTeam,
-      isLive: evt.isLive,
-      tournamentName: evt.tournamentName || prev.tournamentName,
-      stadiumName: evt.stadiumName || prev.stadiumName,
-      period: evt.period || prev.period,
-      customVideoUrl: evt.customVideoUrl || evt.cloudflare?.playbackUrl || prev.customVideoUrl,
-      backupVideoUrl: evt.backupVideoUrl || prev.backupVideoUrl,
-      backupChannelName: evt.backupChannelName || prev.backupChannelName,
-      activeStreamSource: evt.activeStreamSource || prev.activeStreamSource,
-      autoFailoverEnabled: evt.autoFailoverEnabled ?? prev.autoFailoverEnabled,
-    }));
+    // La selección del espectador no muta la configuración global ni la de otro partido.
+
   };
 
   // Stream state
