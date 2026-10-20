@@ -16,6 +16,7 @@ import {
   serverTimestamp,
   Firestore,
   getDocs,
+  getDocsFromServer,
   runTransaction,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -957,30 +958,68 @@ export async function getLiveEventsFromFirebase(): Promise<LiveEvent[]> {
 export function subscribeLiveEventsFirebase(
   callback: (events: LiveEvent[]) => void
 ): () => void {
+  let closed = false;
+  let revision = 0;
+  let hasConfirmedSnapshot = false;
+  let lastDisplayedCount = 0;
+  const colRef = collection(db, 'liveEvents');
+  const hydrate = (snap: Awaited<ReturnType<typeof getDocs>>) => {
+    const list: LiveEvent[] = [];
+    snap.forEach((d) => {
+      const event = hydrateLiveEventDoc(d);
+      if (event) list.push(event);
+    });
+    return list;
+  };
   try {
-    const colRef = collection(db, 'liveEvents');
-    return onSnapshot(
+    const unsubscribe = onSnapshot(
       colRef,
       (snap) => {
-        // Un snapshot vacío servido solo desde caché no demuestra que se hayan borrado partidos.
-        if (snap.empty && snap.metadata.fromCache) return;
-        if (!snap.empty) {
-          const list: LiveEvent[] = [];
-          snap.forEach((d) => {
-            const item = hydrateLiveEventDoc(d);
-            if (item) list.push(item);
-          });
-          callback(list);
-        } else {
-          callback([]);
+        const currentRevision = ++revision;
+        if (snap.metadata.fromCache) {
+          // La caché puede ser parcial o estar vacía al iniciar/reconectar.
+          // No reemplazar una lista ya confirmada por datos potencialmente incompletos.
+          if (!hasConfirmedSnapshot && !snap.empty) {
+            const cached = hydrate(snap);
+            if (cached.length) { lastDisplayedCount = cached.length; callback(cached); }
+          }
+          return;
         }
+        const incoming = hydrate(snap);
+        if (incoming.length > 0) {
+          hasConfirmedSnapshot = true;
+          lastDisplayedCount = incoming.length;
+          callback(incoming);
+          return;
+        }
+        // Una respuesta vacía aislada no debe apagar la portada si ya había
+        // partidos. Confirmar contra el servidor antes de vaciar la UI.
+        if (lastDisplayedCount === 0) {
+          hasConfirmedSnapshot = true;
+          lastDisplayedCount = 0;
+          callback([]);
+          return;
+        }
+        void getDocsFromServer(colRef).then((verifiedSnap) => {
+          if (closed || currentRevision !== revision) return;
+          const verified = hydrate(verifiedSnap);
+          hasConfirmedSnapshot = true;
+          lastDisplayedCount = verified.length;
+          callback(verified);
+        }).catch((err) => {
+          // Conservar el último estado confirmado; el siguiente snapshot reintentará.
+          console.warn('[Firebase] No se pudo confirmar lista vacía de partidos:', err);
+        });
       },
       (err) => {
         console.warn('[Firebase] Error en snapshot de liveEvents:', err);
+        // No notificar [] cuando hay error de conexión o permisos.
       }
     );
-  } catch {
-    return () => {};
+    return () => { closed = true; revision++; unsubscribe(); };
+  } catch (err) {
+    console.warn('[Firebase] No se pudo iniciar suscripción de partidos:', err);
+    return () => { closed = true; };
   }
 }
 
