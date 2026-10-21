@@ -64,6 +64,7 @@ export function useHls({
     let mediaRecoveries = 0;
     let lastFailure = '';
     let manifestLoaded = false;
+    let activeUrl = effectiveSrc;
     let startupTimer: ReturnType<typeof setTimeout> | undefined;
 
     const releaseVideo = () => {
@@ -124,6 +125,7 @@ export function useHls({
       const proxied = getProxiedStreamUrl(rawTarget, true);
       if (proxied === effectiveSrc) return false;
       proxyAttempted = true;
+      activeUrl = proxied;
       lastFailure = 'Falló el acceso directo; se intentó una ruta alternativa autorizada.';
       if (hls) {
         hls.loadSource(proxied);
@@ -181,16 +183,22 @@ export function useHls({
       instance.on(Hls.Events.ERROR, (_, data) => {
         if (stopped) return;
         const statusCode = data.response?.code;
+        const responseUrl = data.response?.url || activeUrl;
+        const viaProxy = responseUrl.includes('/api/proxy') || responseUrl.includes('/proxy?url=');
+        const requestKind = data.details.includes('frag') ? 'segmento de video' : data.details.includes('level') ? 'lista de calidad' : data.details.includes('key') ? 'clave de cifrado' : 'manifiesto HLS';
+        const originLabel = viaProxy ? 'a través del proxy de GolBoliviaLive' : 'en conexión directa con el servidor de la señal';
         if (statusCode === 401 || statusCode === 403) {
-          fail(`Acceso denegado (HTTP ${statusCode}). La señal puede requerir una suscripción o autorización del proveedor.`);
+          if (!viaProxy && tryProxy()) return;
+          // En el proxy, 403 puede venir de su política local o del origen: no atribuirlo sin evidencia.
+          fail(`HTTP ${statusCode} al solicitar ${requestKind} ${originLabel}. ${viaProxy ? 'Puede ser un rechazo del proxy o del servidor original; revisa X-GolBolivia-Proxy-Error en Red/Network para distinguirlos.' : 'El servidor rechazó la solicitud; puede requerir autorización.'}`);
           return;
         }
         if (statusCode === 404 || statusCode === 410) {
-          fail(`La dirección de la señal ya no existe (HTTP ${statusCode}). Actualiza la lista M3U.`);
+          fail(`HTTP ${statusCode} al solicitar ${requestKind} ${originLabel}. El enlace puede haber caducado; actualiza la lista M3U.`);
           return;
         }
         lastFailure = data.type === Hls.ErrorTypes.NETWORK_ERROR
-          ? `Error de red al cargar ${data.details}${statusCode ? ` (HTTP ${statusCode})` : ''}.`
+          ? `Error de red al cargar ${requestKind} ${originLabel} (${data.details})${statusCode ? ` HTTP ${statusCode}` : ''}.`
           : data.type === Hls.ErrorTypes.MEDIA_ERROR
             ? `Error de decodificación del video (${data.details}).`
             : `Error HLS (${data.details}).`;
