@@ -50,7 +50,7 @@ async function run() {
   let root = createRoot(host);
   const render = () => act(async () => root.render(<Harness />));
   const current = () => HlsDouble.instances.at(-1)!;
-  const emit = (type: string, details = 'fragLoadError') => act(async () => current().emit('error', { type, details, fatal: true, response: { code: 404 } }));
+  const emit = (type: string, details = 'fragLoadError') => act(async () => current().emit('error', { type, details, fatal: true, response: { code: 503 } }));
   const exhaustNetwork = async () => { for (let i = 0; i < 4; i++) await emit('networkError'); };
 
   await render();
@@ -72,7 +72,7 @@ async function run() {
   check(first.sources.length === 2 && first.sources[1].startsWith('/api/proxy'), 'Proxy is tried once per source');
   check(first.starts === 3 && first.destroyed, 'Two network recoveries after the proxy end in destruction');
   check(errors.length === 1, 'Exhausted source emits one terminal error');
-  check(errors[0].includes('HTTP 404'), 'Terminal network failure preserves the HTTP status for diagnosis');
+  check(errors[0].includes('HTTP 503'), 'Terminal network failure preserves the HTTP status for diagnosis');
   await emit('networkError');
   check(first.starts === 3 && errors.length === 1, 'Late fatal events cannot restart a failed instance');
 
@@ -129,6 +129,15 @@ async function run() {
   await render();
   await act(async () => video.dispatchEvent(new Event('waiting')));
   check(startupTimers.size === 0, 'Paused playback must not schedule an error deadline');
+  await act(async () => root.unmount());
+  options = { ...options, autoplay: true };
+  root = createRoot(host);
+  await render();
+  const missing = current();
+  const previousErrors = errors.length;
+  await act(async () => missing.emit('error', { type: 'networkError', details: 'fragLoadError', fatal: true, response: { code: 404 } }));
+  check(missing.destroyed && missing.sources.length === 1, 'HTTP 404 terminates without retrying a missing source');
+  check(errors.length === previousErrors + 1 && errors.at(-1)!.includes('HTTP 404'), 'HTTP 404 is preserved in the terminal diagnosis');
   await act(async () => root.unmount());
   host.remove();
   return checks;
