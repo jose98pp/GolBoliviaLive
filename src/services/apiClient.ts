@@ -1,5 +1,6 @@
 import { StreamSettings, MatchEvent, ChatMessage, MatchStats, PublicStreamState, PrivateIngestCredentials, Club, LiveEvent, StreamProvider, DonationQrInfo } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
+import { assertConfirmedMatchSignal } from '../utils/streamUtils';
 import { authService, AuthUser, UserRole } from './auth';
 import { espnFootballApi } from './espnFootballApi';
 import {
@@ -262,7 +263,7 @@ class GolBoliviaApiClient {
   }
 
   // 6.3 Dedicated Endpoint: Synchronize Stream & Backup M3U8 URLs Globally to Backend
-  async syncStreamConfig(config: Partial<StreamSettings> & { activeEventId?: string; eventId?: string }): Promise<{ success: boolean; config?: any }> {
+  async syncStreamConfig(config: Partial<StreamSettings> & { activeEventId?: string; eventId?: string }): Promise<{ success: boolean; config?: any; event?: LiveEvent }> {
     const targetEventId = config.eventId || config.activeEventId || 'partido-001';
 
     // 1. Post to dedicated /api/streams/config with explicit eventId via authenticated API
@@ -827,7 +828,11 @@ class GolBoliviaApiClient {
     }
 
     const resData = await res.json();
-    const confirmedEvent: LiveEvent = resData.event || event;
+    if (resData.success !== true || !resData.event || resData.event.id !== event.id) {
+      throw new Error('El servidor no confirmó el guardado del partido. No se marcaron los cambios como guardados.');
+    }
+    const confirmedEvent: LiveEvent = resData.event;
+    assertConfirmedMatchSignal(event, confirmedEvent);
     if (resData.version) confirmedEvent.version = resData.version;
     if (resData.updatedAt) confirmedEvent.updatedAt = resData.updatedAt;
 

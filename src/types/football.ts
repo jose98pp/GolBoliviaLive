@@ -206,6 +206,7 @@ export interface VipTransaction {
 }
 
 export interface MatchIptvSource {
+  sourceType?: 'hls' | 'iframe';
   channelId: string;
   channelName: string;
   streamUrl: string;

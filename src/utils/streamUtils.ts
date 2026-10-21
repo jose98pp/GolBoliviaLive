@@ -1,4 +1,4 @@
-import { LiveEvent, StreamProvider } from '../types/football';
+import { LiveEvent, StreamProvider, MatchIptvSource } from '../types/football';
 
 /** Valida una referencia HLS; la disponibilidad y la seguridad del destino se comprueban al reproducir. */
 export function normalizeMatchIptvUrl(value: unknown): string | null {
@@ -113,6 +113,24 @@ export function normalizeExternalPlayerUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+export function normalizeMatchIptvSource(value: unknown): MatchIptvSource | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Partial<MatchIptvSource>;
+  if (typeof raw.channelId !== 'string' || !raw.channelId.trim()) return null;
+  const iframe = normalizeExternalPlayerUrl(raw.streamUrl);
+  const streamUrl = iframe || normalizeMatchIptvUrl(raw.streamUrl);
+  if (!streamUrl) return null;
+  return { channelId: raw.channelId.trim().slice(0, 160), channelName: String(raw.channelName || 'Canal IPTV').trim().slice(0, 120),
+    streamUrl, sourceType: iframe ? 'iframe' : 'hls', category: String(raw.category || '').trim().slice(0, 80) };
+}
+
+export function assertConfirmedMatchSignal(expected: LiveEvent, confirmed: LiveEvent): void {
+  const signal = (event: LiveEvent) => JSON.stringify({ primaryProvider: event.primaryProvider,
+    iptvSource: normalizeMatchIptvSource(event.iptvSource), externalSource: normalizeExternalPlayerUrl(event.externalSource?.url),
+    fallbackOrder: event.fallbackOrder, activeStreamSource: event.activeStreamSource || 'obs', broadcastMode: event.broadcastMode || 'obs_custom' });
+  if (signal(expected) !== signal(confirmed)) throw new Error('El servidor no confirmó la señal seleccionada. Recarga el partido y vuelve a guardar.');
 }
 
 /**

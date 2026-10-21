@@ -116,6 +116,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [matchFallbackOrder, setMatchFallbackOrder] = useState<StreamProvider[]>(activeEvent?.fallbackOrder || ['cloudflare', 'youtube', 'kick']);
   const [externalUrl, setExternalUrl] = useState(activeEvent?.externalSource?.url || '');
   const [externalPreview, setExternalPreview] = useState('');
+  const [matchActiveSource, setMatchActiveSource] = useState(activeEvent?.activeStreamSource || 'obs');
   const [iptvSearch, setIptvSearch] = useState('');
   useEffect(() => {
     let cancelled = false;
@@ -146,11 +147,13 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const selectIptvChannel = (channel: IptvChannel) => {
     const external = normalizeExternalPlayerUrl(channel.streamUrl);
     if (external) {
+      setMatchActiveSource('obs');
+      setBroadcastMode('obs_custom');
       setExternalUrl(external);
       setExternalPreview('');
       setMatchPrimaryProvider('external');
       setMatchFallbackOrder((prev) => ['external', ...prev.filter((p) => p !== 'external')]);
-      setIptvSource({ channelId: channel.id, channelName: channel.name, streamUrl: external, category: channel.group });
+      setIptvSource({ channelId: channel.id, channelName: channel.name, streamUrl: external, sourceType: 'iframe', category: channel.group });
       setErrorMsg(null);
       setIsDirty(true);
       return;
@@ -160,7 +163,9 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setErrorMsg('Este canal no tiene una URL HLS (.m3u8) HTTP o HTTPS compatible. No se admiten páginas web ni otros formatos de vídeo.');
       return;
     }
-    setIptvSource({ channelId: channel.id, channelName: channel.name, streamUrl, category: channel.group });
+    setMatchActiveSource('obs');
+    setBroadcastMode('obs_custom');
+    setIptvSource({ channelId: channel.id, channelName: channel.name, streamUrl, sourceType: 'hls', category: channel.group });
     setMatchPrimaryProvider('iptv');
     setMatchFallbackOrder((prev) => ['iptv', ...prev.filter((p) => p !== 'iptv')]);
     setErrorMsg(null);
@@ -181,10 +186,12 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [isDirty, setIsDirty] = useState(false);
 
   const prevEventIdRef = useRef(activeEventId);
+  const syncedEventRef = useRef(activeEvent);
 
-  // Sync state ONLY when user explicitly switches to another match
+  // Cargar otro partido o una confirmación nueva sin sobrescribir cambios pendientes.
   useEffect(() => {
-    if (prevEventIdRef.current !== activeEventId) {
+    if (prevEventIdRef.current !== activeEventId || (!isDirty && !isSaving && activeEvent && syncedEventRef.current !== activeEvent)) {
+      syncedEventRef.current = activeEvent;
       prevEventIdRef.current = activeEventId;
       setIsDirty(false);
       const srcTitle = activeEvent?.title || streamSettings?.title || '';
@@ -202,6 +209,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setStadiumName(srcStadium);
       setPeriod(srcPeriod);
       setIsLiveMatch(srcIsLive);
+      setMatchActiveSource(activeEvent?.activeStreamSource || 'obs');
       setBroadcastMode(activeEvent?.broadcastMode || 'obs_custom');
       setIptvSource(activeEvent?.iptvSource || undefined);
       setExternalUrl(activeEvent?.externalSource?.url || '');
@@ -212,7 +220,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setLocalAwayScore(activeEvent?.awayScore ?? awayScore);
       setLocalMinute(activeEvent?.matchMinute ?? matchMinute);
     }
-  }, [activeEventId, activeEvent, streamSettings, defaultHomeClubId, defaultAwayClubId, homeScore, awayScore, matchMinute]);
+  }, [activeEventId, activeEvent, streamSettings, defaultHomeClubId, defaultAwayClubId, homeScore, awayScore, matchMinute, isDirty, isSaving]);
 
   // Free Football API (ESPN) state
   const [apiLeague, setApiLeague] = useState<string>('bol.1');
@@ -386,7 +394,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
   const formKey = JSON.stringify([
     title, tournamentName, homeClubId, awayClubId, stadiumName, altitudeMeters, officialAnnouncement,
-    isLiveMatch, period, localHomeScore, localAwayScore, localMinute, externalUrl, matchPrimaryProvider, matchFallbackOrder, iptvSource,
+    isLiveMatch, period, localHomeScore, localAwayScore, localMinute, externalUrl, matchPrimaryProvider, matchFallbackOrder, iptvSource, broadcastMode, matchActiveSource,
   ]);
   const formKeyRef = useRef(formKey);
   formKeyRef.current = formKey;
@@ -454,7 +462,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       youtube: preservedYoutube,
       kick: preservedKick,
       customVideoUrl: preservedCustomVideoUrl,
-      activeStreamSource: currentEvt?.activeStreamSource || streamSettings.activeStreamSource || 'obs',
+      activeStreamSource: matchActiveSource,
       autoFailoverEnabled: currentEvt?.autoFailoverEnabled ?? streamSettings.autoFailoverEnabled ?? true,
       broadcastMode,
       isClockRunning,
@@ -467,24 +475,16 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       // 1. Guardar partido completo en Firebase y Servidor (apiClient.saveLiveEvent)
       const confirmedEvent = await apiClient.saveLiveEvent(fullEventPayload);
 
-      // 2. Actualizar marcador oficial
-      await apiClient.updateScoreboard({
-        activeEventId: activeId,
-        homeScore: localHomeScore,
-        awayScore: localAwayScore,
-        matchMinute: localMinute,
-        period,
-        isClockRunning,
-      });
-
       // Los datos oficiales de este partido se guardan por eventId; no actualizar la configuración global.
       if (onUpdateLiveEvent) {
         onUpdateLiveEvent(confirmedEvent);
       }
 
-      setIsDirty(false);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 5000);
+      if (savedFormKey === formKeyRef.current) {
+        setIsDirty(false);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 5000);
+      }
       return true;
     } catch (err: any) {
       console.error('[MatchDetailsEditor] Error al guardar partido y marcador:', err);
@@ -1259,6 +1259,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                   const val = e.target.value;
                   const normalized = normalizeChannelSource(val, 'iframe') || val.trim();
                   setExternalUrl(normalized);
+                  setMatchActiveSource('obs');
+                  setBroadcastMode('obs_custom');
                   setExternalPreview('');
                   setIsDirty(true);
                 }}

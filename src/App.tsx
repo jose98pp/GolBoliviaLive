@@ -50,8 +50,8 @@ const SecretLoginPage = lazy(() => import('./components/SecretLoginPage').then((
 
 // ── Stream config sync (debounced) ──
 const STREAM_SYNC_DEBOUNCE_MS = 800;
-let pendingStreamSync: Partial<StreamSettings> = {};
-let streamSyncTimer: ReturnType<typeof setTimeout> | undefined;
+const pendingStreamSync = new Map<string, Partial<StreamSettings>>();
+const streamSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 // Limpia la copia local antigua de partidos (ya no se usa): evita datos viejos o eliminados.
 try { localStorage.removeItem('golbolivia_live_events'); } catch {}
@@ -790,15 +790,20 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     });
 
     // Debounced so text inputs (YouTube ID, Kick channel) send one request instead of one per keystroke.
-    pendingStreamSync = { ...pendingStreamSync, ...newSettings };
-    clearTimeout(streamSyncTimer);
-    streamSyncTimer = setTimeout(() => {
-      const patch = pendingStreamSync;
-      pendingStreamSync = {};
-      apiClient.syncStreamConfig({ ...patch, activeEventId, eventId: activeEventId }).catch((err) => {
-        console.error('Error al sincronizar señal global:', err);
+    if (!activeEventId) return;
+    pendingStreamSync.set(activeEventId, { ...pendingStreamSync.get(activeEventId), ...newSettings });
+    clearTimeout(streamSyncTimers.get(activeEventId));
+    const targetEventId = activeEventId;
+    streamSyncTimers.set(targetEventId, setTimeout(() => {
+      const patch = pendingStreamSync.get(targetEventId) || {};
+      pendingStreamSync.delete(targetEventId);
+      streamSyncTimers.delete(targetEventId);
+      apiClient.syncStreamConfig({ ...patch, activeEventId: targetEventId, eventId: targetEventId }).then(result => {
+        if (result.event) setLiveEvents(events => events.map(event => event.id === result.event!.id && (event.version || 0) <= (result.event!.version || 0) ? result.event! : event));
+      }).catch((err) => {
+        console.error('Error al sincronizar señal del partido:', err);
       });
-    }, STREAM_SYNC_DEBOUNCE_MS);
+    }, STREAM_SYNC_DEBOUNCE_MS));
   };
 
   const handleAddMatchEvent = (newEvent: Omit<MatchEvent, 'id'>) => {
@@ -1115,7 +1120,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         onUpdateLiveEvent={(data) => {
           setLiveEvents((prev) => {
             const updated = prev.map((ev) =>
-              ev.id === activeEventId ? { ...ev, ...data } : ev
+              ev.id === (data.id || activeEventId) && (!data.version || !ev.version || data.version >= ev.version) ? { ...ev, ...data } : ev
             );
             return updated;
           });

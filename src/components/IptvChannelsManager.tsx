@@ -22,7 +22,7 @@ import { normalizeChannelSource, parseChannelPlaylist } from '../utils/channelSo
 import { iptvService } from '../services/iptvService';
 
 interface IptvChannelsManagerProps {
-  onSetMatchStreamUrl?: (streamUrl: string, channelName: string, sourceType?: 'hls' | 'iframe') => void;
+  onSetMatchStreamUrl?: (streamUrl: string, channelName: string, sourceType?: 'hls' | 'iframe', channel?: IptvChannel) => void | Promise<void>;
   activeMatchStreamUrl?: string;
 }
 
@@ -92,6 +92,8 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
   } | null>(null);
 
   // Toast confirmation
+  const [assigningChannelId, setAssigningChannelId] = useState<string | null>(null);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [assignedMessage, setAssignedMessage] = useState<string | null>(null);
 
   const loadData = async () => {
@@ -186,11 +188,21 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
     }
   };
 
-  const handleSetMatchStream = (url: string, cName: string, sType?: 'hls' | 'iframe') => {
-    if (onSetMatchStreamUrl) {
-      onSetMatchStreamUrl(url, cName, sType);
-      setAssignedMessage(`¡Señal «${cName}» asignada al reproductor del partido!`);
+  const handleSetMatchStream = async (channel: IptvChannel) => {
+    if (assigningChannelId) return;
+    setAssigningChannelId(channel.id);
+    setAssignedMessage(null);
+    setAssignmentError(null);
+    setFormError(null);
+    try {
+      if (!onSetMatchStreamUrl) throw new Error('No hay un partido seleccionado.');
+      await onSetMatchStreamUrl(channel.streamUrl, channel.name, channel.sourceType, channel);
+      setAssignedMessage(`Señal «${channel.name}» guardada en el partido.`);
       setTimeout(() => setAssignedMessage(null), 4000);
+    } catch (error) {
+      setAssignmentError(error instanceof Error ? error.message : 'No se pudo guardar la señal del partido.');
+    } finally {
+      setAssigningChannelId(null);
     }
   };
 
@@ -295,6 +307,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
       </div>
 
       {/* Toast de confirmación */}
+      {assignmentError && <p role="alert" className="rounded-xl border border-red-600 p-3 text-sm text-red-300">{assignmentError}</p>}
       {assignedMessage && (
         <div className="p-3.5 bg-emerald-500/15 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in slide-in-from-top-2">
           <Check className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -658,7 +671,8 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => handleSetMatchStream(channel.streamUrl, channel.name, channel.sourceType)}
+                    onClick={() => { void handleSetMatchStream(channel); }}
+                    disabled={assigningChannelId !== null}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer ${
                       isMatchActive
                         ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
@@ -666,7 +680,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                     }`}
                   >
                     <Zap className="w-3 h-3" />
-                    <span>{isMatchActive ? 'Señal en Vivo' : 'Transmitir en Partido'}</span>
+                    <span>{assigningChannelId === channel.id ? 'Guardando señal…' : isMatchActive ? 'Señal en Vivo' : 'Transmitir en Partido'}</span>
                   </button>
                 </div>
               </div>

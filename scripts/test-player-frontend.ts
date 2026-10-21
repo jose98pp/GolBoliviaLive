@@ -402,7 +402,7 @@ async function runTests() {
   assert(editorSource.includes('Tablero Oficial del Marcador'), 'Pestañas: MatchDetailsEditor incluye el tablero unificado del marcador TV');
   assert(editorSource.includes('preservedCloudflare') && editorSource.includes('preservedYoutube'), 'Pestañas: MatchDetailsEditor preserva intactas las señales de video configuradas en Pestaña 1');
   assert(editorSource.includes('apiClient.saveLiveEvent'), 'Pestañas: MatchDetailsEditor guarda atómicamente el partido sin borrar señales');
-  assert(editorSource.includes('apiClient.updateScoreboard'), 'Pestañas: MatchDetailsEditor actualiza el marcador oficial');
+  assert(editorSource.includes('homeScore: localHomeScore') && editorSource.includes('awayScore: localAwayScore'), 'Pestañas: el guardado del partido incluye el marcador en la misma transacción');
 
   const loginPageSource = await fs.promises.readFile(
     path.join(__dirname, '../src/components/SecretLoginPage.tsx'),

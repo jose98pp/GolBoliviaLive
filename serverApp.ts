@@ -37,7 +37,8 @@ import { iptvRouter } from './src/services/iptvBackend';
 import proxyHandler from './api/proxy.js';
 
 import { normalizeVercelUrl } from './src/utils/serverUrl';
-import { normalizeMatchIptvUrl, normalizeExternalPlayerUrl } from './src/utils/streamUtils';
+import { buildMatchStreamPatch } from './src/utils/matchStreamConfig';
+import { normalizeExternalPlayerUrl, normalizeMatchIptvSource } from './src/utils/streamUtils';
 export { normalizeVercelUrl };
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
@@ -973,83 +974,71 @@ app.post(
   requireRoles(['ADMIN', 'TRANSMISOR']),
   async (req: Request, res: Response) => {
     const body = req.body || {};
-    state.streamSettings = {
-      ...state.streamSettings,
-      ...body,
-    };
-    if (typeof body.title === 'string') state.streamSettings.title = body.title.trim();
-    if (typeof body.tournamentName === 'string') state.streamSettings.tournamentName = body.tournamentName.trim();
-    if (typeof body.homeClubId === 'string') state.streamSettings.homeClubId = body.homeClubId.trim();
-    if (typeof body.awayClubId === 'string') state.streamSettings.awayClubId = body.awayClubId.trim();
-    if (typeof body.stadiumName === 'string') state.streamSettings.stadiumName = body.stadiumName.trim();
-    if (body.altitudeMeters !== undefined) state.streamSettings.altitudeMeters = Number(body.altitudeMeters) || 0;
-    if (typeof body.period === 'string') state.streamSettings.period = body.period as any;
-    if (typeof body.chatMode === 'string') state.streamSettings.chatMode = body.chatMode as any;
-    if (typeof body.officialAnnouncement === 'string') state.streamSettings.officialAnnouncement = body.officialAnnouncement.trim();
-    if (typeof body.overlayScoreboardVisible === 'boolean') state.streamSettings.overlayScoreboardVisible = body.overlayScoreboardVisible;
-    if (typeof body.lowLatencyMode === 'boolean') state.streamSettings.lowLatencyMode = body.lowLatencyMode;
-    if (typeof body.customVideoUrl === 'string') state.streamSettings.customVideoUrl = body.customVideoUrl.trim();
-    if (typeof body.backupVideoUrl === 'string') state.streamSettings.backupVideoUrl = body.backupVideoUrl.trim();
-    if (typeof body.backupChannelName === 'string') state.streamSettings.backupChannelName = body.backupChannelName.trim();
-    if (body.activeStreamSource && ['obs', 'backup', 'simulation'].includes(body.activeStreamSource)) {
-      state.streamSettings.activeStreamSource = body.activeStreamSource;
-    }
-    if (typeof body.autoFailoverEnabled === 'boolean') state.streamSettings.autoFailoverEnabled = body.autoFailoverEnabled;
-    if (typeof body.isLive === 'boolean') state.streamSettings.isLive = body.isLive;
-    if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
+    const targetEventId = String(body.eventId || body.activeEventId || '').trim();
+    if (!targetEventId) return res.status(400).json({ error: 'Se requiere eventId/activeEventId válido.', code: 'MISSING_EVENT_ID' });
+    await ensureStateLoaded();
+    const index = state.liveEvents.findIndex(event => event.id === targetEventId);
+    if (index < 0) return res.status(404).json({ error: 'Partido no encontrado.', code: 'EVENT_NOT_FOUND' });
+    const patch = buildMatchStreamPatch(body, state.liveEvents[index]);
+    let confirmedEvent = state.liveEvents[index];
+    try {
+      if (Object.keys(patch).length > 0) {
+        const candidate = { ...confirmedEvent, ...patch, version: body.version ?? confirmedEvent.version };
+        const result = await saveLiveEventToFirebase(candidate, (req as any).user?.username);
+        confirmedEvent = { ...candidate, version: result.version, updatedAt: result.updatedAt };
+        state.liveEvents[index] = confirmedEvent;
+      }
 
-    const targetEventIdBody = body.eventId || body.activeEventId;
-    if (!targetEventIdBody || String(targetEventIdBody).trim() === '') {
-      res.status(400).json({
-        error: 'Se requiere eventId/activeEventId válido para la sincronización de configuración del partido.',
-        code: 'MISSING_EVENT_ID',
+      state.streamSettings = {
+        ...state.streamSettings,
+        ...body,
+      };
+      if (typeof body.title === 'string') state.streamSettings.title = body.title.trim();
+      if (typeof body.tournamentName === 'string') state.streamSettings.tournamentName = body.tournamentName.trim();
+      if (typeof body.homeClubId === 'string') state.streamSettings.homeClubId = body.homeClubId.trim();
+      if (typeof body.awayClubId === 'string') state.streamSettings.awayClubId = body.awayClubId.trim();
+      if (typeof body.stadiumName === 'string') state.streamSettings.stadiumName = body.stadiumName.trim();
+      if (body.altitudeMeters !== undefined) state.streamSettings.altitudeMeters = Number(body.altitudeMeters) || 0;
+      if (typeof body.period === 'string') state.streamSettings.period = body.period as any;
+      if (typeof body.chatMode === 'string') state.streamSettings.chatMode = body.chatMode as any;
+      if (typeof body.officialAnnouncement === 'string') state.streamSettings.officialAnnouncement = body.officialAnnouncement.trim();
+      if (typeof body.overlayScoreboardVisible === 'boolean') state.streamSettings.overlayScoreboardVisible = body.overlayScoreboardVisible;
+      if (typeof body.lowLatencyMode === 'boolean') state.streamSettings.lowLatencyMode = body.lowLatencyMode;
+      if (typeof body.customVideoUrl === 'string') state.streamSettings.customVideoUrl = body.customVideoUrl.trim();
+      if (typeof body.backupVideoUrl === 'string') state.streamSettings.backupVideoUrl = body.backupVideoUrl.trim();
+      if (typeof body.backupChannelName === 'string') state.streamSettings.backupChannelName = body.backupChannelName.trim();
+      if (body.activeStreamSource && ['obs', 'backup', 'simulation'].includes(body.activeStreamSource)) {
+        state.streamSettings.activeStreamSource = body.activeStreamSource;
+      }
+      if (typeof body.autoFailoverEnabled === 'boolean') state.streamSettings.autoFailoverEnabled = body.autoFailoverEnabled;
+      if (typeof body.isLive === 'boolean') state.streamSettings.isLive = body.isLive;
+      if (body.broadcastMode) state.streamSettings.broadcastMode = body.broadcastMode;
+
+
+      persistState();
+      // Persistencia autoritativa en Firestore (la API autenticada es el único escritor)
+      await persistStreamSettingsToFirestore((req as any).user?.username);
+
+      const payload = {
+        ...getPublicStreamPayload(),
+        eventId: targetEventId,
+      };
+      broadcastSseEvent('STREAM_CONFIG_UPDATED', payload);
+      broadcastSseEvent('STREAM_UPDATED', payload);
+      broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
+
+      res.json({
+        success: true,
+        message: 'Configuración de señales sincronizada por partido con éxito.',
+        event: confirmedEvent,
+        config: payload,
+        streamSettings: payload,
+        eventId: targetEventId,
       });
-      return;
+    } catch (error: any) {
+      const conflict = /Conflicto|superior/.test(error.message || '');
+      return res.status(conflict ? 409 : 503).json({ success: false, code: conflict ? 'VERSION_CONFLICT' : 'FIRESTORE_UNAVAILABLE', error: error.message || 'No se pudo guardar la configuración del partido.' });
     }
-
-    const targetEventId = String(targetEventIdBody).trim();
-    // Keep active liveEvent in sync with streamSettings
-    if (Array.isArray(state.liveEvents) && state.liveEvents.length > 0) {
-      const targetEvt = state.liveEvents.find((e) => e.id === targetEventId);
-      if (!targetEvt) {
-        res.status(404).json({ error: `Partido con eventId "${targetEventId}" no encontrado.`, code: 'EVENT_NOT_FOUND' });
-        return;
-      }
-      if (state.streamSettings.title) targetEvt.title = state.streamSettings.title;
-      if (state.streamSettings.homeClubId) targetEvt.homeTeam = state.streamSettings.homeClubId;
-      if (state.streamSettings.awayClubId) targetEvt.awayTeam = state.streamSettings.awayClubId;
-      if (state.streamSettings.tournamentName) targetEvt.tournamentName = state.streamSettings.tournamentName;
-      if (state.streamSettings.stadiumName) targetEvt.stadiumName = state.streamSettings.stadiumName;
-      if (state.streamSettings.period) targetEvt.period = state.streamSettings.period;
-      if (body.customVideoUrl) {
-        targetEvt.customVideoUrl = body.customVideoUrl;
-        if (targetEvt.cloudflare) targetEvt.cloudflare.playbackUrl = body.customVideoUrl;
-      }
-      if (body.backupVideoUrl) targetEvt.backupVideoUrl = body.backupVideoUrl;
-      if (body.backupChannelName) targetEvt.backupChannelName = body.backupChannelName;
-      if (body.activeStreamSource) targetEvt.activeStreamSource = body.activeStreamSource;
-      if (typeof body.autoFailoverEnabled === 'boolean') targetEvt.autoFailoverEnabled = body.autoFailoverEnabled;
-    }
-
-    persistState();
-    // Persistencia autoritativa en Firestore (la API autenticada es el único escritor)
-    await persistStreamSettingsToFirestore((req as any).user?.username);
-
-    const payload = {
-      ...getPublicStreamPayload(),
-      eventId: targetEventId,
-    };
-    broadcastSseEvent('STREAM_CONFIG_UPDATED', payload);
-    broadcastSseEvent('STREAM_UPDATED', payload);
-    broadcastSseEvent('LIVE_EVENTS_UPDATED', state.liveEvents);
-
-    res.json({
-      success: true,
-      message: 'Configuración de señales sincronizada por partido con éxito.',
-      config: payload,
-      streamSettings: payload,
-      eventId: targetEventId,
-    });
   }
 );
 
@@ -1132,12 +1121,17 @@ app.post(
     const now = Date.now();
     const operator = (req as any).user?.username || 'admin';
 
-    const externalUrl = normalizeExternalPlayerUrl(raw.externalSource?.url);
+    const iptvSource = normalizeMatchIptvSource(raw.iptvSource);
+    if ((raw.iptvSource != null || raw.primaryProvider === 'iptv') && !iptvSource) {
+      res.status(400).json({ error: 'La señal IPTV seleccionada no es compatible.', code: 'INVALID_MATCH_SOURCE' });
+      return;
+    }
+    const externalUrl = normalizeExternalPlayerUrl(raw.externalSource?.url)
+      || (raw.primaryProvider === 'external' && iptvSource?.sourceType === 'iframe' ? iptvSource.streamUrl : null);
     if ((raw.externalSource != null || raw.primaryProvider === 'external') && !externalUrl) {
       res.status(400).json({ error: 'URL de reproductor externo no compatible.' });
       return;
     }
-    const iptvStreamUrl = normalizeMatchIptvUrl(raw.iptvSource?.streamUrl);
 
     // Sanitize to NEVER store or accept stream keys in public event
     const safeEvent: LiveEvent = {
@@ -1150,12 +1144,7 @@ app.post(
         ? raw.primaryProvider
         : 'cloudflare',
       externalSource: externalUrl ? { url: externalUrl } : null,
-      iptvSource: raw.iptvSource && typeof raw.iptvSource.channelId === 'string' && iptvStreamUrl ? {
-        channelId: raw.iptvSource.channelId.trim().slice(0, 160),
-        channelName: String(raw.iptvSource.channelName || 'Canal IPTV').trim().slice(0, 120),
-        streamUrl: iptvStreamUrl,
-        category: String(raw.iptvSource.category || '').trim().slice(0, 80),
-      } : null,
+      iptvSource,
       cloudflare: raw.cloudflare ? {
         liveInputId: String(raw.cloudflare.liveInputId || '').trim(),
         playbackUrl: String(raw.cloudflare.playbackUrl || '').trim(),

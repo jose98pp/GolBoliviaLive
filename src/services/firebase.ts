@@ -796,6 +796,7 @@ function cleanForFirestore<T extends Record<string, any>>(obj: T): T {
       isLive: Boolean(event.isLive),
       primaryProvider: event.primaryProvider,
       iptvSource: event.iptvSource ? { ...event.iptvSource } : null,
+      externalSource: event.externalSource ? { ...event.externalSource } : null,
       cloudflare: (event.cloudflare && (event.cloudflare.liveInputId || event.cloudflare.playbackUrl)) ? {
         liveInputId: event.cloudflare.liveInputId || '',
         playbackUrl: event.cloudflare.playbackUrl || '',
@@ -913,6 +914,7 @@ function hydrateLiveEventDoc(d: any): LiveEvent | null {
     isLive: raw.isLive !== undefined ? Boolean(raw.isLive) : true,
     primaryProvider: raw.primaryProvider || 'cloudflare',
     iptvSource: raw.iptvSource,
+    externalSource: raw.externalSource,
     broadcastMode: raw.broadcastMode || 'obs_custom',
     fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ['cloudflare', 'youtube', 'kick'],
     tournamentName: raw.tournamentName || 'Liga Tigo División Profesional - Torneo Clausura',

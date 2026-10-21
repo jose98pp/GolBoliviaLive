@@ -510,7 +510,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
     }
   };
 
-  const currentEvent = liveEvents?.find((e) => e.id === activeEventId) || liveEvents?.[0];
+  const currentEvent = activeEventId ? liveEvents?.find((e) => e.id === activeEventId) : liveEvents?.[0];
   const currentHomeId = currentEvent?.homeTeam || streamSettings.homeClubId || 'bolivar';
   const currentAwayId = currentEvent?.awayTeam || streamSettings.awayClubId || 'strongest';
   const homeClub = clubs[currentHomeId] || BOLIVIAN_CLUBS[currentHomeId] || BOLIVIAN_CLUBS.bolivar;
@@ -523,13 +523,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   // cambia el proveedor principal o los canales en la pestaña 1 (Transmisión).
   const persistActiveLiveEvent = async (
     patch: Partial<LiveEvent>,
-    feedbackSuffix?: string
+    feedbackSuffix?: string,
+    throwOnFailure = false
   ): Promise<LiveEvent | null> => {
     const target = currentEvent;
     if (!target) return null;
 
-    // Actualización optimista inmediata del partido activo en el estado local
-    if (onUpdateLiveEvent) onUpdateLiveEvent(patch);
 
     try {
       const payload: LiveEvent & { force?: boolean } = {
@@ -547,7 +546,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
       };
       const saved = await apiClient.saveLiveEvent(payload);
       // Sincronizar la versión confirmada para reflejar el guardado y evitar conflictos
-      if (onUpdateLiveEvent) onUpdateLiveEvent({ version: saved.version, updatedAt: saved.updatedAt });
+      if (onUpdateLiveEvent) onUpdateLiveEvent(saved);
       setProviderSaveFeedback({
         ok: true,
         text: feedbackSuffix
@@ -558,13 +557,12 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
       return saved;
     } catch (err: any) {
       setProviderSaveFeedback({ ok: false, text: err.message || 'No se pudo guardar el partido activo en el servidor.' });
+      if (throwOnFailure) throw err;
       return null;
     }
   };
 
   const handleSelectPrimaryProvider = async (provider: StreamProvider) => {
-    // 1. Reflejo inmediato en el estado global (badge y consumidores que leen streamSettings)
-    onUpdateStreamSettings({ primaryProvider: provider });
     setProviderSaveFeedback(null);
 
     if (!currentEvent) {
@@ -848,13 +846,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                         else if (val.includes('youtu.be/')) id = val.split('youtu.be/')[1]?.split('?')[0] || val;
                         onUpdateStreamSettings({ youtube: { videoId: id } });
                       }}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        let id = val;
-                        if (val.includes('youtube.com/watch?v=')) id = val.split('v=')[1]?.split('&')[0] || val;
-                        else if (val.includes('youtu.be/')) id = val.split('youtu.be/')[1]?.split('?')[0] || val;
-                        persistActiveLiveEvent({ youtube: { videoId: id } }, `canal de YouTube sincronizado en el partido activo.`);
-                      }}
                       placeholder="jfKfPfyJRdk o https://youtube.com/watch?v=..."
                       className="w-full bg-[#060a14] border border-slate-750 focus:border-red-500 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
                     />
@@ -871,10 +862,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
                       onChange={(e) => {
                         const val = e.target.value.trim().replace('https://kick.com/', '');
                         onUpdateStreamSettings({ kick: { channel: val } });
-                      }}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim().replace('https://kick.com/', '');
-                        persistActiveLiveEvent({ kick: { channel: val } }, `canal de Kick sincronizado en el partido activo.`);
                       }}
                       placeholder="golbolivia"
                       className="w-full bg-[#060a14] border border-slate-750 focus:border-emerald-500 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none"
@@ -1912,14 +1899,17 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             /* PESTAÑA CANALES IPTV: GESTIÓN DE SEÑALES IPTV Y CARGA DESDE DASHBOARD */
             <div className="space-y-6">
               <IptvChannelsManager
-                activeMatchStreamUrl={streamSettings.customVideoUrl}
-                onSetMatchStreamUrl={(streamUrl, channelName, sourceType) => {
+                activeMatchStreamUrl={currentEvent?.primaryProvider === 'external' ? currentEvent.externalSource?.url : currentEvent?.iptvSource?.streamUrl}
+                onSetMatchStreamUrl={async (streamUrl, channelName, sourceType, channel) => {
+                  if (!currentEvent || !channel) throw new Error('Selecciona un partido activo antes de asignar una señal.');
                   const isExternal = sourceType === 'iframe' || Boolean(normalizeExternalPlayerUrl(streamUrl));
-                  onUpdateStreamSettings({
-                    customVideoUrl: streamUrl,
-                    primaryProvider: isExternal ? 'external' : 'cloudflare',
-                    title: `${channelName} · En Vivo`,
-                  });
+                  const saved = await persistActiveLiveEvent({
+                    primaryProvider: isExternal ? 'external' : 'iptv',
+                    iptvSource: { channelId: channel.id, channelName, streamUrl, sourceType: isExternal ? 'iframe' : 'hls', category: channel.group },
+                    externalSource: isExternal ? { url: streamUrl } : null,
+                    activeStreamSource: 'obs', broadcastMode: 'obs_custom',
+                  }, undefined, true);
+                  if (!saved) throw new Error('No se pudo guardar la señal del partido. Revisa el mensaje de error y vuelve a intentarlo.');
                 }}
               />
             </div>
