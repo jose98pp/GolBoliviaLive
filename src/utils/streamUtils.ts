@@ -15,6 +15,19 @@ export function normalizeMatchIptvUrl(value: unknown): string | null {
   }
 }
 
+export function normalizeExternalPlayerUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.trim().length > 1500) return null;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    if (!['streamxhd.st', 'streamxhd.com', 'streamxhd.click'].includes(url.hostname)) return null;
+    if (url.pathname !== '/live1.php' || !/^[a-zA-Z0-9_-]{1,80}$/.test(url.searchParams.get('stream') || '')) return null;
+    if ([...url.searchParams.keys()].some(key => key !== 'stream') || url.searchParams.getAll('stream').length !== 1) return null;
+    url.hash = '';
+    return url.href;
+  } catch { return null; }
+}
+
 /**
  * Resolves the playback URL for a LiveEvent based strictly on its configured primaryProvider.
  * If the primaryProvider stream is not configured, it gracefully falls back according to fallbackOrder.
@@ -25,6 +38,7 @@ export function getStreamUrlForEvent(event?: LiveEvent | null): string {
   const provider: StreamProvider = event.primaryProvider || 'cloudflare';
 
   const getUrlByProvider = (p: StreamProvider): string => {
+    if (p === 'external') return normalizeExternalPlayerUrl(event.externalSource?.url) || '';
     if (p === 'iptv') return event.iptvSource?.streamUrl?.trim() || '';
     if (p === 'kick' && event.kick?.channel?.trim()) {
       const channel = event.kick.channel.trim().replace(/^https?:\/\/(?:www\.)?kick\.com\//, '');

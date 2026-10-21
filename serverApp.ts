@@ -37,7 +37,7 @@ import { iptvRouter } from './src/services/iptvBackend';
 import proxyHandler from './api/proxy.js';
 
 import { normalizeVercelUrl } from './src/utils/serverUrl';
-import { normalizeMatchIptvUrl } from './src/utils/streamUtils';
+import { normalizeMatchIptvUrl, normalizeExternalPlayerUrl } from './src/utils/streamUtils';
 export { normalizeVercelUrl };
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
@@ -1132,6 +1132,11 @@ app.post(
     const now = Date.now();
     const operator = (req as any).user?.username || 'admin';
 
+    const externalUrl = normalizeExternalPlayerUrl(raw.externalSource?.url);
+    if ((raw.externalSource != null || raw.primaryProvider === 'external') && !externalUrl) {
+      res.status(400).json({ error: 'URL de reproductor externo no compatible.' });
+      return;
+    }
     const iptvStreamUrl = normalizeMatchIptvUrl(raw.iptvSource?.streamUrl);
 
     // Sanitize to NEVER store or accept stream keys in public event
@@ -1141,9 +1146,10 @@ app.post(
       homeTeam: cleanHome,
       awayTeam: cleanAway,
       isLive: Boolean(raw.isLive ?? true),
-      primaryProvider: ['cloudflare', 'youtube', 'kick', 'iptv'].includes(raw.primaryProvider)
+      primaryProvider: ['cloudflare', 'youtube', 'kick', 'iptv', 'external'].includes(raw.primaryProvider)
         ? raw.primaryProvider
         : 'cloudflare',
+      externalSource: externalUrl ? { url: externalUrl } : null,
       iptvSource: raw.iptvSource && typeof raw.iptvSource.channelId === 'string' && iptvStreamUrl ? {
         channelId: raw.iptvSource.channelId.trim().slice(0, 160),
         channelName: String(raw.iptvSource.channelName || 'Canal IPTV').trim().slice(0, 120),
@@ -1161,7 +1167,7 @@ app.post(
         channel: String(raw.kick.channel || '').trim(),
       } : undefined,
       fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0
-        ? raw.fallbackOrder.filter((p: unknown) => ['cloudflare', 'youtube', 'kick', 'iptv'].includes(String(p)))
+        ? raw.fallbackOrder.filter((p: unknown) => ['cloudflare', 'youtube', 'kick', 'iptv', 'external'].includes(String(p)))
         : ['cloudflare', 'youtube', 'kick'],
       tournamentName: raw.tournamentName ? String(raw.tournamentName).trim() : undefined,
       stadiumName: raw.stadiumName ? String(raw.stadiumName).trim() : undefined,

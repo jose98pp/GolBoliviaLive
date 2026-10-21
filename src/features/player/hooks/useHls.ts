@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
-import { getProxiedStreamUrl } from '../../../utils/streamUtils';
+import { getProxiedStreamUrl, normalizeExternalPlayerUrl } from '../../../utils/streamUtils';
 
 interface UseHlsOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -54,7 +54,7 @@ export function useHls({
     setLevels([]);
     setCurrentLevel(-1);
     setHlsInstance(null);
-    if (!video || !rawTarget) return;
+    if (!video || !rawTarget || normalizeExternalPlayerUrl(rawTarget)) return;
 
     const effectiveSrc = getProxiedStreamUrl(rawTarget);
     let hls: Hls | null = null;

@@ -6,6 +6,7 @@ import { useCast } from './hooks/useCast';
 import { useHls } from './hooks/useHls';
 import { useStreamRecovery } from './hooks/useStreamRecovery';
 import { usePlayerTelemetry } from './hooks/usePlayerTelemetry';
+import { normalizeExternalPlayerUrl } from '../../utils/streamUtils';
 import { VideoSurface } from './VideoSurface';
 import { PlayerControls } from './PlayerControls';
 import { QualitySelector } from './QualitySelector';
@@ -64,6 +65,8 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   const effectiveSrc = streamSettings?.activeStreamSource === 'backup'
     ? (streamSettings?.backupVideoUrl || streamSettings?.customVideoUrl)
     : (streamSettings?.activeStreamSource === 'simulation' ? '' : (streamSettings?.customVideoUrl || streamSettings?.backupVideoUrl));
+
+  const isExternalPlayer = Boolean(normalizeExternalPlayerUrl(effectiveSrc));
 
   // Custom Cast Hook for Smart TV, Chromecast and AirPlay
   const {
@@ -274,7 +277,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
       />
 
       {/* Player Controls Bar */}
-      <PlayerControls
+      {!isExternalPlayer && <PlayerControls
         isPlaying={isPlaying}
         onTogglePlay={handleTogglePlay}
         isMuted={isMuted}
@@ -304,7 +307,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         viewerCount={viewerCount}
         isCleanScreen={isCleanScreen}
         onToggleCleanScreen={handleToggleCleanScreen}
-      />
+      />}
 
       {/* Cast Modal */}
       <CastController

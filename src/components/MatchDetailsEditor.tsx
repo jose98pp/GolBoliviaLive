@@ -26,7 +26,8 @@ import { groupClubsByLeague, PRESET_INTERNATIONAL_MATCHES } from '../data/bolivi
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
 import { iptvService } from '../services/iptvService';
-import { normalizeMatchIptvUrl } from '../utils/streamUtils';
+import { ExternalPlayer } from '../features/player/ExternalPlayer';
+import { normalizeMatchIptvUrl, normalizeExternalPlayerUrl } from '../utils/streamUtils';
 import type { IptvChannel } from '../types/iptv';
 import type { MatchIptvSource, StreamProvider } from '../types/football';
 import { espnFootballApi, ApiMatchSummary } from '../services/espnFootballApi';
@@ -112,6 +113,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [iptvSource, setIptvSource] = useState<MatchIptvSource | undefined>(activeEvent?.iptvSource || undefined);
   const [matchPrimaryProvider, setMatchPrimaryProvider] = useState<StreamProvider>(activeEvent?.primaryProvider || 'cloudflare');
   const [matchFallbackOrder, setMatchFallbackOrder] = useState<StreamProvider[]>(activeEvent?.fallbackOrder || ['cloudflare', 'youtube', 'kick']);
+  const [externalUrl, setExternalUrl] = useState(activeEvent?.externalSource?.url || '');
+  const [externalPreview, setExternalPreview] = useState('');
   const [iptvSearch, setIptvSearch] = useState('');
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +172,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setIsLiveMatch(srcIsLive);
       setBroadcastMode(activeEvent?.broadcastMode || 'obs_custom');
       setIptvSource(activeEvent?.iptvSource || undefined);
+      setExternalUrl(activeEvent?.externalSource?.url || '');
+      setExternalPreview('');
       setMatchPrimaryProvider(activeEvent?.primaryProvider || 'cloudflare');
       setMatchFallbackOrder(activeEvent?.fallbackOrder || ['cloudflare', 'youtube', 'kick']);
       setLocalHomeScore(activeEvent?.homeScore ?? homeScore);
@@ -349,13 +354,17 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
   const formKey = JSON.stringify([
     title, tournamentName, homeClubId, awayClubId, stadiumName, altitudeMeters, officialAnnouncement,
-    isLiveMatch, period, localHomeScore, localAwayScore, localMinute,
+    isLiveMatch, period, localHomeScore, localAwayScore, localMinute, externalUrl, matchPrimaryProvider, matchFallbackOrder, iptvSource,
   ]);
   const formKeyRef = useRef(formKey);
   formKeyRef.current = formKey;
 
   const handleSubmit = async (e?: React.FormEvent): Promise<boolean> => {
     if (e) e.preventDefault();
+    if ((externalUrl.trim() || matchPrimaryProvider === 'external') && !normalizeExternalPlayerUrl(externalUrl)) {
+      setErrorMsg('Introduce una URL válida de reproductor externo o selecciona otra señal principal.');
+      return false;
+    }
     const savedFormKey = formKeyRef.current;
     setErrorMsg(null);
     setSaveSuccess(false);
@@ -408,6 +417,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       primaryProvider: preservedPrimaryProvider,
       fallbackOrder: matchFallbackOrder,
       iptvSource: iptvSource || null,
+      externalSource: normalizeExternalPlayerUrl(externalUrl) ? { url: normalizeExternalPlayerUrl(externalUrl)! } : null,
       cloudflare: preservedCloudflare,
       youtube: preservedYoutube,
       kick: preservedKick,
@@ -1167,13 +1177,23 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               {iptvChannels.filter((ch) => (ch.name + ' ' + ch.group).toLowerCase().includes(iptvSearch.toLowerCase())).slice(0, 250).map((ch) => <option key={ch.id} value={ch.id}>{ch.name} — {ch.group}</option>)}
             </select>
             {iptvSource && <div className="flex flex-wrap gap-2 items-center text-xs text-slate-300"><span>Asignado: <strong className="text-white">{iptvSource.channelName}</strong> ({iptvSource.category || 'Sin categoría'})</span><button type="button" onClick={removeIptvChannel} className="border border-red-700 text-red-300 rounded-lg px-3 py-1">Quitar del partido</button></div>}
+            <div className="space-y-2 border-t border-slate-700 pt-3">
+              <label htmlFor="match-external-url" className="block text-sm font-bold text-cyan-300">Reproductor externo (iframe)</label>
+              <p className="text-xs text-slate-400">Pega la URL HTTPS del reproductor autorizado, no el código HTML. Compatible con streamxhd.st, streamxhd.com y streamxhd.click, ruta /live1.php?stream=canal.</p>
+              <input id="match-external-url" type="url" value={externalUrl} onChange={e => { setExternalUrl(e.target.value); setExternalPreview(''); setIsDirty(true); }} placeholder="https://streamxhd.st/live1.php?stream=dsports" className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm" />
+              {externalUrl && !normalizeExternalPlayerUrl(externalUrl) && <p role="alert" className="text-xs text-red-300">URL no compatible. Usa un enlace HTTPS de reproductor de los dominios indicados.</p>}
+              <button type="button" disabled={!normalizeExternalPlayerUrl(externalUrl)} onClick={() => setExternalPreview(normalizeExternalPlayerUrl(externalUrl) || '')} className="rounded-lg border border-cyan-600 px-3 py-2 text-xs text-cyan-200 disabled:opacity-40">Probar antes de guardar</button>
+              {externalPreview && <><p className="text-xs text-amber-300">Comprueba vídeo y audio. Cargar el marco no confirma reproducción. La prueba no guarda cambios.</p><div className="aspect-video"><ExternalPlayer url={externalPreview} /></div><button type="button" onClick={() => setExternalPreview('')} className="text-xs text-slate-300 underline">Cerrar prueba</button></>}
+            </div>
             <label className="block text-xs text-slate-300" htmlFor="match-primary-provider">Señal principal de este partido</label>
             <select id="match-primary-provider" value={matchPrimaryProvider} onChange={(e) => { setMatchPrimaryProvider(e.target.value as StreamProvider); setIsDirty(true); }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm">
               <option value="cloudflare">Cloudflare Stream</option><option value="youtube">YouTube</option><option value="kick">Kick</option>
+              {normalizeExternalPlayerUrl(externalUrl) && <option value="external">Reproductor externo (iframe)</option>}
               {iptvSource && <option value="iptv">Canal IPTV: {iptvSource.channelName}</option>}
             </select>
             <label className="block text-xs text-slate-300" htmlFor="match-fallback-order">Orden de respaldo (primero a último)</label>
             <select id="match-fallback-order" value={matchFallbackOrder.join(',')} onChange={(e) => { setMatchFallbackOrder(e.target.value.split(',') as StreamProvider[]); setIsDirty(true); }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm">
+              {normalizeExternalPlayerUrl(externalUrl) && <option value="external,iptv,cloudflare,youtube,kick">Externo → IPTV → Cloudflare → YouTube → Kick</option>}
               <option value="cloudflare,youtube,kick">Cloudflare → YouTube → Kick</option>
               <option value="youtube,kick,cloudflare">YouTube → Kick → Cloudflare</option>
               <option value="kick,cloudflare,youtube">Kick → Cloudflare → YouTube</option>

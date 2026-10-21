@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState, RefObject } from 'react';
 import { Play, Pause, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { StreamSettings } from '../../types/football';
 import { BOLIVIAN_CLUBS } from '../../data/bolivianFootballData';
+import { ExternalPlayer } from './ExternalPlayer';
+import { normalizeExternalPlayerUrl } from '../../utils/streamUtils';
 import { useClubs } from '../../hooks/useClubs';
 
 interface VideoSurfaceProps {
@@ -58,6 +60,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       return { type: 'simulation' as const, url: '' };
     }
     const clean = rawStreamUrl.trim();
+    if (normalizeExternalPlayerUrl(clean)) return { type: 'external' as const, url: clean };
     const ytMatch = clean.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
     if (ytMatch) {
       return { type: 'youtube' as const, url: clean, videoId: ytMatch[1] };
@@ -259,6 +262,8 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         style={{ backgroundColor: awayClub.primaryColor }}
       />
 
+      {sourceInfo.type === 'external' && <ExternalPlayer url={sourceInfo.url} />}
+
       {/* Real Video Element for HLS / Custom Stream */}
       {sourceInfo.type === 'hls' && (
         <video
@@ -342,7 +347,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       )}
 
       {/* Big Play Overlay when Paused */}
-      {!isPlaying && !isCleanScreen && (
+      {sourceInfo.type !== 'external' && !isPlaying && !isCleanScreen && (
         <div className="absolute inset-0 z-20 bg-black/45 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-200">
           <button
             onClick={(e) => {
@@ -358,7 +363,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       )}
 
       {/* Reconnecting / Buffering Spinner */}
-      {isReconnecting && (
+      {sourceInfo.type !== 'external' && isReconnecting && (
         <div className="absolute inset-0 z-25 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-center p-4">
           <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-2" />
           <span className="text-xs font-bold text-white uppercase tracking-wider">
@@ -369,7 +374,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       )}
 
       {/* Stream Error Notice */}
-      {streamError && !isReconnecting && (
+      {sourceInfo.type !== 'external' && streamError && !isReconnecting && (
         <div className="absolute inset-0 z-25 bg-black/75 backdrop-blur-sm flex flex-col items-center justify-center text-center p-4">
           <div className="p-4 rounded-2xl bg-red-950/85 border border-red-500/60 max-w-sm">
             <AlertCircle className="w-7 h-7 text-red-400 mx-auto mb-2" />

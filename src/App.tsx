@@ -1268,6 +1268,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                             emoji: '🟢',
                             isConfigured: Boolean(currentLiveEvent.kick?.channel?.trim()),
                           },
+                          { id: 'external', name: 'Reproductor externo', shortName: 'Externo', badge: '', emoji: '▶', isConfigured: Boolean(currentLiveEvent.externalSource?.url) },
                         ].map((prov) => {
                           const isCurrent = (currentLiveEvent.primaryProvider || 'cloudflare') === prov.id && !activeIptvChannel;
                           return (
