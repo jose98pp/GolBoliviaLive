@@ -28,6 +28,7 @@ import { apiClient } from '../services/apiClient';
 import { iptvService } from '../services/iptvService';
 import { ExternalPlayer } from '../features/player/ExternalPlayer';
 import { normalizeMatchIptvUrl, normalizeExternalPlayerUrl } from '../utils/streamUtils';
+import { normalizeChannelSource } from '../utils/channelSources';
 import type { IptvChannel } from '../types/iptv';
 import type { MatchIptvSource, StreamProvider } from '../types/football';
 import { espnFootballApi, ApiMatchSummary } from '../services/espnFootballApi';
@@ -119,10 +120,28 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   useEffect(() => {
     let cancelled = false;
     setIptvLoading(true);
-    iptvService.getChannels().then((channels) => { if (!cancelled) setIptvChannels(channels); })
-      .catch(() => { if (!cancelled) setErrorMsg('No se pudo cargar el catálogo IPTV. Comprueba la conexión y vuelve a abrir el editor.'); })
-      .finally(() => { if (!cancelled) setIptvLoading(false); });
-    return () => { cancelled = true; };
+    Promise.allSettled([
+      iptvService.getChannels({ forceRefresh: true }),
+      iptvService.getCustomChannels(),
+    ])
+      .then(([channelsRes, customRes]) => {
+        if (cancelled) return;
+        const all = channelsRes.status === 'fulfilled' ? channelsRes.value : [];
+        const custom = customRes.status === 'fulfilled' ? customRes.value : [];
+        const customIds = new Set(custom.map((c) => c.id));
+        const customUrls = new Set(custom.map((c) => c.streamUrl));
+        const nonCustom = all.filter((c) => !customIds.has(c.id) && !customUrls.has(c.streamUrl));
+        setIptvChannels([...custom, ...nonCustom]);
+      })
+      .catch(() => {
+        if (!cancelled) setErrorMsg('No se pudo cargar el catálogo IPTV. Comprueba la conexión y vuelve a abrir el editor.');
+      })
+      .finally(() => {
+        if (!cancelled) setIptvLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
   const selectIptvChannel = (channel: IptvChannel) => {
     const external = normalizeExternalPlayerUrl(channel.streamUrl);
@@ -130,7 +149,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setExternalUrl(external);
       setExternalPreview('');
       setMatchPrimaryProvider('external');
-      setMatchFallbackOrder(prev => ['external', ...prev.filter(p => p !== 'external')]);
+      setMatchFallbackOrder((prev) => ['external', ...prev.filter((p) => p !== 'external')]);
+      setIptvSource({ channelId: channel.id, channelName: channel.name, streamUrl: external, category: channel.group });
       setErrorMsg(null);
       setIsDirty(true);
       return;
@@ -148,8 +168,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   };
   const removeIptvChannel = () => {
     setIptvSource(undefined);
-    setMatchPrimaryProvider((p) => p === 'iptv' ? 'cloudflare' : p);
-    setMatchFallbackOrder((prev) => prev.filter((p) => p !== 'iptv'));
+    setExternalUrl('');
+    setExternalPreview('');
+    setMatchPrimaryProvider((p) => (p === 'iptv' || p === 'external') ? 'cloudflare' : p);
+    setMatchFallbackOrder((prev) => prev.filter((p) => p !== 'iptv' && p !== 'external'));
     setIsDirty(true);
   };
 
@@ -1182,18 +1204,87 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             <h4 className="text-sm font-bold text-cyan-300">Señal IPTV temporal de este partido</h4>
             <p className="text-xs text-slate-400">Selecciona un canal existente; se guarda únicamente una copia de su referencia y URL en este partido. Al eliminar el partido se elimina la asociación, nunca el canal del catálogo. Usa solo señales autorizadas.</p>
             <input type="search" value={iptvSearch} onChange={(e) => setIptvSearch(e.target.value)} placeholder="Buscar canal por nombre o categoría" className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm" />
-            <select value={iptvSource?.channelId || ''} onChange={(e) => { const ch = iptvChannels.find((c) => c.id === e.target.value); if (ch) selectIptvChannel(ch); }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm" disabled={iptvLoading}>
+            <select
+              value={iptvSource?.channelId || ''}
+              onChange={(e) => {
+                const ch = iptvChannels.find((c) => c.id === e.target.value);
+                if (ch) selectIptvChannel(ch);
+              }}
+              className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm"
+              disabled={iptvLoading}
+            >
               <option value="">{iptvLoading ? 'Cargando catálogo IPTV...' : 'Seleccionar canal IPTV del catálogo'}</option>
-              {iptvChannels.filter((ch) => (ch.name + ' ' + ch.group).toLowerCase().includes(iptvSearch.toLowerCase())).slice(0, 250).map((ch) => <option key={ch.id} value={ch.id}>{ch.name} — {ch.group}</option>)}
+              {iptvChannels
+                .filter((ch) => (ch.name + ' ' + (ch.group || '')).toLowerCase().includes(iptvSearch.toLowerCase()))
+                .slice(0, 300)
+                .map((ch) => (
+                  <option key={ch.id} value={ch.id}>
+                    {ch.name} — {ch.group || 'Sin categoría'} {ch.isCustom ? '⭐ (Admin)' : ''} {ch.sourceType === 'iframe' || normalizeExternalPlayerUrl(ch.streamUrl) ? '[Iframe]' : '[HLS]'}
+                  </option>
+                ))}
             </select>
-            {iptvSource && <div className="flex flex-wrap gap-2 items-center text-xs text-slate-300"><span>Asignado: <strong className="text-white">{iptvSource.channelName}</strong> ({iptvSource.category || 'Sin categoría'})</span><button type="button" onClick={removeIptvChannel} className="border border-red-700 text-red-300 rounded-lg px-3 py-1">Quitar del partido</button></div>}
+            {iptvSource && (
+              <div className="flex flex-wrap gap-2 items-center justify-between text-xs text-slate-300 bg-slate-900/90 p-2.5 rounded-lg border border-cyan-800/60">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span>
+                    Asignado: <strong className="text-white">{iptvSource.channelName}</strong> ({iptvSource.category || 'Sin categoría'})
+                  </span>
+                  {matchPrimaryProvider === 'external' ? (
+                    <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 font-mono text-[10px] border border-cyan-600/60">
+                      Iframe Externo
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 font-mono text-[10px] border border-amber-600/60">
+                      Señal HLS (.m3u8)
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={removeIptvChannel}
+                  className="border border-red-700/80 text-red-300 hover:bg-red-950/40 rounded-lg px-2.5 py-1 transition cursor-pointer"
+                >
+                  Quitar del partido
+                </button>
+              </div>
+            )}
             <div className="space-y-2 border-t border-slate-700 pt-3">
               <label htmlFor="match-external-url" className="block text-sm font-bold text-cyan-300">Reproductor externo (iframe)</label>
-              <p className="text-xs text-slate-400">Pega la URL HTTPS del reproductor autorizado, no el código HTML. Compatible con streamxhd.st, streamxhd.com y streamxhd.click, ruta /live1.php?stream=canal.</p>
-              <input id="match-external-url" type="url" value={externalUrl} onChange={e => { setExternalUrl(e.target.value); setExternalPreview(''); setIsDirty(true); }} placeholder="https://streamxhd.st/live1.php?stream=dsports" className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm" />
-              {externalUrl && !normalizeExternalPlayerUrl(externalUrl) && <p role="alert" className="text-xs text-red-300">URL no compatible. Usa un enlace HTTPS de reproductor de los dominios indicados.</p>}
-              <button type="button" disabled={!normalizeExternalPlayerUrl(externalUrl)} onClick={() => setExternalPreview(normalizeExternalPlayerUrl(externalUrl) || '')} className="rounded-lg border border-cyan-600 px-3 py-2 text-xs text-cyan-200 disabled:opacity-40">Probar antes de guardar</button>
-              {externalPreview && <><p className="text-xs text-amber-300">Comprueba vídeo y audio. Cargar el marco no confirma reproducción. La prueba no guarda cambios.</p><div className="aspect-video"><ExternalPlayer url={externalPreview} /></div><button type="button" onClick={() => setExternalPreview('')} className="text-xs text-slate-300 underline">Cerrar prueba</button></>}
+              <p className="text-xs text-slate-400">Pega la URL HTTPS del reproductor o código &lt;iframe&gt;. Compatible con canales deportivos y reproductores autorizados (YouTube, Twitch, StreamXHD, PelotaLibre, etc.).</p>
+              <input
+                id="match-external-url"
+                type="text"
+                value={externalUrl}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const normalized = normalizeChannelSource(val, 'iframe') || val.trim();
+                  setExternalUrl(normalized);
+                  setExternalPreview('');
+                  setIsDirty(true);
+                }}
+                placeholder="https://... o <iframe src='...'></iframe>"
+                className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm"
+              />
+              {externalUrl && !normalizeExternalPlayerUrl(externalUrl) && (
+                <p role="alert" className="text-xs text-red-300">
+                  URL no compatible. Usa un enlace HTTPS de reproductor de los dominios indicados.
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={!normalizeExternalPlayerUrl(externalUrl)}
+                onClick={() => setExternalPreview(normalizeExternalPlayerUrl(externalUrl) || '')}
+                className="rounded-lg border border-cyan-600 px-3 py-2 text-xs text-cyan-200 disabled:opacity-40 cursor-pointer"
+              >
+                Probar antes de guardar
+              </button>
+              {externalPreview && (
+                <>
+                  <p className="text-xs text-amber-300">Comprueba vídeo y audio. Cargar el marco no confirma reproducción. La prueba no guarda cambios.</p>
+                  <div className="aspect-video"><ExternalPlayer url={externalPreview} /></div>
+                  <button type="button" onClick={() => setExternalPreview('')} className="text-xs text-slate-300 underline cursor-pointer">Cerrar prueba</button>
+                </>
+              )}
             </div>
             <label className="block text-xs text-slate-300" htmlFor="match-primary-provider">Señal principal de este partido</label>
             <select id="match-primary-provider" value={matchPrimaryProvider} onChange={(e) => { setMatchPrimaryProvider(e.target.value as StreamProvider); setIsDirty(true); }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2 text-sm">
