@@ -62,6 +62,8 @@ export function useHls({
     let proxyAttempted = effectiveSrc.includes('/api/proxy');
     let networkRecoveries = 0;
     let mediaRecoveries = 0;
+    let lastFailure = '';
+    let manifestLoaded = false;
     let startupTimer: ReturnType<typeof setTimeout> | undefined;
 
     const releaseVideo = () => {
@@ -94,7 +96,12 @@ export function useHls({
       if (stopped || startupTimer !== undefined || !callbacksRef.current.autoplay) return;
       startupTimer = setTimeout(() => {
         startupTimer = undefined;
-        if (callbacksRef.current.autoplay) fail('La señal no respondió a tiempo. Pulsa Reintentar o selecciona otro canal.');
+        if (callbacksRef.current.autoplay) {
+          const detail = lastFailure || (manifestLoaded
+            ? 'El manifiesto cargó, pero no llegaron segmentos reproducibles (posible restricción, codec o DRM).'
+            : 'No se recibió un manifiesto HLS reproducible (posible bloqueo de red, CORS, enlace caducado o restricción de acceso).');
+          fail(`${detail} Pulsa Reintentar o selecciona otro canal.`);
+        }
       }, STARTUP_TIMEOUT_MS);
     };
     const play = () => {
@@ -117,6 +124,7 @@ export function useHls({
       const proxied = getProxiedStreamUrl(rawTarget, true);
       if (proxied === effectiveSrc) return false;
       proxyAttempted = true;
+      lastFailure = 'Falló el acceso directo; se intentó una ruta alternativa autorizada.';
       if (hls) {
         hls.loadSource(proxied);
         hls.startLoad();
@@ -162,6 +170,8 @@ export function useHls({
       setHlsInstance(instance);
       instance.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
         if (stopped) return;
+        manifestLoaded = true;
+        lastFailure = '';
         setLevels(data.levels.map((level, id) => ({ id, height: level.height, bitrate: level.bitrate })));
         play();
       });
@@ -170,6 +180,20 @@ export function useHls({
       });
       instance.on(Hls.Events.ERROR, (_, data) => {
         if (stopped) return;
+        const statusCode = data.response?.code;
+        if (statusCode === 401 || statusCode === 403) {
+          fail(`Acceso denegado (HTTP ${statusCode}). La señal puede requerir una suscripción o autorización del proveedor.`);
+          return;
+        }
+        if (statusCode === 404 || statusCode === 410) {
+          fail(`La dirección de la señal ya no existe (HTTP ${statusCode}). Actualiza la lista M3U.`);
+          return;
+        }
+        lastFailure = data.type === Hls.ErrorTypes.NETWORK_ERROR
+          ? `Error de red al cargar ${data.details}${statusCode ? ` (HTTP ${statusCode})` : ''}.`
+          : data.type === Hls.ErrorTypes.MEDIA_ERROR
+            ? `Error de decodificación del video (${data.details}).`
+            : `Error HLS (${data.details}).`;
         const manifestError = [
           Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
           Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT,
