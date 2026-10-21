@@ -241,6 +241,7 @@ export default async function handler(req, res) {
   // 1. Cabeceras: CORS para el reproductor + endurecimiento (el contenido proxificado nunca se ejecuta como página)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Expose-Headers', 'X-GolBolivia-Proxy-Error, X-GolBolivia-Proxy-Stage, X-GolBolivia-Upstream-Status');
   res.setHeader('Access-Control-Allow-Headers', '*');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'no-store');
@@ -285,12 +286,14 @@ export default async function handler(req, res) {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+  let stage = 'validate_target';
 
   try {
     let currentUrl = targetUrl;
     let response;
 
     for (let hop = 0; ; hop++) {
+      stage = 'validate_target';
       const parsed = await assertPublicHttpUrl(currentUrl);
       const fetchOrigin = parsed.origin;
 
@@ -307,6 +310,7 @@ export default async function handler(req, res) {
         fetchHeaders['Range'] = req.headers['range'];
       }
 
+      stage = 'fetch_origin';
       response = await fetch(parsed.toString(), {
         method: req.method === 'HEAD' ? 'HEAD' : 'GET',
         headers: fetchHeaders,
@@ -324,6 +328,9 @@ export default async function handler(req, res) {
     }
 
     if (!response.ok) {
+      res.setHeader('X-GolBolivia-Proxy-Error', 'UPSTREAM_HTTP_ERROR');
+      res.setHeader('X-GolBolivia-Proxy-Stage', 'fetch_origin');
+      res.setHeader('X-GolBolivia-Upstream-Status', String(response.status));
       try { await response.body?.cancel(); } catch {}
       if (req.method === 'HEAD') return res.status(response.status).end();
       return res.status(response.status).json({
@@ -354,6 +361,7 @@ export default async function handler(req, res) {
     }
 
     // 3. Leer el cuerpo con límite de tamaño
+    stage = 'read_origin_body';
     const buffer = await readLimited(response, PROXY_MAX_BYTES);
 
     // 4. Listas M3U8 (por tipo, extensión o por comenzar con #EXTM3U): reescribir URIs para pasar por el proxy
@@ -384,8 +392,13 @@ export default async function handler(req, res) {
     return res.status(response.status).send(buffer);
   } catch (error) {
     const status = error?.status || 502;
+    const code = stage === 'validate_target' ? 'PROXY_TARGET_REJECTED' : stage === 'read_origin_body' ? 'PROXY_ORIGIN_READ_FAILED' : 'PROXY_ORIGIN_FETCH_FAILED';
+    res.setHeader('X-GolBolivia-Proxy-Error', code);
+    res.setHeader('X-GolBolivia-Proxy-Stage', stage);
     return res.status(status).json({
       error: status === 502 ? 'Error al conectar con el stream origen' : error.message,
+      code,
+      stage,
     });
   } finally {
     clearTimeout(timeout);
