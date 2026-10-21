@@ -8,7 +8,7 @@ export function normalizeMatchIptvUrl(value: unknown): string | null {
   try {
     const url = new URL(source);
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
-    if (!url.pathname.toLowerCase().endsWith('.m3u8')) return null;
+    if (!/\.m3u8?$/i.test(url.pathname)) return null;
     return url.href.length <= 1500 ? url.href : null;
   } catch {
     return null;

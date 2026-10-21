@@ -337,6 +337,19 @@ async function runAllIptvTests() {
 
   assert(sportsWithCustomRes?.channels[0]?.id === createdChannelId, 'El canal personalizado del dashboard se ubica en primer lugar en /sports');
 
+  let iframeResponse: any;
+  const iframeRes: any = { status: () => iframeRes, json: (data: any) => { iframeResponse = data; } };
+  await customLayer.route.stack[0].handle({ body: { name: 'Iframe fixture', sourceType: 'iframe', streamUrl: '<iframe src="https://streamxhd.st/live1.php?stream=dsports" onload="alert(1)"></iframe>' } }, iframeRes, () => {});
+  assert(iframeResponse?.success === true && iframeResponse.channel.sourceType === 'iframe', 'POST guarda el tipo iframe en persistencia aislada');
+  assert(iframeResponse?.channel?.streamUrl === 'https://streamxhd.st/live1.php?stream=dsports', 'POST conserva solo la URL validada del iframe');
+  let rejectedCode = 0;
+  const invalidRes: any = { status: (code: number) => { rejectedCode = code; return invalidRes; }, json: () => {} };
+  await customLayer.route.stack[0].handle({ body: { name: 'Inválido', sourceType: 'iframe', streamUrl: 'https://evil.test/player' } }, invalidRes, () => {});
+  assert(rejectedCode === 400, 'POST rechaza iframe de dominio no admitido');
+  let refreshedCustom: any;
+  await getCustomLayer.route.stack[0].handle({}, { json: (data: any) => { refreshedCustom = data; } }, () => {});
+  assert(refreshedCustom.channels.some((channel: any) => channel.sourceType === 'iframe'), 'GET devuelve el canal iframe guardado');
+
   // 6.4 Eliminar canal personalizado vía DELETE /api/iptv/custom/:id
   const deleteCustomLayer: any = (iptvRouter as any).stack.find(
     (layer: any) => layer.route?.path === '/custom/:id' && layer.route?.methods?.delete
@@ -352,7 +365,8 @@ async function runAllIptvTests() {
 
   assert(deleteCustomRes?.success === true, 'DELETE /api/iptv/custom/:id elimina el canal');
   assert(getCustomChannelsForTest().every((c) => c.id !== createdChannelId), 'El canal fue removido de la memoria');
-  assert(persistenceCalls.save === 1 && persistenceCalls.delete === 1, 'Alta y baja usan exclusivamente la persistencia simulada');
+  await deleteCustomLayer.route.stack[0].handle({ params: { id: iframeResponse.channel.id } }, mockResDeleteCustom, () => {});
+  assert(persistenceCalls.save === 2 && persistenceCalls.delete === 2, 'Alta y baja usan exclusivamente la persistencia simulada');
   assert((await getCustomIptvChannelsFromFirebase()).length === 0, 'La baja elimina el canal también del almacenamiento simulado');
   failNextSaveForTest();
   let failedSaveStatus = 200;

@@ -6,6 +6,7 @@ export interface IptvChannel {
   country: string; // e.g. 'BO', 'AR', 'CO', 'MX', 'ES', 'INT', 'US', etc.
   countryName: string;
   streamUrl: string;
+  sourceType?: 'hls' | 'iframe';
   resolution?: string;
   isFavorite?: boolean;
   isDemoFeed?: boolean;

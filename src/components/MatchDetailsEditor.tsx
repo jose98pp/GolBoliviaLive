@@ -125,6 +125,16 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     return () => { cancelled = true; };
   }, []);
   const selectIptvChannel = (channel: IptvChannel) => {
+    const external = normalizeExternalPlayerUrl(channel.streamUrl);
+    if (external) {
+      setExternalUrl(external);
+      setExternalPreview('');
+      setMatchPrimaryProvider('external');
+      setMatchFallbackOrder(prev => ['external', ...prev.filter(p => p !== 'external')]);
+      setErrorMsg(null);
+      setIsDirty(true);
+      return;
+    }
     const streamUrl = normalizeMatchIptvUrl(channel.streamUrl);
     if (!streamUrl) {
       setErrorMsg('Este canal no tiene una URL HLS (.m3u8) HTTP o HTTPS compatible. No se admiten páginas web ni otros formatos de vídeo.');

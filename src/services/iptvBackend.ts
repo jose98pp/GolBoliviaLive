@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { getCustomIptvChannelsFromFirebase, saveCustomIptvChannelToFirebase, deleteCustomIptvChannelFromFirebase } from './firebase';
+import { normalizeChannelSource } from '../utils/channelSources';
 import type { IptvChannel } from '../types/iptv';
 
 import { CURATED_FALLBACK_CHANNELS } from '../data/iptvFallbackChannels';
@@ -315,13 +316,12 @@ iptvRouter.get('/custom', async (_req: Request, res: Response) => {
 // POST /api/iptv/custom - Agregar o actualizar canal IPTV desde el dashboard
 iptvRouter.post('/custom', async (req: Request, res: Response) => {
   try {
-    const { name, streamUrl, country, countryName, group, resolution, logo, notes } = req.body || {};
+    const { name, streamUrl, sourceType = 'hls', country, countryName, group, resolution, logo, notes } = req.body || {};
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ success: false, error: 'El nombre del canal es requerido.' });
     }
-    if (!streamUrl || typeof streamUrl !== 'string' || !streamUrl.trim().startsWith('http')) {
-      return res.status(400).json({ success: false, error: 'La URL del stream debe comenzar con http:// o https://' });
-    }
+    const normalizedSource = normalizeChannelSource(streamUrl, sourceType);
+    if (!normalizedSource) return res.status(400).json({ success: false, error: 'Fuente no compatible. Usa una URL HLS HTTP/HTTPS o un iframe HTTPS de los dominios admitidos.' });
 
     const cCountry = (country || 'BO').toString().toUpperCase().trim();
     const cCountryName = countryName?.trim() || (cCountry === 'BO' ? 'Bolivia' : cCountry === 'INT' ? 'Internacional' : cCountry);
@@ -329,7 +329,8 @@ iptvRouter.post('/custom', async (req: Request, res: Response) => {
     const newChannel: IptvChannel = {
       id: `custom-iptv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: name.trim(),
-      streamUrl: streamUrl.trim(),
+      streamUrl: normalizedSource,
+      sourceType,
       country: cCountry,
       countryName: cCountryName,
       group: group?.trim() || 'Fútbol Boliviano',

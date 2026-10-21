@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { getProxiedStreamUrl, getStreamUrlForEvent, normalizeMatchIptvUrl } from '../src/utils/streamUtils';
+import { getProxiedStreamUrl, getStreamUrlForEvent, normalizeExternalPlayerUrl, normalizeMatchIptvUrl } from '../src/utils/streamUtils';
 import type { MatchIptvSource, LiveEvent, StreamProvider } from '../src/types/football';
 
 const httpSource = 'http://stream.example:1936/live/espn.m3u8?token=fixture';
@@ -19,20 +19,22 @@ for (const input of [undefined, null, '', 'not-a-url', 'https://stream.example/p
 const editor = await readFile(new URL('../src/components/MatchDetailsEditor.tsx', import.meta.url), 'utf8');
 const callback = editor.match(/const selectIptvChannel = \(channel: IptvChannel\) => \{([\s\S]*?)\n  \};/);
 assert.ok(callback, 'Callback de selección localizado');
-const select = new Function('channel', 'normalizeMatchIptvUrl', 'setIptvSource', 'setMatchPrimaryProvider',
-  'setMatchFallbackOrder', 'setErrorMsg', 'setIsDirty', callback[1]);
+const select = new Function('channel', 'normalizeExternalPlayerUrl', 'normalizeMatchIptvUrl', 'setIptvSource', 'setMatchPrimaryProvider',
+  'setMatchFallbackOrder', 'setErrorMsg', 'setIsDirty', 'setExternalUrl', 'setExternalPreview', callback[1]);
 let source: MatchIptvSource | undefined;
 let provider: StreamProvider = 'cloudflare';
 let fallbacks: StreamProvider[] = ['cloudflare', 'youtube', 'kick'];
 let error: string | null = 'Error anterior';
 let dirty = false;
+let externalUrl = '';
+let externalPreview = 'previous';
 const channel = Object.freeze({ id: 'espn-fixture', name: 'ESPN fixture', streamUrl: ` ${httpSource} `, group: 'Deportes' });
-const selectChannel = (input: { id: string; name: string; streamUrl: string; group: string }) => select(input, normalizeMatchIptvUrl,
+const selectChannel = (input: { id: string; name: string; streamUrl: string; group: string }) => select(input, normalizeExternalPlayerUrl, normalizeMatchIptvUrl,
   (value: MatchIptvSource) => { source = value; },
   (value: StreamProvider) => { provider = value; },
   (update: (value: StreamProvider[]) => StreamProvider[]) => { fallbacks = update(fallbacks); },
   (value: string | null) => { error = value; },
-  (value: boolean) => { dirty = value; });
+  (value: boolean) => { dirty = value; }, (value: string) => { externalUrl = value; }, (value: string) => { externalPreview = value; });
 selectChannel(channel);
 assert.equal(source?.streamUrl, httpSource, 'El partido conserva la URL HTTP original, normalizada');
 assert.equal(provider, 'iptv');
@@ -54,3 +56,12 @@ const server = await readFile(new URL('../serverApp.ts', import.meta.url), 'utf8
 assert.ok(server.includes('const iptvStreamUrl = normalizeMatchIptvUrl(raw.iptvSource?.streamUrl);'), 'El backend usa la misma validación');
 assert.ok(server.includes('streamUrl: iptvStreamUrl,'), 'El backend no transforma ni trunca la señal validada');
 console.log('Match IPTV: HTTP/HTTPS, puerto alternativo, selección real del editor, respaldo, validación y ruta al proxy comprobados.');
+
+selectChannel({ ...channel, streamUrl: 'https://streamxhd.st/live1.php?stream=dsports' });
+assert.equal(provider, 'external');
+assert.equal(externalUrl, 'https://streamxhd.st/live1.php?stream=dsports');
+assert.equal(externalPreview, '');
+assert.equal(fallbacks[0], 'external');
+selectChannel(channel);
+assert.equal(provider, 'iptv', 'Se puede volver a HLS después de seleccionar un iframe');
+assert.equal(normalizeMatchIptvUrl('https://example.test/live.m3u'), 'https://example.test/live.m3u');

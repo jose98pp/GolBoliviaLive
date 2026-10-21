@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import type { IptvChannel, IptvCountryCode } from '../types/iptv';
 import { IPTV_COUNTRIES } from '../types/iptv';
+import { ExternalPlayer } from '../features/player/ExternalPlayer';
+import { normalizeChannelSource, parseChannelPlaylist } from '../utils/channelSources';
 import { iptvService } from '../services/iptvService';
 
 interface IptvChannelsManagerProps {
@@ -44,7 +46,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
     if (!window.confirm(`¿Publicar «${channel.name}» en «${channel.group || 'Sin categoría'}»? Verifica que tienes autorización para distribuir su señal.`)) return;
     setPublishingChannelId(channel.id);
     try {
-      await iptvService.addCustomChannel({ name: channel.name, streamUrl: channel.streamUrl, country: channel.country, countryName: channel.countryName, group: channel.group || 'Otros', logo: channel.logo, resolution: channel.resolution, notes: 'Importado desde vista previa de lista M3U' });
+      await iptvService.addCustomChannel({ name: channel.name, streamUrl: channel.streamUrl, sourceType: channel.sourceType || 'hls', country: channel.country, countryName: channel.countryName, group: channel.group || 'Otros', logo: channel.logo, resolution: channel.resolution, notes: 'Importado desde vista previa de lista M3U/M3U8' });
       setPlaylistMessage(`Canal «${channel.name}» guardado en Firestore.`);
       await loadData();
     } catch (err) { setPlaylistMessage(err instanceof Error ? err.message : 'No se pudo guardar el canal'); }
@@ -69,6 +71,8 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
   // Form state
   const [name, setName] = useState('');
   const [streamUrl, setStreamUrl] = useState('');
+  const [sourceType, setSourceType] = useState<'hls' | 'iframe'>('hls');
+  const [previewUrl, setPreviewUrl] = useState('');
   const [country, setCountry] = useState<IptvCountryCode>('BO');
   const [group, setGroup] = useState('Fútbol Boliviano');
   const [resolution, setResolution] = useState('1080p');
@@ -111,7 +115,9 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
   }, []);
 
   const handleProbeUrl = async (urlToTest: string) => {
-    if (!urlToTest || !urlToTest.startsWith('http')) return;
+    const external = normalizeChannelSource(urlToTest, 'iframe');
+    if (external) { setPreviewUrl(external); return; }
+    if (!urlToTest || !urlToTest.startsWith('http')) { setFormError('Introduce un enlace de señal válido antes de probar.'); return; }
     setProbingUrl(urlToTest);
     setProbeResult(null);
 
@@ -134,8 +140,9 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
       setFormError('Por favor ingresa el nombre del canal.');
       return;
     }
-    if (!streamUrl.trim() || !streamUrl.startsWith('http')) {
-      setFormError('La URL del stream debe comenzar con http:// o https://');
+    const normalizedSource = normalizeChannelSource(streamUrl, sourceType);
+    if (!normalizedSource) {
+      setFormError('Introduce una URL HLS válida o un iframe de los dominios admitidos según el tipo seleccionado.');
       return;
     }
 
@@ -144,7 +151,8 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
       const countryObj = IPTV_COUNTRIES.find((c) => c.code === country);
       await iptvService.addCustomChannel({
         name: name.trim(),
-        streamUrl: streamUrl.trim(),
+        streamUrl: normalizedSource,
+        sourceType,
         country,
         countryName: countryObj ? countryObj.label : country,
         group: group.trim() || 'Fútbol Boliviano',
@@ -199,6 +207,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
 
   return (
     <div className="space-y-6">
+      {previewUrl && <section className="rounded-xl border border-cyan-700 bg-slate-950 p-3 space-y-2"><p className="text-xs text-amber-300">Prueba externa: verifica vídeo y audio. La carga del marco no confirma reproducción.</p><div className="aspect-video"><ExternalPlayer url={previewUrl} /></div><button type="button" onClick={() => setPreviewUrl('')} className="text-xs text-slate-300 underline">Cerrar prueba</button></section>}
       <section className="rounded-2xl border border-slate-800 bg-[#0a0f1d] p-5 space-y-3">
         <h3 className="text-sm font-bold text-white">Importar lista M3U — Administración</h3>
         <p className="text-xs text-slate-400">Vista previa de listas públicas de IPTV-org. La publicación permanente requiere seleccionar y guardar canales en el administrador.</p>
@@ -206,6 +215,15 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
           <input type="url" value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} aria-label="URL de lista M3U" placeholder="https://iptv-org.github.io/iptv/categories/sports.m3u" className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs" />
           <button type="button" onClick={() => { void previewPlaylist(); }} disabled={playlistLoading || !playlistUrl.trim()} className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg disabled:opacity-50">{playlistLoading ? 'Cargando...' : 'Previsualizar'}</button>
         </div>
+        <label className="block text-xs text-slate-300">O cargar archivo de canales M3U / M3U8 (máximo 1 MB, 500 canales)
+          <input type="file" accept=".m3u,.m3u8" className="block mt-2 text-xs" onChange={async e => {
+            const file = e.target.files?.[0]; if (!file) return;
+            setPlaylistPreview([]);
+            try { if (file.size > 1024 * 1024) throw new Error('El archivo supera 1 MB.'); const imported = parseChannelPlaylist(await file.text()); setPlaylistPreview(imported); setPlaylistMessage(`Vista previa: ${imported.length} canales. Selecciona cuáles guardar.`); }
+            catch (error) { setPlaylistMessage(error instanceof Error ? error.message : 'No se pudo leer el archivo.'); }
+            e.target.value = '';
+          }} />
+        </label>
         {playlistMessage && <p role="status" className="text-xs text-slate-300">{playlistMessage}</p>}
         {playlistPreview.length > 0 && <div className="max-h-72 overflow-auto rounded-lg border border-slate-800 p-2 text-xs text-slate-300">
           <p className="mb-2 text-amber-300">La lista M3U describe canales, pero no garantiza reproducción. Verifica la señal antes de publicarla.</p>
@@ -332,12 +350,15 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
             </div>
 
             <div className="md:col-span-2">
+              <label htmlFor="channel-source-type" className="block text-xs text-slate-300 mb-1">Tipo de señal</label>
+              <select id="channel-source-type" value={sourceType} onChange={e => { setSourceType(e.target.value as 'hls' | 'iframe'); setProbeResult(null); }} className="w-full mb-3 bg-slate-950 border border-slate-700 rounded-lg p-2 text-white text-xs"><option value="hls">HLS — reproductor de GolBoliviaLive</option><option value="iframe">Iframe — reproductor externo</option></select>
+              <p className="text-xs text-slate-400 mb-2">Las listas de canales M3U/M3U8 se importan arriba. Para iframe se admiten streamxhd.st, streamxhd.com y streamxhd.click, ruta /live1.php?stream=canal. Solo se guarda el enlace; no se ejecuta el HTML pegado.</p>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
-                URL de Transmisión (.m3u8 o stream directo HLS) <span className="text-red-400">*</span>
+                {sourceType === 'iframe' ? 'Enlace o código iframe del reproductor externo' : 'URL de transmisión HLS (.m3u8, .m3u o endpoint HLS)'} <span className="text-red-400">*</span>
               </label>
               <div className="flex gap-2">
                 <input
-                  type="url"
+                  type="text"
                   required
                   placeholder="https://.../live/playlist.m3u8"
                   value={streamUrl}
@@ -372,7 +393,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                     )}
                     <span>
                       {probeResult.reachable
-                        ? 'Señal activa y respondiendo correctamente'
+                        ? 'Servidor accesible; reproducción no confirmada'
                         : `Error al probar señal: ${probeResult.error || 'No responde'}`}
                     </span>
                   </div>
