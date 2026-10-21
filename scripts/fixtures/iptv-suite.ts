@@ -516,6 +516,36 @@ https://stream.boliviatv.bo/live.m3u8`;
     'Proxy reescribe segmentos dentro del playlist M3U8'
   );
 
+  // Errores del origen: nunca se presentan ni cachean como vídeo válido.
+  for (const upstreamStatus of [403, 404, 429, 503]) {
+    let status = 0;
+    let body: any;
+    const headers: Record<string, string> = {};
+    const response: any = {
+      setHeader: (key: string, value: string) => { headers[key.toLowerCase()] = value; },
+      status: (value: number) => { status = value; return response; },
+      json: (value: any) => { body = value; return response; },
+      send: () => { throw new Error('No se debe enviar un error como fragmento de vídeo'); },
+    };
+    globalThis.fetch = async () => new Response('Error del origen', { status: upstreamStatus });
+    await proxyHandler({ method: 'GET', query: { url: 'http://190.61.47.54:8000/play/a004/segment.ts' } } as any, response);
+    assert(status === upstreamStatus && body.code === 'UPSTREAM_HTTP_ERROR', `Proxy conserva HTTP ${upstreamStatus} y devuelve un error explícito`);
+    assert(headers['cache-control'] === 'no-store', `Proxy no almacena errores HTTP ${upstreamStatus}`);
+  }
+  let segmentHeaders: Record<string, string> = {};
+  let segmentStatus = 0;
+  let segmentBody: Buffer;
+  const segmentResponse: any = {
+    setHeader: (key: string, value: string) => { segmentHeaders[key.toLowerCase()] = value; },
+    status: (value: number) => { segmentStatus = value; return segmentResponse; },
+    send: (value: Buffer) => { segmentBody = value; return segmentResponse; },
+    json: () => { throw new Error('Un segmento válido no debe convertirse en error'); },
+  };
+  globalThis.fetch = async () => new Response(new Uint8Array([0x47, 0x40, 0x11]), { headers: { 'content-type': 'video/mp2t' } });
+  await proxyHandler({ method: 'GET', query: { url: 'http://190.61.47.54:8000/play/a004/segment.ts' } } as any, segmentResponse);
+  assert(segmentStatus === 200 && segmentBody![0] === 0x47, 'Proxy conserva los bytes de un segmento correcto');
+  assert(segmentHeaders['content-type'] === 'video/mp2t' && segmentHeaders['cache-control'].includes('public'), 'Proxy conserva la caché y el tipo de los segmentos correctos');
+
   console.log('\n====================================================');
   console.log(`🎉 TODAS LAS PRUEBAS COMPLETADAS CON ÉXITO: ${passedTests}/${totalTests}`);
   console.log('====================================================\n');

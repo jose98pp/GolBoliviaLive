@@ -243,6 +243,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
 
   // Preflight OPTIONS
@@ -320,6 +321,16 @@ export default async function handler(req, res) {
         continue;
       }
       break;
+    }
+
+    if (!response.ok) {
+      try { await response.body?.cancel(); } catch {}
+      if (req.method === 'HEAD') return res.status(response.status).end();
+      return res.status(response.status).json({
+        error: `El servidor de la señal respondió HTTP ${response.status}`,
+        code: 'UPSTREAM_HTTP_ERROR',
+        upstreamStatus: response.status,
+      });
     }
 
     const finalUrl = currentUrl;

@@ -50,7 +50,7 @@ async function run() {
   let root = createRoot(host);
   const render = () => act(async () => root.render(<Harness />));
   const current = () => HlsDouble.instances.at(-1)!;
-  const emit = (type: string, details = 'fragLoadError') => act(async () => current().emit('error', { type, details, fatal: true }));
+  const emit = (type: string, details = 'fragLoadError') => act(async () => current().emit('error', { type, details, fatal: true, response: { code: 404 } }));
   const exhaustNetwork = async () => { for (let i = 0; i < 4; i++) await emit('networkError'); };
 
   await render();
@@ -72,6 +72,7 @@ async function run() {
   check(first.sources.length === 2 && first.sources[1].startsWith('/api/proxy'), 'Proxy is tried once per source');
   check(first.starts === 3 && first.destroyed, 'Two network recoveries after the proxy end in destruction');
   check(errors.length === 1, 'Exhausted source emits one terminal error');
+  check(errors[0].includes('HTTP 404'), 'Terminal network failure preserves the HTTP status for diagnosis');
   await emit('networkError');
   check(first.starts === 3 && errors.length === 1, 'Late fatal events cannot restart a failed instance');
 

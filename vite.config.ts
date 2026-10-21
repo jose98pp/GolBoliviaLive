@@ -4,6 +4,37 @@ import path from 'path';
 import {defineConfig} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
+export const pwaRuntimeCaching = [
+  {
+    urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+    handler: 'CacheFirst' as const,
+    options: {
+      cacheName: 'google-fonts-cache',
+      expiration: {
+        maxEntries: 10,
+        maxAgeSeconds: 60 * 60 * 24 * 365,
+      },
+      cacheableResponse: {
+        statuses: [0, 200],
+      },
+    },
+  },
+  {
+    urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+    handler: 'CacheFirst' as const,
+    options: {
+      cacheName: 'gstatic-fonts-cache',
+      expiration: {
+        maxEntries: 10,
+        maxAgeSeconds: 60 * 60 * 24 * 365,
+      },
+      cacheableResponse: {
+        statuses: [0, 200],
+      },
+    },
+  },
+];
+
 export default defineConfig(() => {
   return {
     plugins: [
@@ -19,48 +50,7 @@ export default defineConfig(() => {
           clientsClaim: true,
           navigateFallbackDenylist: [/^\/api/, /^\/live-events/, /^\/scoreboard/, /^\/streams/, /^\/matches/, /^\/chat/],
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          runtimeCaching: [
-            {
-              urlPattern: ({ url, sameOrigin }) =>
-                sameOrigin && (
-                  url.pathname.startsWith('/api') ||
-                  url.pathname.startsWith('/live') ||
-                  url.pathname.startsWith('/scoreboard') ||
-                  url.pathname.startsWith('/streams') ||
-                  url.pathname.startsWith('/matches') ||
-                  url.pathname.startsWith('/chat')
-                ),
-              handler: 'NetworkOnly',
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-cache',
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365,
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'gstatic-fonts-cache',
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365,
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-          ],
+          runtimeCaching: pwaRuntimeCaching,
         },
         devOptions: {
           enabled: false,

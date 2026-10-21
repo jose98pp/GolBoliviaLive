@@ -187,7 +187,9 @@ export function useHls({
           instance.recoverMediaError();
           return;
         }
-        fail('No pudimos recuperar la transmisión. Pulsa Reintentar o selecciona otro canal.');
+        const status = data.response?.code;
+        const detail = status && status >= 400 && status <= 599 ? ` La solicitud devolvió HTTP ${status}.` : '';
+        fail(`No pudimos recuperar la transmisión.${detail} Pulsa Reintentar o selecciona otro canal.`);
       });
       instance.attachMedia(video);
       instance.loadSource(effectiveSrc);

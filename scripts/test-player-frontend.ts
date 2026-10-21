@@ -328,22 +328,14 @@ async function runTests() {
   assert(!validateEventVersionPayload(3, 2, false).valid, 'LiveEvents Fix: Guardar partido con versión inferior (2 < 3) rechaza cuando force es false');
   assert(validateEventVersionPayload(3, 4, false).valid, 'LiveEvents Fix: Guardar partido con versión incrementada (4 >= 3) es aceptado');
 
-  // 22. ServiceWorker: Exención de streams externos .m3u8 y .ts
-  const swUrlMatcher = (urlStr: string, sameOrigin: boolean): boolean => {
-    const url = new URL(urlStr);
-    return sameOrigin && (
-      url.pathname.startsWith('/api') ||
-      url.pathname.startsWith('/live') ||
-      url.pathname.startsWith('/scoreboard') ||
-      url.pathname.startsWith('/streams') ||
-      url.pathname.startsWith('/matches') ||
-      url.pathname.startsWith('/chat')
-    );
-  };
-
-  assert(!swUrlMatcher('https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8', false), 'SW Fix: ServiceWorker NO intercepta streams externos Cloudflare .m3u8');
-  assert(!swUrlMatcher('https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', false), 'SW Fix: ServiceWorker NO intercepta streams externos Mux .m3u8');
-  assert(swUrlMatcher('https://golbolivialive-beta.vercel.app/api/scoreboard', true), 'SW Fix: ServiceWorker maneja API misma procedencia');
+  // 22. Usar las reglas reales de Vite: la API y el vídeo no pasan por Workbox.
+  const { pwaRuntimeCaching } = await import('../vite.config');
+  const swUrlMatcher = (urlStr: string): boolean => pwaRuntimeCaching.some((rule) => rule.urlPattern.test(urlStr));
+  assert(!swUrlMatcher('https://renewable-wolf-chemical-includes.trycloudflare.com/live/partido/index.m3u8'), 'SW Fix: ServiceWorker NO intercepta streams externos Cloudflare .m3u8');
+  assert(!swUrlMatcher('https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'), 'SW Fix: ServiceWorker NO intercepta streams externos Mux .m3u8');
+  assert(!swUrlMatcher('https://golbolivialive-beta.vercel.app/api/scoreboard'), 'SW Fix: API de marcador usa directamente la red');
+  assert(!swUrlMatcher('https://golbolivialive-beta.vercel.app/api/proxy?url=http%3A%2F%2F190.61.47.54%3A8000%2Fplay%2Fa004%2F214705068_0646.ts'), 'SW Fix: los segmentos del proxy quedan fuera de Workbox');
+  assert(swUrlMatcher('https://fonts.googleapis.com/css2?family=Chakra+Petch'), 'SW Fix: se conserva la caché de fuentes');
 
   // 23. RELOJ DEL MARCADOR: MODO AUTOMÁTICO
   const simulateAutoClock = (
