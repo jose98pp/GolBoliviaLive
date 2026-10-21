@@ -1,5 +1,20 @@
 import { LiveEvent, StreamProvider } from '../types/football';
 
+/** Valida una referencia HLS; la disponibilidad y la seguridad del destino se comprueban al reproducir. */
+export function normalizeMatchIptvUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const source = value.trim();
+  if (!source || source.length > 1500 || /\s/.test(source)) return null;
+  try {
+    const url = new URL(source);
+    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+    if (!url.pathname.toLowerCase().endsWith('.m3u8')) return null;
+    return url.href.length <= 1500 ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolves the playback URL for a LiveEvent based strictly on its configured primaryProvider.
  * If the primaryProvider stream is not configured, it gracefully falls back according to fallbackOrder.

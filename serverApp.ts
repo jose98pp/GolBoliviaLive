@@ -37,6 +37,7 @@ import { iptvRouter } from './src/services/iptvBackend';
 import proxyHandler from './api/proxy.js';
 
 import { normalizeVercelUrl } from './src/utils/serverUrl';
+import { normalizeMatchIptvUrl } from './src/utils/streamUtils';
 export { normalizeVercelUrl };
 
 const appDirname: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
@@ -1131,6 +1132,8 @@ app.post(
     const now = Date.now();
     const operator = (req as any).user?.username || 'admin';
 
+    const iptvStreamUrl = normalizeMatchIptvUrl(raw.iptvSource?.streamUrl);
+
     // Sanitize to NEVER store or accept stream keys in public event
     const safeEvent: LiveEvent = {
       id: cleanId,
@@ -1141,10 +1144,10 @@ app.post(
       primaryProvider: ['cloudflare', 'youtube', 'kick', 'iptv'].includes(raw.primaryProvider)
         ? raw.primaryProvider
         : 'cloudflare',
-      iptvSource: raw.iptvSource && typeof raw.iptvSource.channelId === 'string' && typeof raw.iptvSource.streamUrl === 'string' && /^https:\/\/[^\s]+\.m3u8(?:[?#][^\s]*)?$/i.test(raw.iptvSource.streamUrl.trim()) ? {
+      iptvSource: raw.iptvSource && typeof raw.iptvSource.channelId === 'string' && iptvStreamUrl ? {
         channelId: raw.iptvSource.channelId.trim().slice(0, 160),
         channelName: String(raw.iptvSource.channelName || 'Canal IPTV').trim().slice(0, 120),
-        streamUrl: raw.iptvSource.streamUrl.trim().slice(0, 1500),
+        streamUrl: iptvStreamUrl,
         category: String(raw.iptvSource.category || '').trim().slice(0, 80),
       } : null,
       cloudflare: raw.cloudflare ? {

@@ -26,6 +26,7 @@ import { groupClubsByLeague, PRESET_INTERNATIONAL_MATCHES } from '../data/bolivi
 import { useClubs } from '../hooks/useClubs';
 import { apiClient } from '../services/apiClient';
 import { iptvService } from '../services/iptvService';
+import { normalizeMatchIptvUrl } from '../utils/streamUtils';
 import type { IptvChannel } from '../types/iptv';
 import type { MatchIptvSource, StreamProvider } from '../types/football';
 import { espnFootballApi, ApiMatchSummary } from '../services/espnFootballApi';
@@ -116,15 +117,17 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     let cancelled = false;
     setIptvLoading(true);
     iptvService.getChannels().then((channels) => { if (!cancelled) setIptvChannels(channels); })
+      .catch(() => { if (!cancelled) setErrorMsg('No se pudo cargar el catálogo IPTV. Comprueba la conexión y vuelve a abrir el editor.'); })
       .finally(() => { if (!cancelled) setIptvLoading(false); });
     return () => { cancelled = true; };
   }, []);
   const selectIptvChannel = (channel: IptvChannel) => {
-    if (!/^https:\/\/[^\s]+\.m3u8(?:[?#][^\s]*)?$/i.test(channel.streamUrl)) {
-      setErrorMsg('Este canal no tiene una URL HTTPS HLS (.m3u8) válida para el reproductor de partidos.');
+    const streamUrl = normalizeMatchIptvUrl(channel.streamUrl);
+    if (!streamUrl) {
+      setErrorMsg('Este canal no tiene una URL HLS (.m3u8) HTTP o HTTPS compatible. No se admiten páginas web ni otros formatos de vídeo.');
       return;
     }
-    setIptvSource({ channelId: channel.id, channelName: channel.name, streamUrl: channel.streamUrl, category: channel.group });
+    setIptvSource({ channelId: channel.id, channelName: channel.name, streamUrl, category: channel.group });
     setMatchPrimaryProvider('iptv');
     setMatchFallbackOrder((prev) => ['iptv', ...prev.filter((p) => p !== 'iptv')]);
     setErrorMsg(null);
