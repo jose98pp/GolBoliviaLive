@@ -1,5 +1,6 @@
 import { build } from 'esbuild';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,6 +15,11 @@ let browser: ReturnType<typeof spawn> | undefined;
 let deadline: ReturnType<typeof setTimeout> | undefined;
 let server: ReturnType<typeof createServer> | undefined;
 try {
+  const chromiumBinary = process.env.CHROMIUM_PATH || '/usr/bin/chromium';
+  if (!existsSync(chromiumBinary)) {
+    console.log(`[test-hls] Chromium no instalado (${chromiumBinary}). Omitiendo validación de navegador headless.`);
+    process.exit(0);
+  }
   await build({
     entryPoints: [path.join(root, 'scripts/fixtures/hls-browser.tsx')],
     outfile: bundle,

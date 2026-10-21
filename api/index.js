@@ -3,8 +3,8 @@ import "dotenv/config";
 import express2 from "express";
 import http from "http";
 import crypto from "crypto";
-import path2 from "path";
-import fs2 from "fs";
+import path from "path";
+import fs from "fs";
 
 // src/data/bolivianFootballData.ts
 var BOLIVIAN_CLUBS = {
@@ -550,6 +550,7 @@ import {
   orderBy,
   limit,
   getDocs,
+  getDocsFromServer,
   runTransaction
 } from "firebase/firestore";
 
@@ -920,6 +921,7 @@ async function saveLiveEventToFirebase(event, operator) {
       awayTeam: away === home ? `${away}_alt` : away,
       isLive: Boolean(event.isLive),
       primaryProvider: event.primaryProvider,
+      iptvSource: event.iptvSource ? { ...event.iptvSource } : null,
       cloudflare: event.cloudflare && (event.cloudflare.liveInputId || event.cloudflare.playbackUrl) ? {
         liveInputId: event.cloudflare.liveInputId || "",
         playbackUrl: event.cloudflare.playbackUrl || ""
@@ -940,6 +942,7 @@ async function saveLiveEventToFirebase(event, operator) {
       customVideoUrl: event.customVideoUrl ? event.customVideoUrl.trim().slice(0, 500) : void 0,
       backupVideoUrl: event.backupVideoUrl ? event.backupVideoUrl.trim().slice(0, 500) : void 0,
       backupChannelName: event.backupChannelName ? event.backupChannelName.trim().slice(0, 100) : void 0,
+      broadcastMode: event.broadcastMode || "obs_custom",
       activeStreamSource: event.activeStreamSource || "obs",
       autoFailoverEnabled: event.autoFailoverEnabled ?? true,
       isClockRunning: event.isClockRunning ?? false,
@@ -1015,6 +1018,8 @@ function hydrateLiveEventDoc(d) {
     awayTeam: away,
     isLive: raw.isLive !== void 0 ? Boolean(raw.isLive) : true,
     primaryProvider: raw.primaryProvider || "cloudflare",
+    iptvSource: raw.iptvSource,
+    broadcastMode: raw.broadcastMode || "obs_custom",
     fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ["cloudflare", "youtube", "kick"],
     tournamentName: raw.tournamentName || "Liga Tigo Divisi\xF3n Profesional - Torneo Clausura",
     stadiumName: raw.stadiumName || (docId === "partido-002" ? "Estadio Ram\xF3n Tahuichi Aguilera" : "Estadio Hernando Siles - La Paz"),
@@ -1024,8 +1029,8 @@ function hydrateLiveEventDoc(d) {
     matchMinute: typeof raw.matchMinute === "number" ? raw.matchMinute : 0,
     isClockRunning: Boolean(raw.isClockRunning),
     customVideoUrl: raw.customVideoUrl || raw.cloudflare?.playbackUrl || "",
-    backupVideoUrl: raw.backupVideoUrl || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    backupChannelName: raw.backupChannelName || "GolBolivia HD",
+    backupVideoUrl: raw.backupVideoUrl || "",
+    backupChannelName: raw.backupChannelName || "",
     activeStreamSource: raw.activeStreamSource || "obs",
     autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
     cloudflare: raw.cloudflare,
@@ -1074,60 +1079,82 @@ async function clearChatInFirebase() {
   const snap = await getDocs(collection(db, "chat"));
   await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
 }
+async function getCustomIptvChannelsFromFirebase() {
+  const snapshot = await getDocs(collection(db, "iptvCustomChannels"));
+  return snapshot.docs.map((item) => ({ ...item.data(), id: item.id }));
+}
+async function saveCustomIptvChannelToFirebase(channel) {
+  await writeGate;
+  await setDoc(doc(db, "iptvCustomChannels", channel.id), channel);
+}
+async function deleteCustomIptvChannelFromFirebase(id) {
+  await writeGate;
+  await deleteDoc(doc(db, "iptvCustomChannels", id));
+}
 
 // serverApp.ts
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 
 // src/services/iptvBackend.ts
 import express from "express";
-import fs from "node:fs";
-import path from "node:path";
-var iptvRouter = express.Router();
-var SPORTS_M3U_URL = "https://iptv-org.github.io/iptv/categories/sports.m3u";
-var BOLIVIA_M3U_URL = "https://iptv-org.github.io/iptv/countries/bo.m3u";
-var CACHE_TTL_MS = 6 * 60 * 60 * 1e3;
-var CUSTOM_CHANNELS_FILE = path.join(process.cwd(), "data", "custom-iptv-channels.json");
-function loadCustomChannels() {
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
+// src/utils/streamUtils.ts
+function normalizeMatchIptvUrl(value) {
+  if (typeof value !== "string") return null;
+  const source = value.trim();
+  if (!source || source.length > 1500 || /\s/.test(source)) return null;
   try {
-    if (fs.existsSync(CUSTOM_CHANNELS_FILE)) {
-      const raw = fs.readFileSync(CUSTOM_CHANNELS_FILE, "utf-8");
-      const data = JSON.parse(raw);
-      if (Array.isArray(data)) return data;
-    }
-  } catch (err) {
-    console.warn("[IPTV Backend] Advertencia al leer canales personalizados locales:", err);
-  }
-  return [];
-}
-function saveCustomChannels(channels) {
-  try {
-    const dir = path.dirname(CUSTOM_CHANNELS_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(CUSTOM_CHANNELS_FILE, JSON.stringify(channels, null, 2), "utf-8");
-  } catch (err) {
-    console.warn("[IPTV Backend] Advertencia al persistir canales personalizados locales:", err);
+    const url = new URL(source);
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+    if (!/\.m3u8?$/i.test(url.pathname)) return null;
+    return url.href.length <= 1500 ? url.href : null;
+  } catch {
+    return null;
   }
 }
-var customChannels = loadCustomChannels();
-var cachedChannels = [];
-var lastFetchTime = 0;
-var activeFetchPromise = null;
+function normalizeExternalPlayerUrl(value) {
+  if (typeof value !== "string" || value.trim().length > 1500) return null;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
+    if (!["streamxhd.st", "streamxhd.com", "streamxhd.click"].includes(url.hostname)) return null;
+    if (url.pathname !== "/live1.php" || !/^[a-zA-Z0-9_-]{1,80}$/.test(url.searchParams.get("stream") || "")) return null;
+    if ([...url.searchParams.keys()].some((key) => key !== "stream") || url.searchParams.getAll("stream").length !== 1) return null;
+    url.hash = "";
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+// src/utils/channelSources.ts
+function normalizeChannelSource(value, type = "hls") {
+  if (typeof value !== "string" || value.length > 5e3) return null;
+  let source = value.trim();
+  if (type === "iframe") {
+    if (source.startsWith("<")) {
+      const match = source.match(/^<iframe\b[^>]*\bsrc\s*=\s*(["'])([^"']+)\1[^>]*>\s*<\/iframe>$/i);
+      if (!match) return null;
+      source = match[2].replace(/&amp;/g, "&");
+    }
+    return normalizeExternalPlayerUrl(source);
+  }
+  if (type !== "hls" || source.length > 1500 || /\s/.test(source)) return null;
+  try {
+    const url = new URL(source);
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+    if (normalizeExternalPlayerUrl(source)) return null;
+    if (/\.(?:html?|php|mpd)$/i.test(url.pathname)) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+// src/data/iptvFallbackChannels.ts
 var CURATED_FALLBACK_CHANNELS = [
-  {
-    id: "bo-senal-principal-futbol",
-    name: "Se\xF1al Principal - F\xFAtbol Boliviano",
-    logo: "https://golbolivialive-beta.vercel.app/favicon.svg",
-    group: "Bolivia",
-    country: "BO",
-    countryName: "Bolivia",
-    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    resolution: "1080p",
-    isFavorite: true,
-    isDemoFeed: false,
-    notes: "Transmisi\xF3n en vivo oficial destacada del f\xFAtbol boliviano."
-  },
   {
     id: "claro-sports-latam",
     name: "Claro Sports Latam",
@@ -1166,118 +1193,26 @@ var CURATED_FALLBACK_CHANNELS = [
     isFavorite: true,
     isDemoFeed: false,
     notes: "Se\xF1al oficial FIFA+ FAST 24/7 en espa\xF1ol."
-  },
-  {
-    id: "wwe-channel",
-    name: "WWE Network Fast",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/WWE_Logo.svg/320px-WWE_Logo.svg.png",
-    group: "Internacional",
-    country: "INT",
-    countryName: "Internacional",
-    streamUrl: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-    resolution: "1080p",
-    isDemoFeed: false,
-    notes: "Feed FAST de deportes de contacto."
-  },
-  {
-    id: "bo-red-uno-sports",
-    name: "Red Uno Deportes Bolivia",
-    logo: "https://i.imgur.com/xT7Z4vL.png",
-    group: "Bolivia",
-    country: "BO",
-    countryName: "Bolivia",
-    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    resolution: "1080p",
-    isFavorite: true,
-    isDemoFeed: true,
-    notes: "Feed de prueba HLS para verificaci\xF3n t\xE9cnica. Se\xF1al oficial sujeta a geobloqueo."
-  },
-  {
-    id: "bo-bolivia-tv-deportes",
-    name: "Bolivia TV 7.2 Deportes",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Bolivia_TV_logo.svg/320px-Bolivia_TV_logo.svg.png",
-    group: "Bolivia",
-    country: "BO",
-    countryName: "Bolivia",
-    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
-    resolution: "720p",
-    isFavorite: true,
-    isDemoFeed: true,
-    notes: "Feed de prueba HLS para verificaci\xF3n t\xE9cnica en Bolivia."
-  },
-  {
-    id: "ar-tyc-sports-feed",
-    name: "TyC Sports Se\xF1al Alterna",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/TyC_Sports_Logo_2020.svg/320px-TyC_Sports_Logo_2020.svg.png",
-    group: "Argentina",
-    country: "AR",
-    countryName: "Argentina",
-    streamUrl: "https://cspan1-lh.akamaihd.net/i/cspan1_1@305949/master.m3u8",
-    resolution: "720p",
-    isDemoFeed: true,
-    notes: "Feed de respaldo alternativo Akamai para pruebas de conectividad."
-  },
-  {
-    id: "ar-depor-tv",
-    name: "DeporTV Argentina",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/DeporTV_logo_2016.svg/320px-DeporTV_logo_2016.svg.png",
-    group: "Argentina",
-    country: "AR",
-    countryName: "Argentina",
-    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
-    resolution: "1080p",
-    isDemoFeed: true,
-    notes: "Feed de diagn\xF3stico BipBop para validaci\xF3n en Argentina."
-  },
-  {
-    id: "co-win-sports-news",
-    name: "Win Sports Noticias Colombia",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Win_Sports_logo.svg/320px-Win_Sports_logo.svg.png",
-    group: "Colombia",
-    country: "CO",
-    countryName: "Colombia",
-    streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    resolution: "720p",
-    isDemoFeed: true,
-    notes: "Feed de prueba Mux HLS para diagn\xF3stico t\xE9cnico en Colombia."
-  },
-  {
-    id: "mx-tudn-highlights",
-    name: "TUDN M\xE9xico Feed",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/TUDN_logo.svg/320px-TUDN_logo.svg.png",
-    group: "M\xE9xico",
-    country: "MX",
-    countryName: "M\xE9xico",
-    streamUrl: "https://amg01269-amg01269c1-fifa-intl-4066.playouts.now.amagi.tv/playlist/amg01269-fifaplusfast-fifaplus-fifaplusintl/playlist.m3u8",
-    resolution: "1080p",
-    isDemoFeed: false,
-    notes: "Feed alternativo FAST en espa\xF1ol para M\xE9xico."
-  },
-  {
-    id: "es-teledeporte",
-    name: "RTVE Teledeporte Espa\xF1a",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Teledeporte_2008.svg/320px-Teledeporte_2008.svg.png",
-    group: "Espa\xF1a",
-    country: "ES",
-    countryName: "Espa\xF1a",
-    streamUrl: "https://d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8",
-    resolution: "1080p",
-    isDemoFeed: true,
-    notes: "Feed de prueba HLS para verificaci\xF3n t\xE9cnica en Espa\xF1a."
-  },
-  {
-    id: "es-gol-play",
-    name: "Gol Play Espa\xF1a",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/GOL_PLAY_logo.svg/320px-GOL_PLAY_logo.svg.png",
-    group: "Espa\xF1a",
-    country: "ES",
-    countryName: "Espa\xF1a",
-    streamUrl: "https://live-clarosports-linear.amagi.tv/playlist.m3u8",
-    resolution: "720p",
-    isDemoFeed: false,
-    notes: "Feed deportivo FAST en espa\xF1ol."
   }
 ];
+
+// src/services/iptvBackend.ts
+var iptvRouter = express.Router();
+var SPORTS_M3U_URL = "https://iptv-org.github.io/iptv/categories/sports.m3u";
+var BOLIVIA_M3U_URL = "https://iptv-org.github.io/iptv/countries/bo.m3u";
+var CACHE_TTL_MS = 6 * 60 * 60 * 1e3;
+var customChannels = [];
+var customLoadedAt = 0;
+async function refreshCustomChannels() {
+  if (Date.now() - customLoadedAt < 3e4) return customChannels;
+  const saved = await getCustomIptvChannelsFromFirebase();
+  customChannels = saved;
+  customLoadedAt = Date.now();
+  return saved;
+}
+var cachedChannels = [];
+var lastFetchTime = 0;
+var activeFetchPromise = null;
 function inferCountry(tvgCountry, tvgId, name, group) {
   const c = (tvgCountry || "").toUpperCase().trim();
   const id = (tvgId || "").toLowerCase();
@@ -1371,6 +1306,7 @@ async function fetchM3uList(url, defaultCountry) {
 }
 async function refreshSportsChannels() {
   try {
+    await refreshCustomChannels();
     const [boResult, sportsResult] = await Promise.allSettled([
       fetchM3uList(BOLIVIA_M3U_URL, "BO"),
       fetchM3uList(SPORTS_M3U_URL)
@@ -1421,6 +1357,25 @@ function getOrRefreshSportsChannels(force = false) {
   });
   return activeFetchPromise;
 }
+function getApprovedPlaylistUrl(value) {
+  if (typeof value !== "string" || value.length > 500) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.hostname !== "iptv-org.github.io" || url.port || url.username || url.password || url.search || url.hash) return null;
+    const parts = url.pathname.split("/");
+    if (parts.length !== 4 || parts[0] !== "" || parts[1] !== "iptv" || !["categories", "countries"].includes(parts[2]) || !parts[3].endsWith(".m3u") || !/^[a-z0-9-]+$/.test(parts[3].slice(0, -4))) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+iptvRouter.get("/import-preview", async (req, res) => {
+  const source = getApprovedPlaylistUrl(req.query.lista);
+  if (!source) return res.status(400).json({ success: false, error: "Solo se admiten listas p\xFAblicas HTTPS de iptv-org (categor\xEDas o pa\xEDses)." });
+  const channels = await fetchM3uList(source);
+  res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300");
+  return res.json({ success: true, source, total: channels.length, channels, persisted: false });
+});
 iptvRouter.get("/sports", async (req, res) => {
   try {
     const force = req.query.refresh === "true";
@@ -1466,28 +1421,33 @@ iptvRouter.get("/status", (_req, res) => {
     sourceUrl: SPORTS_M3U_URL
   });
 });
-iptvRouter.get("/custom", (_req, res) => {
+iptvRouter.get("/custom", async (_req, res) => {
+  try {
+    await refreshCustomChannels();
+  } catch {
+    return res.status(503).json({ success: false, error: "No se pudo consultar Firestore" });
+  }
   res.json({
     success: true,
     total: customChannels.length,
     channels: customChannels
   });
 });
-iptvRouter.post("/custom", (req, res) => {
+iptvRouter.post("/custom", async (req, res) => {
   try {
-    const { name, streamUrl, country, countryName, group, resolution, logo, notes } = req.body || {};
+    const { name, streamUrl, sourceType = "hls", country, countryName, group, resolution, logo, notes } = req.body || {};
     if (!name || typeof name !== "string" || !name.trim()) {
       return res.status(400).json({ success: false, error: "El nombre del canal es requerido." });
     }
-    if (!streamUrl || typeof streamUrl !== "string" || !streamUrl.trim().startsWith("http")) {
-      return res.status(400).json({ success: false, error: "La URL del stream debe comenzar con http:// o https://" });
-    }
+    const normalizedSource = normalizeChannelSource(streamUrl, sourceType);
+    if (!normalizedSource) return res.status(400).json({ success: false, error: "Fuente no compatible. Usa una URL HLS HTTP/HTTPS o un iframe HTTPS de los dominios admitidos." });
     const cCountry = (country || "BO").toString().toUpperCase().trim();
     const cCountryName = countryName?.trim() || (cCountry === "BO" ? "Bolivia" : cCountry === "INT" ? "Internacional" : cCountry);
     const newChannel = {
       id: `custom-iptv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: name.trim(),
-      streamUrl: streamUrl.trim(),
+      streamUrl: normalizedSource,
+      sourceType,
       country: cCountry,
       countryName: cCountryName,
       group: group?.trim() || "F\xFAtbol Boliviano",
@@ -1498,8 +1458,9 @@ iptvRouter.post("/custom", (req, res) => {
       notes: notes?.trim() || "Canal configurado manualmente desde el panel de administraci\xF3n.",
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
+    await saveCustomIptvChannelToFirebase(newChannel);
     customChannels = [newChannel, ...customChannels.filter((c) => c.streamUrl !== newChannel.streamUrl)];
-    saveCustomChannels(customChannels);
+    customLoadedAt = Date.now();
     cachedChannels = [
       newChannel,
       ...cachedChannels.filter((c) => c.id !== newChannel.id && c.streamUrl !== newChannel.streamUrl)
@@ -1510,39 +1471,112 @@ iptvRouter.post("/custom", (req, res) => {
       channel: newChannel
     });
   } catch (err) {
+    if (err?.code === "permission-denied" || err?.code === "firestore/permission-denied") {
+      return res.status(403).json({ success: false, code: "FIRESTORE_PERMISSION_DENIED", error: "Firestore deneg\xF3 el guardado. Publica las reglas para iptvCustomChannels y verifica el usuario Firebase del backend y su documento admins/{UID}." });
+    }
     res.status(500).json({ success: false, error: err?.message || "Error guardando canal IPTV" });
   }
 });
-iptvRouter.delete("/custom/:id", (req, res) => {
+iptvRouter.delete("/custom/:id", async (req, res) => {
   const { id } = req.params;
-  customChannels = customChannels.filter((c) => c.id !== id);
-  saveCustomChannels(customChannels);
-  cachedChannels = cachedChannels.filter((c) => c.id !== id);
-  res.json({ success: true, removedId: id });
+  try {
+    await deleteCustomIptvChannelFromFirebase(id);
+    customChannels = customChannels.filter((c) => c.id !== id);
+    customLoadedAt = Date.now();
+    cachedChannels = cachedChannels.filter((c) => c.id !== id);
+    res.json({ success: true, removedId: id });
+  } catch {
+    res.status(503).json({ success: false, error: "No se pudo eliminar el canal en Firestore" });
+  }
 });
+iptvRouter.get("/diagnostics/:id", async (req, res) => {
+  const channel = [...customChannels, ...cachedChannels].find((c) => c.id === req.params.id);
+  if (!channel) return res.status(404).json({ success: false, status: "not_found", error: "Canal no encontrado" });
+  let url;
+  try {
+    url = new URL(channel.streamUrl);
+  } catch {
+    return res.status(422).json({ success: false, status: "invalid_url" });
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.port || !url.hostname.includes(".")) {
+    return res.status(422).json({ success: false, status: "unsupported_url" });
+  }
+  if (!CURATED_FALLBACK_CHANNELS.some((c) => c.id === channel.id && c.streamUrl === channel.streamUrl)) {
+    return res.status(403).json({ success: false, status: "requires_admin_validation", error: "Diagn\xF3stico remoto no habilitado para fuentes externas no verificadas" });
+  }
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1e4);
+  try {
+    const response = await fetch(url.href, { signal: controller.signal, redirect: "error" });
+    const latencyMs = Date.now() - started;
+    if (!response.ok) return res.json({ success: true, status: response.status === 403 ? "restricted" : response.status === 404 ? "offline" : "http_error", httpStatus: response.status, latencyMs });
+    const body = (await response.text()).slice(0, 2e5);
+    const valid = body.trimStart().startsWith("#EXTM3U") && (body.includes("#EXT-X-STREAM-INF") || body.includes("#EXTINF"));
+    return res.json({ success: true, status: valid ? "manifest_ok" : "invalid_manifest", latencyMs, httpStatus: response.status });
+  } catch (error) {
+    return res.json({ success: true, status: controller.signal.aborted ? "timeout" : "network_error", latencyMs: Date.now() - started });
+  } finally {
+    clearTimeout(timer);
+  }
+});
+async function isPublicProbeUrl(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.port || url.hostname === "localhost" || url.hostname.endsWith(".local")) return false;
+    const addresses = await lookup(url.hostname, { all: true });
+    if (!addresses.length) return false;
+    return addresses.every(({ address }) => {
+      if (isIP(address) === 4) {
+        const p = address.split(".").map(Number);
+        return !(p[0] === 0 || p[0] === 10 || p[0] === 127 || p[0] >= 224 || p[0] === 169 && p[1] === 254 || p[0] === 172 && p[1] >= 16 && p[1] <= 31 || p[0] === 192 && p[1] === 168 || p[0] === 100 && p[1] >= 64 && p[1] <= 127 || p[0] === 192 && p[1] === 0);
+      }
+      const ip = address.toLowerCase();
+      return !(/^(::1|::|fc|fd|fe8|fe9|fea|feb)/.test(ip) || ip.startsWith("::ffff:"));
+    });
+  } catch {
+    return false;
+  }
+}
 iptvRouter.post("/probe", async (req, res) => {
   const { streamUrl } = req.body || {};
   if (!streamUrl || typeof streamUrl !== "string") {
     return res.status(400).json({ success: false, error: "streamUrl es requerido" });
   }
+  if (!await isPublicProbeUrl(streamUrl)) return res.status(422).json({ success: false, reachable: false, error: "URL no permitida: usa HTTPS p\xFAblico." });
   const startTime = Date.now();
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4e3);
+    const timeout = setTimeout(() => controller.abort(), 1e4);
     const resp = await fetch(streamUrl, {
       method: "GET",
+      redirect: "error",
       signal: controller.signal,
       headers: { "User-Agent": "GolBolivia/2026.1 (Channel-Probe)" }
     });
-    clearTimeout(timeout);
     const latencyMs = Date.now() - startTime;
+    const contentType = resp.headers.get("content-type") || "";
+    let manifestValid = false;
+    let mediaReferenceFound = false;
+    if (resp.ok && (streamUrl.toLowerCase().includes(".m3u8") || contentType.includes("mpegurl"))) {
+      const text = (await resp.text()).slice(0, 2e5);
+      manifestValid = text.trimStart().startsWith("#EXTM3U");
+      mediaReferenceFound = manifestValid && (text.includes("#EXT-X-STREAM-INF") || text.includes("#EXTINF"));
+    } else {
+      await resp.body?.cancel();
+    }
+    clearTimeout(timeout);
     res.json({
       success: true,
-      reachable: resp.ok || resp.status < 400,
+      reachable: resp.ok && manifestValid && mediaReferenceFound,
       status: resp.status,
       statusText: resp.statusText,
-      contentType: resp.headers.get("content-type") || "",
-      latencyMs
+      contentType,
+      latencyMs,
+      manifestValid,
+      mediaReferenceFound,
+      playbackVerified: false,
+      error: !resp.ok ? `HTTP ${resp.status}` : !manifestValid ? "La respuesta no es un manifiesto HLS v\xE1lido" : !mediaReferenceFound ? "No se encontraron variantes o segmentos" : void 0
     });
   } catch (err) {
     res.json({
@@ -1744,8 +1778,10 @@ async function readLimited(response, max) {
 async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  res.setHeader("Access-Control-Expose-Headers", "X-GolBolivia-Proxy-Error, X-GolBolivia-Proxy-Stage, X-GolBolivia-Upstream-Status");
   res.setHeader("Access-Control-Allow-Headers", "*");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Cache-Control", "no-store");
   res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -1778,10 +1814,12 @@ async function handler(req, res) {
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+  let stage = "validate_target";
   try {
     let currentUrl = targetUrl;
     let response;
     for (let hop = 0; ; hop++) {
+      stage = "validate_target";
       const parsed = await assertPublicHttpUrl(currentUrl);
       const fetchOrigin = parsed.origin;
       const fetchHeaders = {
@@ -1794,6 +1832,7 @@ async function handler(req, res) {
       if (req.headers && req.headers["range"]) {
         fetchHeaders["Range"] = req.headers["range"];
       }
+      stage = "fetch_origin";
       response = await fetch(parsed.toString(), {
         method: req.method === "HEAD" ? "HEAD" : "GET",
         headers: fetchHeaders,
@@ -1811,6 +1850,21 @@ async function handler(req, res) {
       }
       break;
     }
+    if (!response.ok) {
+      res.setHeader("X-GolBolivia-Proxy-Error", "UPSTREAM_HTTP_ERROR");
+      res.setHeader("X-GolBolivia-Proxy-Stage", "fetch_origin");
+      res.setHeader("X-GolBolivia-Upstream-Status", String(response.status));
+      try {
+        await response.body?.cancel();
+      } catch {
+      }
+      if (req.method === "HEAD") return res.status(response.status).end();
+      return res.status(response.status).json({
+        error: `El servidor de la se\xF1al respondi\xF3 HTTP ${response.status}`,
+        code: "UPSTREAM_HTTP_ERROR",
+        upstreamStatus: response.status
+      });
+    }
     const finalUrl = currentUrl;
     const contentType = (response.headers.get("content-type") || "").toLowerCase();
     const cleanUrl = finalUrl.toLowerCase().split("?")[0];
@@ -1822,6 +1876,7 @@ async function handler(req, res) {
       );
       return res.status(response.status).end();
     }
+    stage = "read_origin_body";
     const buffer = await readLimited(response, PROXY_MAX_BYTES);
     const headerPrefix = buffer.slice(0, 32).toString("utf-8");
     if (looksM3u8 || headerPrefix.includes("#EXTM3U")) {
@@ -1845,16 +1900,20 @@ async function handler(req, res) {
     return res.status(response.status).send(buffer);
   } catch (error) {
     const status = error?.status || 502;
+    const code = stage === "validate_target" ? "PROXY_TARGET_REJECTED" : stage === "read_origin_body" ? "PROXY_ORIGIN_READ_FAILED" : "PROXY_ORIGIN_FETCH_FAILED";
+    res.setHeader("X-GolBolivia-Proxy-Error", code);
+    res.setHeader("X-GolBolivia-Proxy-Stage", stage);
     return res.status(status).json({
-      error: status === 502 ? "Error al conectar con el stream origen" : error.message
+      error: status === 502 ? "Error al conectar con el stream origen" : error.message,
+      code,
+      stage
     });
   } finally {
     clearTimeout(timeout);
   }
 }
 
-// serverApp.ts
-var appDirname = typeof __dirname !== "undefined" ? __dirname : process.cwd();
+// src/utils/serverUrl.ts
 function normalizeVercelUrl(rawUrl, headers = {}) {
   const xMatched = headers["x-matched-path"] || headers["x-vercel-matched-path"];
   const targetUrl = xMatched && typeof xMatched === "string" ? xMatched : rawUrl;
@@ -1873,6 +1932,9 @@ function normalizeVercelUrl(rawUrl, headers = {}) {
   }
   return targetUrl;
 }
+
+// serverApp.ts
+var appDirname = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 var app2 = express2();
 var server = http.createServer(app2);
 var PORT = process.env.PORT || 3e3;
@@ -1897,7 +1959,6 @@ app2.use((_req, res, next) => {
   }
   next();
 });
-app2.use("/api/iptv", iptvRouter);
 app2.all(["/api/proxy", "/proxy"], async (req, res) => {
   await handler(req, res);
 });
@@ -2061,6 +2122,11 @@ function requireRoles(allowedRoles) {
     next();
   };
 }
+app2.use("/api/iptv", (req, res, next) => {
+  const protectedPath = req.path === "/import-preview" || req.path === "/probe" || req.path === "/custom" && req.method !== "GET" || req.path.startsWith("/custom/") && req.method !== "GET";
+  if (!protectedPath) return next();
+  authenticate(req, res, () => requireRoles(["ADMIN", "TRANSMISOR"])(req, res, next));
+}, iptvRouter);
 var state = {
   clubs: { ...BOLIVIAN_CLUBS },
   liveEvents: [],
@@ -2115,15 +2181,15 @@ var state = {
   events: [],
   chatMessages: []
 };
-var DATA_DIR = process.env.VERCEL ? path2.resolve("/tmp", "data") : path2.resolve(appDirname, "data");
-var STATE_FILE = path2.join(DATA_DIR, "stream-state.json");
+var DATA_DIR = process.env.VERCEL ? path.resolve("/tmp", "data") : path.resolve(appDirname, "data");
+var STATE_FILE = path.join(DATA_DIR, "stream-state.json");
 function loadPersistedStateSync() {
   try {
-    if (!fs2.existsSync(DATA_DIR)) {
-      fs2.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    if (fs2.existsSync(STATE_FILE)) {
-      const raw = fs2.readFileSync(STATE_FILE, "utf-8");
+    if (fs.existsSync(STATE_FILE)) {
+      const raw = fs.readFileSync(STATE_FILE, "utf-8");
       const saved = JSON.parse(raw);
       if (saved && typeof saved === "object") {
         if (saved.streamSettings) {
@@ -2217,8 +2283,8 @@ ensureStateLoaded().catch(() => {
 });
 function persistState() {
   try {
-    if (!fs2.existsSync(DATA_DIR)) {
-      fs2.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     const dataToSave = {
       streamSettings: state.streamSettings,
@@ -2229,7 +2295,7 @@ function persistState() {
       chatMessages: state.chatMessages,
       updatedAt: Date.now()
     };
-    fs2.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), "utf-8");
+    fs.writeFileSync(STATE_FILE, JSON.stringify(dataToSave, null, 2), "utf-8");
     console.log("[GolBolivia Backend] Configuraci\xF3n de transmisi\xF3n respaldada en disco local.");
   } catch (err) {
     console.error("[GolBolivia Backend] Error al guardar estado en disco:", err);
@@ -2503,7 +2569,7 @@ app2.post(
   ["/api/donation-qr", "/donation-qr"],
   authenticate,
   requireRoles(["ADMIN", "TRANSMISOR", "EDITOR"]),
-  (req, res) => {
+  async (req, res) => {
     const { imageUrl, bankName, accountHolder, instructions } = req.body;
     const current = state.streamSettings.donationQr || {
       imageUrl: "",
@@ -2518,17 +2584,22 @@ app2.post(
       instructions: typeof instructions === "string" ? instructions.trim().slice(0, 300) : current.instructions,
       updatedAt: Date.now()
     };
-    state.streamSettings.donationQr = updatedQr;
+    let confirmedQr;
+    try {
+      confirmedQr = await saveDonationQrToFirebase(updatedQr, req.user?.username || "admin");
+    } catch (err) {
+      console.error("[Firebase] No se pudo guardar QR compartido:", err);
+      res.status(503).json({ success: false, error: "No se pudo sincronizar el QR. Intenta de nuevo." });
+      return;
+    }
+    state.streamSettings.donationQr = confirmedQr;
     persistState();
-    saveDonationQrToFirebase(updatedQr, req.user?.username || "admin").catch((err) => {
-      console.warn("[Firebase] Advertencia al persistir donationQr en Firestore:", err);
-    });
-    broadcastSseEvent("DONATION_QR_UPDATED", updatedQr);
+    broadcastSseEvent("DONATION_QR_UPDATED", confirmedQr);
     broadcastSseEvent("STREAM_UPDATED", getPublicStreamPayload());
     res.json({
       success: true,
       message: "C\xF3digo QR de apoyo y donaciones guardado y sincronizado con \xE9xito en Firebase y servidor.",
-      donationQr: updatedQr
+      donationQr: confirmedQr
     });
   }
 );
@@ -2720,13 +2791,26 @@ app2.post(
     const nextVersion = (existingEvent?.version || raw.version || 0) + 1;
     const now = Date.now();
     const operator = req.user?.username || "admin";
+    const externalUrl = normalizeExternalPlayerUrl(raw.externalSource?.url);
+    if ((raw.externalSource != null || raw.primaryProvider === "external") && !externalUrl) {
+      res.status(400).json({ error: "URL de reproductor externo no compatible." });
+      return;
+    }
+    const iptvStreamUrl = normalizeMatchIptvUrl(raw.iptvSource?.streamUrl);
     const safeEvent = {
       id: cleanId,
       title: cleanTitle,
       homeTeam: cleanHome,
       awayTeam: cleanAway,
       isLive: Boolean(raw.isLive ?? true),
-      primaryProvider: ["cloudflare", "youtube", "kick"].includes(raw.primaryProvider) ? raw.primaryProvider : "cloudflare",
+      primaryProvider: ["cloudflare", "youtube", "kick", "iptv", "external"].includes(raw.primaryProvider) ? raw.primaryProvider : "cloudflare",
+      externalSource: externalUrl ? { url: externalUrl } : null,
+      iptvSource: raw.iptvSource && typeof raw.iptvSource.channelId === "string" && iptvStreamUrl ? {
+        channelId: raw.iptvSource.channelId.trim().slice(0, 160),
+        channelName: String(raw.iptvSource.channelName || "Canal IPTV").trim().slice(0, 120),
+        streamUrl: iptvStreamUrl,
+        category: String(raw.iptvSource.category || "").trim().slice(0, 80)
+      } : null,
       cloudflare: raw.cloudflare ? {
         liveInputId: String(raw.cloudflare.liveInputId || "").trim(),
         playbackUrl: String(raw.cloudflare.playbackUrl || "").trim()
@@ -2737,7 +2821,7 @@ app2.post(
       kick: raw.kick ? {
         channel: String(raw.kick.channel || "").trim()
       } : void 0,
-      fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder : ["cloudflare", "youtube", "kick"],
+      fallbackOrder: Array.isArray(raw.fallbackOrder) && raw.fallbackOrder.length > 0 ? raw.fallbackOrder.filter((p) => ["cloudflare", "youtube", "kick", "iptv", "external"].includes(String(p))) : ["cloudflare", "youtube", "kick"],
       tournamentName: raw.tournamentName ? String(raw.tournamentName).trim() : void 0,
       stadiumName: raw.stadiumName ? String(raw.stadiumName).trim() : void 0,
       period: raw.period || "1T",
@@ -2747,6 +2831,7 @@ app2.post(
       customVideoUrl: raw.customVideoUrl ? String(raw.customVideoUrl).trim() : void 0,
       backupVideoUrl: raw.backupVideoUrl ? String(raw.backupVideoUrl).trim() : void 0,
       backupChannelName: raw.backupChannelName ? String(raw.backupChannelName).trim() : void 0,
+      broadcastMode: ["obs_custom", "simulation", "pre_match", "halftime", "var", "post_match"].includes(raw.broadcastMode) ? raw.broadcastMode : "obs_custom",
       activeStreamSource: raw.activeStreamSource || "obs",
       autoFailoverEnabled: raw.autoFailoverEnabled ?? true,
       isClockRunning: raw.isClockRunning ?? false,
@@ -2822,7 +2907,7 @@ app2.post(
     } else {
       state.liveEvents.push(safeEvent);
     }
-    if (existingIndex === 0 || state.streamSettings.title === safeEvent.title || state.liveEvents.length === 1) {
+    if (state.liveEvents.length === 1 || existingIndex === 0 && state.liveEvents[0]?.id === safeEvent.id) {
       state.streamSettings.title = safeEvent.title;
       state.streamSettings.homeClubId = safeEvent.homeTeam;
       state.streamSettings.awayClubId = safeEvent.awayTeam;
