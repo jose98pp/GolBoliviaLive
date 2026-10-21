@@ -1,5 +1,5 @@
 import { authService } from '../services/auth';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Tv,
   Plus,
@@ -22,7 +22,7 @@ import { normalizeChannelSource, parseChannelPlaylist } from '../utils/channelSo
 import { iptvService } from '../services/iptvService';
 
 interface IptvChannelsManagerProps {
-  onSetMatchStreamUrl?: (streamUrl: string, channelName: string) => void;
+  onSetMatchStreamUrl?: (streamUrl: string, channelName: string, sourceType?: 'hls' | 'iframe') => void;
   activeMatchStreamUrl?: string;
 }
 
@@ -101,8 +101,11 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
         iptvService.getChannels({ forceRefresh: true }),
         iptvService.getCustomChannels(),
       ]);
-      setChannels(all);
       setCustomChannels(custom);
+      const customIds = new Set(custom.map((c) => c.id));
+      const customUrls = new Set(custom.map((c) => c.streamUrl));
+      const nonCustom = all.filter((c) => !customIds.has(c.id) && !customUrls.has(c.streamUrl));
+      setChannels([...custom, ...nonCustom]);
     } catch (err) {
       console.error('[IptvChannelsManager] Error cargando canales:', err);
     } finally {
@@ -183,27 +186,37 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
     }
   };
 
-  const handleSetMatchStream = (url: string, cName: string) => {
+  const handleSetMatchStream = (url: string, cName: string, sType?: 'hls' | 'iframe') => {
     if (onSetMatchStreamUrl) {
-      onSetMatchStreamUrl(url, cName);
+      onSetMatchStreamUrl(url, cName, sType);
       setAssignedMessage(`¡Señal «${cName}» asignada al reproductor del partido!`);
       setTimeout(() => setAssignedMessage(null), 4000);
     }
   };
 
-  const displayedChannels = channels.filter((c) => {
-    if (onlyCustom && !c.isCustom) return false;
-    if (filterCountry !== 'ALL' && c.country !== filterCountry) return false;
-    if (searchFilter.trim()) {
-      const q = searchFilter.toLowerCase().trim();
-      return (
-        c.name.toLowerCase().includes(q) ||
-        c.group.toLowerCase().includes(q) ||
-        c.countryName.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  const displayedChannels = useMemo(() => {
+    const baseList = onlyCustom
+      ? customChannels
+      : (() => {
+          const customIds = new Set(customChannels.map((c) => c.id));
+          const customUrls = new Set(customChannels.map((c) => c.streamUrl));
+          const nonCustom = channels.filter((c) => !customIds.has(c.id) && !customUrls.has(c.streamUrl));
+          return [...customChannels, ...nonCustom];
+        })();
+
+    return baseList.filter((c) => {
+      if (filterCountry !== 'ALL' && c.country !== filterCountry) return false;
+      if (searchFilter.trim()) {
+        const q = searchFilter.toLowerCase().trim();
+        return (
+          c.name.toLowerCase().includes(q) ||
+          (c.group && c.group.toLowerCase().includes(q)) ||
+          (c.countryName && c.countryName.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [channels, customChannels, onlyCustom, filterCountry, searchFilter]);
 
   return (
     <div className="space-y-6">
@@ -645,7 +658,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => handleSetMatchStream(channel.streamUrl, channel.name)}
+                    onClick={() => handleSetMatchStream(channel.streamUrl, channel.name, channel.sourceType)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer ${
                       isMatchActive
                         ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'

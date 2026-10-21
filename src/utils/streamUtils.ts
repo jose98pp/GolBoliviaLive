@@ -15,17 +15,104 @@ export function normalizeMatchIptvUrl(value: unknown): string | null {
   }
 }
 
+const STREAMXHD_DOMAINS = new Set([
+  'streamxhd.st',
+  'streamxhd.com',
+  'streamxhd.click',
+  'streamxhd.top',
+  'streamxhd.net',
+  'streamxhd.me',
+  'streamxhd.live',
+]);
+
+const ALLOWED_SPORTS_EMBED_DOMAINS = new Set([
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'youtu.be',
+  'player.twitch.tv',
+  'twitch.tv',
+  'www.twitch.tv',
+  'dailymotion.com',
+  'www.dailymotion.com',
+  'player.vimeo.com',
+  'vimeo.com',
+  'pelotalibre.org',
+  'www.pelotalibre.org',
+  'futbollibre.lol',
+  'www.futbollibre.lol',
+  'librefutboltv.com',
+  'www.librefutboltv.com',
+  'promiedos.com.ar',
+  'www.promiedos.com.ar',
+  'embedstream.me',
+  'www.embedstream.me',
+  'voodc.com',
+  'ragnaru.net',
+  'casadelfutbol.net',
+  'streamwish.to',
+  'streamwish.com',
+  'filelions.to',
+  'luluvdo.com',
+  'vidmoly.me',
+  'la14hd.com',
+  'deportelibre.net',
+  'tarjetarojatv.org',
+  'rojadirectatv.tv',
+  'pirlotv.fr',
+  'pirlotv.online',
+  'la12hd.com',
+  'streamplay.to',
+  'ok.ru',
+]);
+
 export function normalizeExternalPlayerUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim().length > 1500) return null;
+  const raw = value.trim();
   try {
-    const url = new URL(value.trim());
+    const url = new URL(raw);
     if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
-    if (!['streamxhd.st', 'streamxhd.com', 'streamxhd.click'].includes(url.hostname)) return null;
-    if (url.pathname !== '/live1.php' || !/^[a-zA-Z0-9_-]{1,80}$/.test(url.searchParams.get('stream') || '')) return null;
-    if ([...url.searchParams.keys()].some(key => key !== 'stream') || url.searchParams.getAll('stream').length !== 1) return null;
-    url.hash = '';
-    return url.href;
-  } catch { return null; }
+    const host = url.hostname.toLowerCase();
+
+    // StreamXHD validation
+    if (STREAMXHD_DOMAINS.has(host)) {
+      if (url.pathname !== '/live1.php' && url.pathname !== '/live2.php') return null;
+      const streamVal = url.searchParams.get('stream');
+      if (!streamVal || !/^[a-zA-Z0-9_-]{1,80}$/.test(streamVal)) return null;
+      if ([...url.searchParams.keys()].some((key) => key !== 'stream') || url.searchParams.getAll('stream').length !== 1) {
+        return null;
+      }
+      url.hash = '';
+      return url.href;
+    }
+
+    // YouTube validation
+    if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com' || host === 'youtu.be') {
+      let videoId = '';
+      if (host === 'youtu.be') {
+        videoId = url.pathname.slice(1);
+      } else if (url.pathname.startsWith('/embed/')) {
+        videoId = url.pathname.slice('/embed/'.length);
+      } else if (url.pathname === '/watch') {
+        videoId = url.searchParams.get('v') || '';
+      }
+      if (/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return `https://www.youtube.com/embed/${videoId}`;
+      }
+      return null;
+    }
+
+    // Other sports embed providers
+    if (ALLOWED_SPORTS_EMBED_DOMAINS.has(host)) {
+      if (url.pathname.length <= 1 && !url.search) return null;
+      url.hash = '';
+      return url.href;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**

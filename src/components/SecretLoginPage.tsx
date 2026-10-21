@@ -51,6 +51,7 @@ import { TeamsManager } from './TeamsManager';
 import { LiveEventsManager } from './LiveEventsManager';
 import { DonationQrAdminCard } from './DonationQrAdminCard';
 import { IptvChannelsManager } from './IptvChannelsManager';
+import { normalizeExternalPlayerUrl } from '../utils/streamUtils';
 import { useClubs } from '../hooks/useClubs';
 import { verifyStreamLatency, LatencyTestResult } from '../services/latencyChecker';
 
@@ -1912,10 +1913,11 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             <div className="space-y-6">
               <IptvChannelsManager
                 activeMatchStreamUrl={streamSettings.customVideoUrl}
-                onSetMatchStreamUrl={(streamUrl, channelName) => {
+                onSetMatchStreamUrl={(streamUrl, channelName, sourceType) => {
+                  const isExternal = sourceType === 'iframe' || Boolean(normalizeExternalPlayerUrl(streamUrl));
                   onUpdateStreamSettings({
                     customVideoUrl: streamUrl,
-                    primaryProvider: 'cloudflare',
+                    primaryProvider: isExternal ? 'external' : 'cloudflare',
                     title: `${channelName} · En Vivo`,
                   });
                 }}

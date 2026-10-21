@@ -5,8 +5,8 @@ export function normalizeChannelSource(value: unknown, type: unknown = 'hls'): s
   if (typeof value !== 'string' || value.length > 5000) return null;
   let source = value.trim();
   if (type === 'iframe') {
-    if (source.startsWith('<')) {
-      const match = source.match(/^<iframe\b[^>]*\bsrc\s*=\s*(["'])([^"']+)\1[^>]*>\s*<\/iframe>$/i);
+    if (source.startsWith('<') || source.includes('<iframe')) {
+      const match = source.match(/<iframe\b[^>]*\bsrc\s*=\s*(["'])([^"']+)\1/i);
       if (!match) return null;
       source = match[2].replace(/&amp;/g, '&');
     }
@@ -25,7 +25,9 @@ export function normalizeChannelSource(value: unknown, type: unknown = 'hls'): s
 export function parseChannelPlaylist(text: string): IptvChannel[] {
   if (text.length > 1024 * 1024) throw new Error('La lista supera el límite de 1 MB.');
   if (!text.trimStart().startsWith('#EXTM3U')) throw new Error('El archivo no es una lista M3U válida.');
-  if (/^#EXT-X-/m.test(text)) throw new Error('Este archivo es una señal HLS. Guarda su URL como canal HLS; no es un catálogo de canales.');
+  if (/^#EXT-X-TARGETDURATION/m.test(text) || (/^#EXT-X-/m.test(text) && !/#EXTINF:/m.test(text))) {
+    throw new Error('Este archivo es una señal HLS. Guarda su URL como canal HLS; no es un catálogo de canales.');
+  }
   const channels: IptvChannel[] = [];
   const seen = new Set<string>();
   let info = '';
