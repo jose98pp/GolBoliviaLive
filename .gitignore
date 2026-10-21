@@ -15,3 +15,8 @@ coverage/
 # Estado local del servidor en la raíz (contiene stream key y URLs privadas)
 /data/
 !src/data/
+
+# Local Firebase Emulator logs
+**/firebase-debug.log
+**/firestore-debug.log
+**/ui-debug.log

@@ -49,3 +49,7 @@ Si el DNS nativo devuelve `ECONNREFUSED`/`EAI_AGAIN`, el inicio del entorno pued
 El complemento solo interviene cuando falla el DNS nativo para esos nombres. Consulta A y AAAA por HTTPS, verifica la respuesta, comparte solicitudes concurrentes y respeta el TTL hasta cinco minutos. Devuelve todas las direcciones al proxy para que siga rechazando destinos privados; no desactiva la protección SSRF ni la verificación TLS. `bun run test:cloud-dns` comprueba el comportamiento con respuestas simuladas sin acceder a Internet.
 
 Guardar el borrador del entorno no aplica ni publica los permisos de red. Esa acción debe completarse con **Guardar/Publicar** en la interfaz del entorno. Hasta que `dns.google` y los servidores de vídeo sean accesibles, la reproducción real seguirá pendiente aunque las pruebas locales pasen.
+
+### Pruebas reales de Security Rules
+
+Instala las dependencias independientes con `bun install --cwd security_rules_test_firestore` y ejecuta `bun run test:rules` (requiere Java 21 y acceso a la descarga oficial del emulador). Consulta [las instrucciones y el estado de validación](security_rules_test_firestore/README.md). Usa un proyecto `demo-` local sin escribir en producción. El emulador compila el archivo real `firestore.rules` antes de comprobar los permisos. Estas pruebas no se ejecutan dentro de la suite rápida `bun run test`.
