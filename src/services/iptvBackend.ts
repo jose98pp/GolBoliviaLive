@@ -359,6 +359,9 @@ iptvRouter.post('/custom', async (req: Request, res: Response) => {
       channel: newChannel,
     });
   } catch (err: any) {
+    if (err?.code === 'permission-denied' || err?.code === 'firestore/permission-denied') {
+      return res.status(403).json({ success: false, code: 'FIRESTORE_PERMISSION_DENIED', error: 'Firestore denegó el guardado. Publica las reglas para iptvCustomChannels y verifica el usuario Firebase del backend y su documento admins/{UID}.' });
+    }
     res.status(500).json({ success: false, error: err?.message || 'Error guardando canal IPTV' });
   }
 });

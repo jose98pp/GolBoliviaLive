@@ -378,6 +378,12 @@ async function runAllIptvTests() {
   await customLayer.route.stack[0].handle(mockReqPostCustom, failedSaveResponse, () => {});
   assert(failedSaveStatus === 500 && failedSaveBody.success === false, 'Un error de persistencia se devuelve al cliente');
   assert(getCustomChannelsForTest().length === 0, 'No se publica un canal cuyo guardado falló');
+  failNextSaveForTest('permission-denied');
+  await customLayer.route.stack[0].handle(mockReqPostCustom, failedSaveResponse, () => {});
+  assert(failedSaveStatus === 403 && failedSaveBody.code === 'FIRESTORE_PERMISSION_DENIED', 'Un rechazo de Firestore se distingue del bloqueo de la señal');
+  assert(failedSaveBody.error.includes('iptvCustomChannels') && failedSaveBody.error.includes('admins/{UID}'), 'El rechazo de guardado identifica las reglas y la autenticación que revisar');
+  assert(getCustomChannelsForTest().length === 0, 'El rechazo de permisos no publica el canal');
+
 
 
   // ── 7. Pruebas del Proxy Serverless /api/proxy (CORS y enlaces http://) ──

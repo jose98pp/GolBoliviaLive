@@ -27,7 +27,8 @@ Las reglas (`firestore.rules`) permiten lectura pública, pero **solo el backend
 1. Firebase Console → Authentication → activar **Email/Contraseña** y crear un usuario (ej. `backend@tu-dominio`).
 2. Copiar su **UID** y crear en Firestore el documento `admins/{UID}` (puede quedar vacío).
 3. Poner su email y contraseña en `FIREBASE_SERVER_EMAIL` / `FIREBASE_SERVER_PASSWORD`.
-4. Publicar las reglas: `firebase deploy --only firestore:rules` (o pegarlas en la consola).
+4. Las reglas deben incluir `iptvCustomChannels/{channelId}` con lectura pública y escritura restringida a `isBackend()`, como el resto del catálogo.
+5. Publicar las reglas: `firebase deploy --only firestore:rules` (o pegarlas en la consola).
 
 El estado local del servidor (`data/stream-state.json`) contiene la stream key y no se versiona.
 

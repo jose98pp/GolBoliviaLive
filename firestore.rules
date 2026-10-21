@@ -27,6 +27,11 @@ service cloud.firestore {
       allow write: if isBackend();
     }
 
+    match /iptvCustomChannels/{channelId} {
+      allow read: if true;
+      allow write: if isBackend();
+    }
+
     match /clubs/{clubId} {
       allow read: if true;
       allow write: if isBackend();
