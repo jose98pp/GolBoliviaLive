@@ -222,10 +222,10 @@ export const EventsAndChatModeration: React.FC<EventsAndChatModerationProps> = (
               className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-semibold cursor-pointer"
             >
               <option value={streamSettings.homeClubId}>
-                {homeClub?.badgeEmoji} {homeClub?.name} (Local)
+                {homeClub?.name} (Local)
               </option>
               <option value={streamSettings.awayClubId}>
-                {awayClub?.badgeEmoji} {awayClub?.name} (Visitante)
+                {awayClub?.name} (Visitante)
               </option>
             </select>
           </div>

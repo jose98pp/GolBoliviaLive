@@ -1,3 +1,4 @@
+import { ClubCrest } from './ClubCrest';
 import React, { useState } from 'react';
 import { LiveEvent } from '../types/football';
 import { BOLIVIAN_CLUBS } from '../data/bolivianFootballData';
@@ -100,7 +101,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
 
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0 flex items-center gap-2">
-                    <span className="text-xl">{home?.badgeEmoji || '⚽'}</span>
+                    <span className="text-xl"><ClubCrest club={home} /></span>
                     <span className="text-sm font-bold text-white truncate">{home?.name || event.homeTeam}</span>
                   </div>
 
@@ -110,7 +111,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
 
                   <div className="flex-1 min-w-0 flex items-center justify-end gap-2">
                     <span className="text-sm font-bold text-white truncate text-right">{away?.name || event.awayTeam}</span>
-                    <span className="text-xl">{away?.badgeEmoji || '⚽'}</span>
+                    <span className="text-xl"><ClubCrest club={away} /></span>
                   </div>
                 </div>
 

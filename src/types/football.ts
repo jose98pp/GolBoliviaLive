@@ -17,6 +17,7 @@ export interface Club {
   secondaryColor: string;
   textColor: string;
   badgeEmoji: string;
+  logoUrl?: string;
   stadium: string;
   altitudeMeters: number;
   league?: string;

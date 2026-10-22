@@ -1,3 +1,4 @@
+import { ClubCrest } from './ClubCrest';
 import React, { useState } from 'react';
 import { Radio, Bell, Tv, ShieldCheck, Menu, X, Users, Eye, Sparkles, ChevronRight, Activity, Zap, RefreshCw, Heart } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -214,7 +215,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <div className="flex items-center justify-between text-xs font-bold text-white px-1">
               <span className="flex items-center gap-1 truncate max-w-[45%]">
-                <span>{homeClub?.badgeEmoji || '⚽'}</span>
+                <span><ClubCrest club={homeClub} /></span>
                 <span className="truncate">{homeClub?.shortName || homeClub?.name || 'Local'}</span>
               </span>
               <span className="font-mono text-base text-emerald-400 font-black px-2 py-0.5 bg-black/60 rounded border border-slate-700 tabular-nums">
@@ -222,7 +223,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
               <span className="flex items-center gap-1 truncate max-w-[45%] justify-end">
                 <span className="truncate">{awayClub?.shortName || awayClub?.name || 'Visitante'}</span>
-                <span>{awayClub?.badgeEmoji || '⚽'}</span>
+                <span><ClubCrest club={awayClub} /></span>
               </span>
             </div>
           </div>

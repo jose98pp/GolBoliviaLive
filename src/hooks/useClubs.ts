@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Club } from '../types/football';
 import { BOLIVIAN_CLUBS, setGlobalClubs } from '../data/bolivianFootballData';
+import { resolveClubCrests } from '../services/clubCrests';
+import { getClubCrestUrl } from '../utils/clubCrests';
 import { apiClient } from '../services/apiClient';
 
 export function useClubs() {
@@ -31,6 +33,28 @@ export function useClubs() {
       unsubscribe();
     };
   }, []);
+
+  const missingCrestsKey = JSON.stringify(Object.values(clubs).filter(club => !getClubCrestUrl(club)).map(club => [club.id, club.name, club.shortName, club.country, club.league]));
+  useEffect(() => {
+    let cancelled = false;
+    const requested = clubs;
+    resolveClubCrests(Object.values(requested)).then(logos => {
+      if (cancelled || Object.keys(logos).length === 0) return;
+      setClubs(current => {
+        const updated = { ...current };
+        let changed = false;
+        for (const [id, url] of Object.entries(logos)) {
+          if (current[id] && current[id].name === requested[id]?.name && !getClubCrestUrl(current[id])) {
+            updated[id] = { ...current[id], logoUrl: url }; changed = true;
+          }
+        }
+        if (!changed) return current;
+        setGlobalClubs(updated);
+        return updated;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [missingCrestsKey]);
 
   const saveClub = useCallback(async (club: Club) => {
     setIsLoading(true);

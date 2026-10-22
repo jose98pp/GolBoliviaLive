@@ -1,3 +1,5 @@
+import { normalizeCrestUrl } from '../utils/clubCrests';
+import { ClubCrest } from './ClubCrest';
 import React, { useState } from 'react';
 import { Club } from '../types/football';
 import { SPANISH_CLUBS, ENGLISH_CLUBS } from '../data/bolivianFootballData';
@@ -155,6 +157,10 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
       return;
     }
 
+    if (editingClub.logoUrl?.trim() && !normalizeCrestUrl(editingClub.logoUrl)) {
+      setFeedback({ message: 'El escudo debe ser una URL HTTPS válida.', type: 'error' });
+      return;
+    }
     const payload: Club = {
       id,
       name: cleanName,
@@ -164,6 +170,7 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
       secondaryColor: editingClub.secondaryColor?.trim() || '#ffffff',
       textColor: editingClub.textColor?.trim() || '#ffffff',
       badgeEmoji: editingClub.badgeEmoji?.trim() || '⚽',
+      logoUrl: normalizeCrestUrl(editingClub.logoUrl),
       stadium: cleanStadium.slice(0, 80),
       altitudeMeters: Math.round(alt) || 2500,
       league: editingClub.league?.trim() || 'Bolivia (División Profesional)',
@@ -388,7 +395,7 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                     className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-inner border border-white/20 shrink-0"
                     style={{ backgroundColor: club.primaryColor, color: club.textColor }}
                   >
-                    {club.badgeEmoji || '⚽'}
+                    <ClubCrest club={club} className="w-10 h-10" />
                   </div>
 
                   <div className="min-w-0 pr-16">
@@ -666,28 +673,10 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Emoji / Escudo</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={editingClub.badgeEmoji || '⚽'}
-                      onChange={(e) => setEditingClub({ ...editingClub, badgeEmoji: e.target.value })}
-                      maxLength={4}
-                      className="w-12 text-center py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xl"
-                    />
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {EMOJI_OPTIONS.slice(0, 5).map((em) => (
-                        <button
-                          key={em}
-                          type="button"
-                          onClick={() => setEditingClub({ ...editingClub, badgeEmoji: em })}
-                          className="w-7 h-7 rounded bg-slate-800 hover:bg-slate-700 text-sm flex items-center justify-center cursor-pointer"
-                        >
-                          {em}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <label htmlFor="club-crest-url" className="block text-slate-300 font-semibold mb-1">Imagen del escudo (URL HTTPS)</label>
+                  <input id="club-crest-url" type="text" value={editingClub.logoUrl || ''} onChange={e => setEditingClub({ ...editingClub, logoUrl: e.target.value })}
+                    placeholder="https://.../escudo.png" className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white" />
+                  <p className="mt-1 text-[11px] text-slate-400">Si lo dejas vacío, se usará el escudo disponible del catálogo o las iniciales del equipo.</p>
                 </div>
               </div>
 
@@ -704,7 +693,7 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                   }}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-3xl">{editingClub.badgeEmoji || '⚽'}</span>
+                    <span className="text-3xl"><ClubCrest club={editingClub} className="w-10 h-10" /></span>
                     <div>
                       <div className="font-black text-sm">{editingClub.name || 'Nombre del Equipo'}</div>
                       <div className="text-[11px] opacity-90">{editingClub.stadium || 'Estadio'} · {editingClub.city || 'Ciudad'}</div>

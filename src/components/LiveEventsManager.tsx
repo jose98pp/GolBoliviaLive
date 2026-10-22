@@ -581,7 +581,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
                   <optgroup key={leagueTitle} label={leagueTitle}>
                     {leagueClubs.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.badgeEmoji} {c.name} ({c.city})
+                        {c.name} ({c.city})
                       </option>
                     ))}
                   </optgroup>
@@ -607,7 +607,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
                   <optgroup key={leagueTitle} label={leagueTitle}>
                     {leagueClubs.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.badgeEmoji} {c.name} ({c.city})
+                        {c.name} ({c.city})
                       </option>
                     ))}
                   </optgroup>

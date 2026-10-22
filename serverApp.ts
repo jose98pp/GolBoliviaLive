@@ -37,6 +37,7 @@ import { iptvRouter } from './src/services/iptvBackend';
 import proxyHandler from './api/proxy.js';
 
 import { normalizeVercelUrl } from './src/utils/serverUrl';
+import { normalizeCrestUrl } from './src/utils/clubCrests';
 import { buildMatchStreamPatch } from './src/utils/matchStreamConfig';
 import { normalizeExternalPlayerUrl, normalizeMatchIptvSource } from './src/utils/streamUtils';
 export { normalizeVercelUrl };
@@ -1669,7 +1670,7 @@ app.post(
   ['/api/clubs', '/clubs'],
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const club = req.body as Partial<Club>;
     if (!club.id || !club.name || !club.shortName) {
       res.status(400).json({ error: 'ID, nombre y nombre corto son obligatorios para el equipo.' });
@@ -1677,8 +1678,11 @@ app.post(
     }
     const cleanId = String(club.id).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_');
     const existing = state.clubs[cleanId] || {};
+    const logoUrl = club.logoUrl === undefined ? normalizeCrestUrl(existing.logoUrl) : normalizeCrestUrl(club.logoUrl);
+    if (club.logoUrl && !logoUrl) return res.status(400).json({ error: 'URL de escudo no compatible. Usa HTTPS.' });
     const updatedClub: Club = {
       id: cleanId,
+      logoUrl,
       name: String(club.name).trim(),
       shortName: String(club.shortName).trim(),
       city: String(club.city || existing.city || 'Bolivia').trim(),
@@ -1692,9 +1696,10 @@ app.post(
       country: String(club.country || existing.country || 'Bolivia').trim(),
     };
 
+    try { await saveSingleClubToFirebase(updatedClub); }
+    catch (error: any) { return res.status(503).json({ success: false, error: error.message || 'No se pudo guardar el equipo en Firebase.' }); }
     state.clubs[cleanId] = updatedClub;
     persistState();
-    saveSingleClubToFirebase(updatedClub).catch(logFirestoreWarning('guardar equipo'));
     broadcastSseEvent('CLUBS_UPDATED', state.clubs);
     res.json({ success: true, club: updatedClub, clubs: state.clubs });
   }
@@ -1725,6 +1730,30 @@ app.delete(
 // ==========================================
 // 10.6 FREE SPORTS API PROXY (ESPN Open Soccer API)
 // ==========================================
+const clubCrestCache = new Map<string, { expires: number; teams: { names: string[]; logoUrl: string }[] }>();
+app.get(['/api/football-api/teams', '/football-api/teams'], async (req: Request, res: Response) => {
+  const league = String(req.query.league || 'bol.1');
+  if (!['bol.1', 'esp.1', 'eng.1', 'arg.1', 'bra.1', 'col.1', 'per.1', 'chi.1', 'uru.1'].includes(league)) return res.status(400).json({ error: 'Liga no compatible.' });
+  const cached = clubCrestCache.get(league);
+  if (cached && cached.expires > Date.now()) return res.json({ teams: cached.teams });
+  try {
+    const responses = await Promise.allSettled(['', '&season=2024'].map(async season => {
+      const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/teams?limit=100${season}`, { signal: AbortSignal.timeout(8000) });
+      if (!response.ok) throw new Error('No se pudo consultar el catálogo de escudos.');
+      const data = await response.json();
+      return (data.sports?.[0]?.leagues?.[0]?.teams || []).map((entry: any) => ({
+        names: [entry.team?.displayName, entry.team?.name, entry.team?.shortDisplayName].filter((name: unknown) => typeof name === 'string'),
+        logoUrl: normalizeCrestUrl(entry.team?.logos?.[0]?.href),
+      })).filter((team: any) => team.names.length && team.logoUrl);
+    }));
+    const teams = responses.flatMap(response => response.status === 'fulfilled' ? response.value : []);
+    if (!teams.length) return res.status(502).json({ error: 'Los escudos deportivos no están disponibles.', teams: [] });
+    clubCrestCache.set(league, { expires: Date.now() + 21600000, teams });
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.json({ teams });
+  } catch { return res.status(502).json({ error: 'No se pudo cargar el catálogo de escudos.', teams: [] }); }
+});
+
 app.get(['/api/football-api/matches', '/football-api/matches'], async (req: Request, res: Response) => {
   const league = String(req.query.league || 'bol.1').trim();
   const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/scoreboard`;

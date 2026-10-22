@@ -1,3 +1,4 @@
+import { ClubCrest } from './ClubCrest';
 import React, { useState, useEffect } from 'react';
 import {
   Trophy,
@@ -146,7 +147,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
               </div>
             </div>
             <div className="w-12 h-12 rounded-xl bg-sky-950/70 border border-sky-500/50 flex items-center justify-center text-2xl shadow-md shrink-0">
-              {homeClub.badgeEmoji}
+              <ClubCrest club={homeClub} className="w-10 h-10" />
             </div>
           </div>
 
@@ -167,7 +168,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
           {/* Away team */}
           <div className="col-span-3 flex flex-col-reverse md:flex-row items-center justify-center md:justify-start gap-2 md:gap-3">
             <div className="w-12 h-12 rounded-xl bg-amber-950/70 border border-amber-500/50 flex items-center justify-center text-2xl shadow-md shrink-0">
-              {awayClub.badgeEmoji}
+              <ClubCrest club={awayClub} className="w-10 h-10" />
             </div>
             <div className="text-left">
               <h3 className="font-display font-extrabold text-base md:text-xl text-white">
@@ -523,7 +524,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
                       {row.position}
                     </td>
                     <td className="py-2.5 px-3 font-sans font-medium text-white flex items-center gap-2">
-                      <span>{club?.badgeEmoji || '⚽'}</span>
+                      <span><ClubCrest club={club} /></span>
                       <span>{row.name}</span>
                     </td>
                     <td className="py-2.5 px-2 text-center text-slate-300 tabular-nums">{row.played}</td>

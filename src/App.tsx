@@ -1,3 +1,4 @@
+import { ClubCrest } from './components/ClubCrest';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -1289,11 +1290,11 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-sm sm:text-base font-black text-white font-display min-w-0 mt-0.5">
-                          <span className="truncate">{currentHomeClub?.badgeEmoji} {currentHomeClub?.shortName || currentHomeClub?.name}</span>
+                          <span className="truncate"><ClubCrest club={currentHomeClub} className="w-5 h-5" /> {currentHomeClub?.shortName || currentHomeClub?.name}</span>
                           <span className="font-mono tabular-nums text-emerald-400 bg-black/60 px-2 py-0.5 rounded-lg border border-slate-700 shrink-0">
                             {currentHomeScore} - {currentAwayScore}
                           </span>
-                          <span className="truncate">{currentAwayClub?.shortName || currentAwayClub?.name} {currentAwayClub?.badgeEmoji}</span>
+                          <span className="truncate">{currentAwayClub?.shortName || currentAwayClub?.name} <ClubCrest club={currentAwayClub} className="w-5 h-5" /></span>
                           <span className="text-[11px] font-mono text-amber-400 shrink-0">
                             {currentPeriod} · {currentMatchMinute}&apos;
                           </span>

@@ -1,3 +1,4 @@
+import { ClubCrest } from './ClubCrest';
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Heart, Flame, Trophy, Shield, DollarSign, BarChart2, Smile, Sparkles, Filter, X, User } from 'lucide-react';
 import { ChatMessage, LivePoll, Club } from '../types/football';
@@ -394,6 +395,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
             className="w-20 sm:w-24 bg-slate-900/90 text-slate-200 placeholder:text-slate-500 text-[10px] rounded px-1.5 py-0.5 border border-slate-700 focus:outline-none focus:border-emerald-500 transition-colors"
             title="Tu nombre o apodo en el chat"
           />
+          <ClubCrest club={currentClub} className="w-5 h-5" />
           <select
             id="club-flair-select"
             value={selectedClubId}
@@ -402,7 +404,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
           >
             {Object.values(clubs).map((c) => (
               <option key={c.id} value={c.id}>
-                {c.badgeEmoji} {c.shortName}
+                {c.shortName}
               </option>
             ))}
           </select>

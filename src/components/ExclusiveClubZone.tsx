@@ -1,3 +1,4 @@
+import { ClubCrest } from './ClubCrest';
 import React, { useState } from 'react';
 import {
   Lock,
@@ -222,7 +223,7 @@ export const ExclusiveClubZone: React.FC<ExclusiveClubZoneProps> = ({
                 : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-750'
             }`}
           >
-            <span>{c.badgeEmoji}</span>
+            <span><ClubCrest club={c} /></span>
             <span>{c.shortName}</span>
           </button>
         ))}

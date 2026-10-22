@@ -1,3 +1,4 @@
+import { ClubCrest } from './ClubCrest';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Trophy,
@@ -654,7 +655,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           {/* Local Team Stepper */}
           <div className="p-4 rounded-xl bg-[#0a0f1d] border border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span className="text-2xl">{homeClub.badgeEmoji || '⚽'}</span>
+              <span className="text-2xl"><ClubCrest club={homeClub} className="w-8 h-8" /></span>
               <div>
                 <span className="text-xs font-bold text-white block truncate max-w-[120px] sm:max-w-[150px]">
                   {homeClub.name}
@@ -777,7 +778,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           {/* Away Team Stepper */}
           <div className="p-4 rounded-xl bg-[#0a0f1d] border border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span className="text-2xl">{awayClub.badgeEmoji || '⚽'}</span>
+              <span className="text-2xl"><ClubCrest club={awayClub} className="w-8 h-8" /></span>
               <div>
                 <span className="text-xs font-bold text-white block truncate max-w-[120px] sm:max-w-[150px]">
                   {awayClub.name}
@@ -1028,7 +1029,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                       <optgroup key={leagueTitle} label={leagueTitle}>
                         {leagueClubs.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.badgeEmoji} {c.name} ({c.city})
+                            {c.name} ({c.city})
                           </option>
                         ))}
                       </optgroup>
@@ -1055,7 +1056,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                       <optgroup key={leagueTitle} label={leagueTitle}>
                         {leagueClubs.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.badgeEmoji} {c.name} ({c.city})
+                            {c.name} ({c.city})
                           </option>
                         ))}
                       </optgroup>
