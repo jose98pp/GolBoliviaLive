@@ -24,6 +24,7 @@ import { LiveAudienceModal } from './components/LiveAudienceModal';
 import { useRealPresence } from './hooks/useRealPresence';
 import { useClubs } from './hooks/useClubs';
 import { apiClient } from './services/apiClient';
+import { authService } from './services/auth';
 import { getMatchSlug, findEventBySlug } from './utils/slug';
 import {
   getMatchStatusInfo,
@@ -154,12 +155,20 @@ export default function App() {
   const presence = useRealPresence(true);
   const liveViewerCount = presence.totalOnSite;
 
-  // Secret /login route detection
+  // Secret /login & /admin route detection with session persistence across page reload
   const [isLoginRoute, setIsLoginRoute] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
-    return path === '/login' || path.startsWith('/login') || hash === '#/login';
+    const isUrlAdmin = path === '/login' || path.startsWith('/login') || hash === '#/login' ||
+                       path === '/admin' || path.startsWith('/admin') || hash === '#/admin';
+    let isPersistedAdmin = false;
+    try {
+      isPersistedAdmin = Boolean(
+        sessionStorage.getItem('golbolivia_admin_view') === '1' && authService.getToken()
+      );
+    } catch {}
+    return isUrlAdmin || isPersistedAdmin;
   });
 
   useEffect(() => {
@@ -169,13 +178,42 @@ export default function App() {
     const handleLocationChange = () => {
       const path = window.location.pathname.toLowerCase();
       const hash = window.location.hash.toLowerCase();
-      setIsLoginRoute(path === '/login' || path.startsWith('/login') || hash === '#/login');
+      const isUrlAdmin = path === '/login' || path.startsWith('/login') || hash === '#/login' ||
+                         path === '/admin' || path.startsWith('/admin') || hash === '#/admin';
+      let isPersistedAdmin = false;
+      try {
+        isPersistedAdmin = Boolean(
+          sessionStorage.getItem('golbolivia_admin_view') === '1' && authService.getToken()
+        );
+      } catch {}
+      setIsLoginRoute(isUrlAdmin || isPersistedAdmin);
     };
     window.addEventListener('popstate', handleLocationChange);
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
+  useEffect(() => {
+    if (isLoginRoute) {
+      try {
+        sessionStorage.setItem('golbolivia_admin_view', '1');
+      } catch {}
+      if (typeof window !== 'undefined' && window.history) {
+        const path = window.location.pathname.toLowerCase();
+        const hash = window.location.hash.toLowerCase();
+        if (!path.startsWith('/login') && !path.startsWith('/admin') && hash !== '#/login' && hash !== '#/admin') {
+          try {
+            window.history.replaceState(null, '', '/login');
+          } catch {}
+        }
+      }
+    }
+  }, [isLoginRoute]);
+
   const handleReturnToPublic = () => {
+    try {
+      sessionStorage.removeItem('golbolivia_admin_view');
+      sessionStorage.removeItem('golbolivia_admin_tab');
+    } catch {}
     setIsLoginRoute(false);
     if (typeof window !== 'undefined' && window.history) {
       window.history.pushState({}, '', '/');
@@ -546,7 +584,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   const prevActiveEventIdRef = useRef<string>(activeEventId);
   useEffect(() => {
     const handleUrlRoute = () => {
-      if (typeof window === 'undefined') return;
+      if (typeof window === 'undefined' || isLoginRoute) return;
       const path = window.location.pathname;
       const search = new URLSearchParams(window.location.search);
       const matchParam = search.get('match') || search.get('partido');
@@ -579,20 +617,19 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     handleUrlRoute();
     window.addEventListener('popstate', handleUrlRoute);
     return () => window.removeEventListener('popstate', handleUrlRoute);
-  }, [liveEvents]);
+  }, [liveEvents, isLoginRoute]);
 
   const handleSelectMatchEvent = (evt: LiveEvent) => {
     setActiveIptvChannel(null);
     setActiveTab('stream');
     setActiveEventId(evt.id);
     const slug = getMatchSlug(evt);
-    if (typeof window !== 'undefined' && window.history) {
+    if (!isLoginRoute && typeof window !== 'undefined' && window.history) {
       try {
         window.history.pushState(null, '', `/live/${slug}`);
       } catch {}
     }
     // La selección del espectador no muta la configuración global ni la de otro partido.
-
   };
 
   // Stream state
@@ -899,7 +936,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         const next = remaining[0];
         setActiveEventId(next.id);
         const slug = getMatchSlug(next);
-        if (typeof window !== 'undefined' && window.history) {
+        if (!isLoginRoute && typeof window !== 'undefined' && window.history) {
           try {
             window.history.replaceState(null, '', `/live/${slug}`);
           } catch {}
@@ -917,11 +954,21 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         }));
       } else {
         setActiveEventId('');
-        if (typeof window !== 'undefined' && window.history) {
+        if (!isLoginRoute && typeof window !== 'undefined' && window.history) {
           try {
             window.history.replaceState(null, '', '/');
           } catch {}
         }
+        setStreamSettings((s) => ({
+          ...s,
+          title: '',
+          homeClubId: '',
+          awayClubId: '',
+          tournamentName: '',
+          stadiumName: '',
+          homeScore: 0,
+          awayScore: 0,
+        }));
       }
     }
 
@@ -977,7 +1024,19 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         onSelectEvent={(id) => {
           setActiveEventId(id);
           const ev = liveEvents.find((e) => e.id === id);
-          if (ev) handleSelectMatchEvent(ev);
+          if (ev) {
+            setStreamSettings((s) => ({
+              ...s,
+              title: ev.title,
+              homeClubId: ev.homeTeam,
+              awayClubId: ev.awayTeam,
+              tournamentName: ev.tournamentName || s.tournamentName || '',
+              stadiumName: ev.stadiumName || s.stadiumName || '',
+              period: (ev.period as any) || s.period || '1T',
+              homeScore: ev.homeScore ?? s.homeScore,
+              awayScore: ev.awayScore ?? s.awayScore,
+            }));
+          }
         }}
         isClockRunning={Boolean(currentLiveEvent?.isClockRunning)}
         onToggleMatchClock={handleToggleMatchClock}

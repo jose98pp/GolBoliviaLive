@@ -160,9 +160,15 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
           if (user) {
             setCurrentUser(user);
             setIsAuthenticated(true);
+            try {
+              sessionStorage.setItem('golbolivia_admin_view', '1');
+            } catch {}
           } else {
             setIsAuthenticated(false);
             setCurrentUser(null);
+            try {
+              sessionStorage.removeItem('golbolivia_admin_view');
+            } catch {}
           }
           setIsVerifyingSession(false);
         }
@@ -194,6 +200,9 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
       const data = await authService.login(pinInput, usernameInput);
       setCurrentUser(data.user);
       setIsAuthenticated(true);
+      try {
+        sessionStorage.setItem('golbolivia_admin_view', '1');
+      } catch {}
       setPinInput('');
     } catch (err: any) {
       setErrorMsg(err.message || 'Credenciales inválidas. Acceso denegado por el servidor.');
@@ -204,6 +213,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   };
 
   const handleLogout = async () => {
+    try {
+      sessionStorage.removeItem('golbolivia_admin_view');
+      sessionStorage.removeItem('golbolivia_admin_tab');
+    } catch {}
     await authService.logout();
     setIsAuthenticated(false);
     setCurrentUser(null);
@@ -219,7 +232,22 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
   const { clubs, saveClub, deleteClub } = useClubs();
 
   // Active section inside the private dashboard (Streamlined tabs with dedicated QR Apóyame console)
-  const [activeTab, setActiveTab] = useState<AdminTab>('stream');
+  const [activeTab, setActiveTabState] = useState<AdminTab>(() => {
+    try {
+      const saved = sessionStorage.getItem('golbolivia_admin_tab') as AdminTab;
+      if (saved && (Object.keys(ADMIN_TAB_ROLES) as AdminTab[]).includes(saved)) {
+        return saved;
+      }
+    } catch {}
+    return 'stream';
+  });
+
+  const setActiveTab = (tab: AdminTab) => {
+    setActiveTabState(tab);
+    try {
+      sessionStorage.setItem('golbolivia_admin_tab', tab);
+    } catch {}
+  };
   const allowedTabs = (Object.keys(ADMIN_TAB_ROLES) as AdminTab[]).filter(
     (tab) => !!currentUser && ADMIN_TAB_ROLES[tab].includes(currentUser.role)
   );

@@ -374,6 +374,18 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       const remaining = liveEvents.filter((e) => e.id !== currentId);
       if (remaining.length > 0) {
         onSelectEvent?.(remaining[0].id);
+      } else {
+        setTitle('');
+        setTournamentName('');
+        setStadiumName('');
+        setPeriod('1T');
+        setLocalHomeScore(0);
+        setLocalAwayScore(0);
+        setLocalMinute(0);
+        setExternalUrl('');
+        setExternalPreview('');
+        setIptvSource(undefined);
+        setIsDirty(false);
       }
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
@@ -524,7 +536,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               <span>Crear Nuevo Partido</span>
             </button>
 
-            {liveEvents.length > 1 && (
+            {liveEvents.length > 0 && (
               <button
                 type="button"
                 onClick={() => handleDeleteCurrentMatch()}
@@ -541,37 +553,39 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
         {/* Match Pills Selector */}
         <div className="flex flex-wrap items-center gap-2">
-          {liveEvents.map((evt) => {
-            const isSelected = evt.id === (activeEventId || activeEvent?.id);
-            const h = clubs[evt.homeTeam]?.name || evt.homeTeam || 'Local';
-            const a = clubs[evt.awayTeam]?.name || evt.awayTeam || 'Visitante';
-            return (
-              <div
-                key={evt.id}
-                className={`flex items-center rounded-xl transition-all shadow-sm ${
-                  isSelected
-                    ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-black shadow-amber-950/40 ring-2 ring-amber-300'
-                    : 'bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelectEvent?.(evt.id)}
-                  className="px-3 py-2 text-xs font-bold cursor-pointer flex items-center gap-2"
+          {liveEvents.length === 0 ? (
+            <span className="text-xs text-slate-400 italic py-1">No hay partidos creados en el sistema. Haz clic en "Crear Nuevo Partido" para agregar uno.</span>
+          ) : (
+            liveEvents.map((evt) => {
+              const isSelected = evt.id === (activeEventId || activeEvent?.id);
+              const h = clubs[evt.homeTeam]?.name || evt.homeTeam || 'Local';
+              const a = clubs[evt.awayTeam]?.name || evt.awayTeam || 'Visitante';
+              return (
+                <div
+                  key={evt.id}
+                  className={`flex items-center rounded-xl transition-all shadow-sm ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-black shadow-amber-950/40 ring-2 ring-amber-300'
+                      : 'bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
+                  }`}
                 >
-                  <span className="flex items-center gap-1">
-                    <span>{h}</span>
-                    <span className="text-[11px] font-mono font-black opacity-80">
-                      {evt.homeScore ?? 0} - {evt.awayScore ?? 0}
+                  <button
+                    type="button"
+                    onClick={() => onSelectEvent?.(evt.id)}
+                    className="px-3 py-2 text-xs font-bold cursor-pointer flex items-center gap-2"
+                  >
+                    <span className="flex items-center gap-1">
+                      <span>{h}</span>
+                      <span className="text-[11px] font-mono font-black opacity-80">
+                        {evt.homeScore ?? 0} - {evt.awayScore ?? 0}
+                      </span>
+                      <span>{a}</span>
                     </span>
-                    <span>{a}</span>
-                  </span>
-                  {evt.isLive && (
-                    <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-black animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
-                  )}
-                </button>
+                    {evt.isLive && (
+                      <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-black animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
+                    )}
+                  </button>
 
-                {liveEvents.length > 1 && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -587,10 +601,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
-                )}
-              </div>
-            );
-          })}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

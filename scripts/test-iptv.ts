@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { mkdir, rm } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -28,7 +28,7 @@ try {
   if (Object.keys(buildResult.metafile.inputs).some((input) => path.resolve(input) === path.join(root, 'src/services/firebase.ts'))) {
     throw new Error('La suite IPTV no puede cargar la persistencia real de Firebase');
   }
-  await import(output);
+  await import(pathToFileURL(output).href);
 } finally {
   await rm(output, { force: true });
 }

@@ -6,7 +6,7 @@ import { buildMatchStreamPatch } from '../src/utils/matchStreamConfig';
 import type { LiveEvent } from '../src/types/football';
 
 // Ejecuta las funciones reales de persistencia con una transacción en memoria, sin SDK ni credenciales.
-const file = await readFile(new URL('../src/services/firebase.ts', import.meta.url), 'utf8');
+const file = (await readFile(new URL('../src/services/firebase.ts', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
 const save = file.slice(file.indexOf('export async function saveLiveEventToFirebase('), file.indexOf('export async function saveMatchScoreboardFirebase('));
 const hydrate = file.slice(file.indexOf('function hydrateLiveEventDoc('), file.indexOf('export async function getLiveEventsFromFirebase('));
 const compiled = await transform(save + '\n' + hydrate + '\nexport { hydrateLiveEventDoc };', { loader: 'ts', format: 'cjs' });
@@ -60,7 +60,7 @@ assert.equal(normalizeMatchIptvSource(base.iptvSource)?.sourceType, 'iframe');
 console.log('Persistencia de partidos: guardar/recargar iframe y HLS, eliminación, versiones, fallos y aislamiento comprobados con código real.');
 
 // Ejecutar el endpoint real de sincronización con Firestore y respuesta HTTP simulados.
-const server = await readFile(new URL('../serverApp.ts', import.meta.url), 'utf8');
+const server = (await readFile(new URL('../serverApp.ts', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
 const route = server.slice(server.indexOf("app.post(\n  ['/api/streams/config'"), server.indexOf('// 6.5 Multi-Provider'));
 const handler = route.slice(route.indexOf('async (req:'), route.lastIndexOf('\n);')).trim();
 const routeCode = await transform(`export const handle = ${handler};`, { loader: 'ts', format: 'cjs' });
@@ -92,7 +92,7 @@ assert.equal((await synchronize({ eventId: 'missing' })).status, 404);
 console.log('Endpoint de configuración: persiste por partido, conserva proveedor/título, confirma versión y rechaza errores sin cambiar memoria.');
 
 // El cliente real no sustituye respuestas incompletas por el formulario que intentó guardar.
-const clientFile = await readFile(new URL('../src/services/apiClient.ts', import.meta.url), 'utf8');
+const clientFile = (await readFile(new URL('../src/services/apiClient.ts', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
 const method = clientFile.slice(clientFile.indexOf('  public async saveLiveEvent('), clientFile.indexOf('  public async deleteLiveEvent(')).replace('public async', 'async');
 const clientCode = await transform(`export class Client { getAuthHeaders() { return {}; } ${method} }`, { loader: 'ts', format: 'cjs' });
 let responseBody: any = { success: true, event: { ...base, version: 2 }, version: 2 };
@@ -110,7 +110,7 @@ await assert.rejects(client.saveLiveEvent(base), /no confirmó/);
 console.log('Cliente real: rechaza confirmaciones incompletas, señales perdidas y respuestas de otro partido.');
 
 // La cola real de sincronización separa los cambios diferidos por partido.
-const appFile = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const appFile = (await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
 const queueStart = appFile.indexOf('    if (!activeEventId) return;\n    pendingStreamSync.set');
 const queueBody = appFile.slice(queueStart, appFile.indexOf('\n  };', queueStart));
 const queueCode = await transform(`export function enqueue(activeEventId, newSettings) { ${queueBody} }`, { loader: 'ts', format: 'cjs' });
