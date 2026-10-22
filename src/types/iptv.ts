@@ -14,6 +14,8 @@ export interface IptvChannel {
   isCustom?: boolean;
   addedBy?: string;
   createdAt?: string;
+  updatedAt?: string;
+  originalStreamUrl?: string;
 }
 
 export type IptvCountryCode = 'ALL' | 'BO' | 'AR' | 'CO' | 'MX' | 'ES' | 'INT';

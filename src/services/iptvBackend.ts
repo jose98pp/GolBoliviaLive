@@ -149,6 +149,15 @@ async function fetchM3uList(url: string, defaultCountry?: string): Promise<IptvC
   }
 }
 
+export function mergeChannelCatalog(custom: IptvChannel[], catalog: IptvChannel[]): IptvChannel[] {
+  const hidden = new Set(custom.flatMap(channel => [channel.streamUrl, channel.originalStreamUrl || '']));
+  return [...custom, ...catalog.filter(channel => {
+    if (hidden.has(channel.streamUrl)) return false;
+    hidden.add(channel.streamUrl);
+    return true;
+  })];
+}
+
 // Fetch and cache combined sports and Bolivian national playlists
 async function refreshSportsChannels(): Promise<IptvChannel[]> {
   try {
@@ -163,20 +172,7 @@ async function refreshSportsChannels(): Promise<IptvChannel[]> {
     const combinedParsed = [...boChannels, ...sportsChannels];
 
     if (combinedParsed.length > 0) {
-      // Prepend custom channels and curated channels to guarantee top sports channels appear first
-      const uniqueUrls = new Set([
-        ...customChannels.map((c) => c.streamUrl),
-        ...CURATED_FALLBACK_CHANNELS.map((c) => c.streamUrl),
-      ]);
-      const filteredParsed: IptvChannel[] = [];
-      for (const ch of combinedParsed) {
-        if (!uniqueUrls.has(ch.streamUrl)) {
-          uniqueUrls.add(ch.streamUrl);
-          filteredParsed.push(ch);
-        }
-      }
-
-      cachedChannels = [...customChannels, ...CURATED_FALLBACK_CHANNELS, ...filteredParsed];
+      cachedChannels = mergeChannelCatalog(customChannels, [...CURATED_FALLBACK_CHANNELS, ...combinedParsed]);
       lastFetchTime = Date.now();
       return cachedChannels;
     }
@@ -186,7 +182,7 @@ async function refreshSportsChannels(): Promise<IptvChannel[]> {
 
   // Fallback to custom channels + curated list
   if (cachedChannels.length === 0) {
-    cachedChannels = [...customChannels, ...CURATED_FALLBACK_CHANNELS];
+    cachedChannels = mergeChannelCatalog(customChannels, CURATED_FALLBACK_CHANNELS);
     lastFetchTime = Date.now();
   }
   return cachedChannels;
@@ -213,7 +209,7 @@ export function getOrRefreshSportsChannels(force = false): Promise<IptvChannel[]
     .catch((err: any) => {
       console.warn('[IPTV Backend] Error durante la actualización de canales:', err?.message || err);
       if (cachedChannels.length > 0) return cachedChannels;
-      return [...customChannels, ...CURATED_FALLBACK_CHANNELS];
+      return mergeChannelCatalog(customChannels, CURATED_FALLBACK_CHANNELS);
     })
     .finally(() => {
       activeFetchPromise = null;
@@ -316,18 +312,28 @@ iptvRouter.get('/custom', async (_req: Request, res: Response) => {
 // POST /api/iptv/custom - Agregar o actualizar canal IPTV desde el dashboard
 iptvRouter.post('/custom', async (req: Request, res: Response) => {
   try {
-    const { name, streamUrl, sourceType = 'hls', country, countryName, group, resolution, logo, notes } = req.body || {};
+    const { editingId, editingStreamUrl, name, streamUrl, sourceType = 'hls', country, countryName, group, resolution, logo, notes } = req.body || {};
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ success: false, error: 'El nombre del canal es requerido.' });
     }
     const normalizedSource = normalizeChannelSource(streamUrl, sourceType);
     if (!normalizedSource) return res.status(400).json({ success: false, error: 'Fuente no compatible. Usa una URL HLS HTTP/HTTPS o un iframe HTTPS de los dominios admitidos.' });
 
+    await refreshCustomChannels();
+    const existing = editingId ? [...customChannels, ...cachedChannels, ...CURATED_FALLBACK_CHANNELS]
+      .find(channel => channel.id === editingId && channel.streamUrl === editingStreamUrl) : undefined;
+    if (editingId && !existing) return res.status(409).json({ success: false, error: 'El canal cambió o ya no existe. Recarga el catálogo antes de editar.' });
+    if (existing && !existing.isCustom && customChannels.some(channel => channel.originalStreamUrl === existing.streamUrl)) {
+      return res.status(409).json({ success: false, error: 'Este canal ya tiene una versión administrada. Recarga el catálogo y edita esa versión.' });
+    }
+    if (customChannels.some(channel => channel.streamUrl === normalizedSource && channel.id !== existing?.id)) {
+      return res.status(409).json({ success: false, error: 'Ya existe otro canal personalizado con esa URL.' });
+    }
     const cCountry = (country || 'BO').toString().toUpperCase().trim();
     const cCountryName = countryName?.trim() || (cCountry === 'BO' ? 'Bolivia' : cCountry === 'INT' ? 'Internacional' : cCountry);
 
     const newChannel: IptvChannel = {
-      id: `custom-iptv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: existing?.isCustom ? existing.id : `custom-iptv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: name.trim(),
       streamUrl: normalizedSource,
       sourceType,
@@ -339,18 +345,20 @@ iptvRouter.post('/custom', async (req: Request, res: Response) => {
       isCustom: true,
       isDemoFeed: false,
       notes: notes?.trim() || 'Canal configurado manualmente desde el panel de administración.',
-      createdAt: new Date().toISOString(),
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...(existing?.originalStreamUrl || (existing && !existing.isCustom) ? { originalStreamUrl: existing.originalStreamUrl || existing.streamUrl } : {}),
     };
 
     // Agregar al inicio de canales personalizados
     await saveCustomIptvChannelToFirebase(newChannel);
-    customChannels = [newChannel, ...customChannels.filter((c) => c.streamUrl !== newChannel.streamUrl)];
+    customChannels = [newChannel, ...customChannels.filter((c) => c.id !== newChannel.id)];
     customLoadedAt = Date.now();
 
     // Actualizar la caché activa inmediatamente anteponiendo el canal
     cachedChannels = [
       newChannel,
-      ...cachedChannels.filter((c) => c.id !== newChannel.id && c.streamUrl !== newChannel.streamUrl),
+      ...cachedChannels.filter((c) => c.id !== newChannel.id && c.streamUrl !== newChannel.streamUrl && c.streamUrl !== newChannel.originalStreamUrl),
     ];
 
     res.json({
@@ -374,6 +382,7 @@ iptvRouter.delete('/custom/:id', async (req: Request, res: Response) => {
     customChannels = customChannels.filter((c) => c.id !== id);
     customLoadedAt = Date.now();
     cachedChannels = cachedChannels.filter((c) => c.id !== id);
+    lastFetchTime = 0;
     res.json({ success: true, removedId: id });
   } catch { res.status(503).json({ success: false, error: 'No se pudo eliminar el canal en Firestore' }); }
 });

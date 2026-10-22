@@ -2,6 +2,7 @@ import { authService } from '../services/auth';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Tv,
+  Pencil,
   Plus,
   Trash2,
   Play,
@@ -71,6 +72,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
   // Form state
   const [name, setName] = useState('');
   const [streamUrl, setStreamUrl] = useState('');
+  const [editingChannel, setEditingChannel] = useState<IptvChannel | null>(null);
   const [sourceType, setSourceType] = useState<'hls' | 'iframe'>('hls');
   const [previewUrl, setPreviewUrl] = useState('');
   const [country, setCountry] = useState<IptvCountryCode>('BO');
@@ -136,6 +138,20 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
     setProbingUrl(null);
   };
 
+  const resetChannelForm = () => {
+    setEditingChannel(null); setName(''); setStreamUrl(''); setSourceType('hls');
+    setCountry('BO'); setGroup('Fútbol Boliviano'); setResolution('1080p'); setLogo(''); setNotes('');
+    setProbeResult(null); setFormError(null); setFormSuccess(null);
+  };
+  const editChannel = (channel: IptvChannel) => {
+    setEditingChannel(channel); setName(channel.name); setStreamUrl(channel.streamUrl);
+    setSourceType(channel.sourceType || (normalizeChannelSource(channel.streamUrl, 'iframe') ? 'iframe' : 'hls'));
+    setCountry(channel.country as IptvCountryCode); setGroup(channel.group); setResolution(channel.resolution || 'HD');
+    setLogo(channel.logo); setNotes(channel.notes || ''); setFormError(null); setFormSuccess(null); setProbeResult(null);
+    setShowAddForm(true);
+    requestAnimationFrame(() => document.getElementById('iptv-channel-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+
   const handleAddChannel = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -155,18 +171,20 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
     try {
       const countryObj = IPTV_COUNTRIES.find((c) => c.code === country);
       await iptvService.addCustomChannel({
+        ...(editingChannel ? { editingId: editingChannel.id, editingStreamUrl: editingChannel.streamUrl } : {}),
         name: name.trim(),
         streamUrl: normalizedSource,
         sourceType,
         country,
-        countryName: countryObj ? countryObj.label : country,
+        countryName: countryObj ? countryObj.label : editingChannel?.country === country ? editingChannel.countryName : country,
         group: group.trim() || 'Fútbol Boliviano',
         resolution,
         logo: logo.trim(),
         notes: notes.trim(),
       });
 
-      setFormSuccess(`Canal «${name}» agregado y publicado exitosamente.`);
+      setFormSuccess(editingChannel ? `Cambios de «${name}» guardados.` : `Canal «${name}» agregado y publicado exitosamente.`);
+      setEditingChannel(null);
       setName('');
       setStreamUrl('');
       setLogo('');
@@ -287,7 +305,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowAddForm(!showAddForm)}
+            onClick={() => { resetChannelForm(); setShowAddForm(!showAddForm); }}
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white text-xs font-bold flex items-center gap-2 transition shadow-lg shadow-red-950/40 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -318,13 +336,14 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
       {/* Formulario para agregar canal */}
       {showAddForm && (
         <form
+          id="iptv-channel-form"
           onSubmit={handleAddChannel}
           className="bg-slate-900/90 border border-amber-500/30 rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in"
         >
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
               <Zap className="w-4 h-4" />
-              <span>Nuevo Canal Deportivo Personalizado</span>
+              <span>{editingChannel ? `Editar canal: ${editingChannel.name}` : 'Nuevo Canal Deportivo Personalizado'}</span>
             </div>
             <span className="text-[11px] text-slate-400">Aparecerá en la pestaña pública IPTV y en el selector de señales</span>
           </div>
@@ -367,6 +386,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                 onChange={(e) => setCountry(e.target.value as IptvCountryCode)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
               >
+                {!IPTV_COUNTRIES.some(c => c.code === country) && <option value={country}>{editingChannel?.countryName || country}</option>}
                 {IPTV_COUNTRIES.filter((c) => c.code !== 'ALL').map((c) => (
                   <option key={c.code} value={c.code}>
                     {c.flag} {c.label} ({c.code})
@@ -454,6 +474,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                 onChange={(e) => setResolution(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
               >
+                {!['1080p', '720p', '4K', 'HD'].includes(resolution) && <option value={resolution}>{resolution}</option>}
                 <option value="1080p">1080p Full HD</option>
                 <option value="720p">720p HD</option>
                 <option value="4K">4K Ultra HD</option>
@@ -491,7 +512,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
             <button
               type="button"
-              onClick={() => setShowAddForm(false)}
+              onClick={() => { resetChannelForm(); setShowAddForm(false); }}
               className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
             >
               Cancelar
@@ -502,7 +523,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
               className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
             >
               <Plus className="w-4 h-4" />
-              <span>{isSubmitting ? 'Guardando...' : 'Guardar y Publicar Canal'}</span>
+              <span>{isSubmitting ? 'Guardando...' : editingChannel ? 'Guardar cambios del canal' : 'Guardar y Publicar Canal'}</span>
             </button>
           </div>
         </form>
@@ -657,6 +678,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                       <span>Probar</span>
                     </button>
 
+                    <button type="button" onClick={() => editChannel(channel)} disabled={isSubmitting} className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-200 text-[10px] flex items-center gap-1" aria-label={`Editar canal ${channel.name}`}><Pencil className="w-3 h-3" /><span>Editar</span></button>
                     {channel.isCustom && (
                       <button
                         type="button"

@@ -10,6 +10,7 @@ import {
   CURATED_FALLBACK_CHANNELS,
   iptvRouter,
   parseM3uSports,
+  mergeChannelCatalog,
 } from '../../src/services/iptvBackend';
 import { iptvService } from '../../src/services/iptvService';
 import type { IptvChannel } from '../../src/types/iptv';
@@ -309,6 +310,13 @@ async function runAllIptvTests() {
   const createdChannelId = postCustomRes?.channel?.id;
   assert(Boolean(createdChannelId), 'Se generó un ID único para el canal personalizado');
 
+  let editedResponse: any;
+  const editedRes: any = { status: () => editedRes, json: (data: any) => { editedResponse = data; } };
+  await customLayer.route.stack[0].handle({ body: { ...mockReqPostCustom.body, editingId: createdChannelId, editingStreamUrl: mockReqPostCustom.body.streamUrl, name: 'Canal editado', streamUrl: 'https://example.test/edited.m3u8' } }, editedRes, () => {});
+  assert(editedResponse?.success && editedResponse.channel.id === createdChannelId, 'Editar conserva el ID del canal personalizado');
+  assert((await getCustomIptvChannelsFromFirebase()).find((channel: any) => channel.id === createdChannelId)?.name === 'Canal editado', 'La edición se guarda en persistencia simulada');
+  assert(getCustomChannelsForTest().filter((channel: any) => channel.id === createdChannelId).length === 1, 'Editar no duplica el canal');
+
   // 6.2 Obtener canales personalizados vía GET /api/iptv/custom
   const getCustomLayer: any = (iptvRouter as any).stack.find(
     (layer: any) => layer.route?.path === '/custom' && layer.route?.methods?.get
@@ -366,7 +374,7 @@ async function runAllIptvTests() {
   assert(deleteCustomRes?.success === true, 'DELETE /api/iptv/custom/:id elimina el canal');
   assert(getCustomChannelsForTest().every((c) => c.id !== createdChannelId), 'El canal fue removido de la memoria');
   await deleteCustomLayer.route.stack[0].handle({ params: { id: iframeResponse.channel.id } }, mockResDeleteCustom, () => {});
-  assert(persistenceCalls.save === 2 && persistenceCalls.delete === 2, 'Alta y baja usan exclusivamente la persistencia simulada');
+  assert(persistenceCalls.save === 3 && persistenceCalls.delete === 2, 'Alta y baja usan exclusivamente la persistencia simulada');
   assert((await getCustomIptvChannelsFromFirebase()).length === 0, 'La baja elimina el canal también del almacenamiento simulado');
   failNextSaveForTest();
   let failedSaveStatus = 200;
@@ -385,6 +393,23 @@ async function runAllIptvTests() {
   assert(getCustomChannelsForTest().length === 0, 'El rechazo de permisos no publica el canal');
 
 
+
+  const originalPublic = CURATED_FALLBACK_CHANNELS[0];
+  let publicEdit: any;
+  const publicRes: any = { status: () => publicRes, json: (data: any) => { publicEdit = data; } };
+  await customLayer.route.stack[0].handle({ body: { ...originalPublic, editingId: originalPublic.id, editingStreamUrl: originalPublic.streamUrl, name: 'Versión administrada', streamUrl: 'https://example.test/public-edited.m3u8', sourceType: 'hls' } }, publicRes, () => {});
+  assert(publicEdit?.success && publicEdit.channel.isCustom, 'Se puede editar un canal público mediante versión administrada');
+  const storedEdits = await getCustomIptvChannelsFromFirebase();
+  const merged = mergeChannelCatalog(storedEdits, CURATED_FALLBACK_CHANNELS);
+  assert(merged.some(channel => channel.streamUrl === 'https://example.test/public-edited.m3u8') && !merged.some(channel => channel.streamUrl === originalPublic.streamUrl), 'La edición pública persiste al reconstruir el catálogo sin reintroducir el original');
+  let staleStatus = 200;
+  const staleRes: any = { status: (code: number) => { staleStatus = code; return staleRes; }, json: () => {} };
+  await customLayer.route.stack[0].handle({ body: { ...mockReqPostCustom.body, editingId: 'missing-channel', editingStreamUrl: 'https://example.test/missing.m3u8' } }, staleRes, () => {});
+  assert(staleStatus === 409, 'Una edición obsoleta no crea un canal nuevo silenciosamente');
+  staleStatus = 200;
+  await customLayer.route.stack[0].handle({ body: { ...originalPublic, editingId: originalPublic.id, editingStreamUrl: originalPublic.streamUrl, name: 'Duplicado', streamUrl: 'https://example.test/another-public-edit.m3u8', sourceType: 'hls' } }, staleRes, () => {});
+  assert(staleStatus === 409, 'No se crean dos versiones administradas del mismo canal público');
+  await deleteCustomLayer.route.stack[0].handle({ params: { id: publicEdit.channel.id } }, mockResDeleteCustom, () => {});
 
   // ── 7. Pruebas del Proxy Serverless /api/proxy (CORS y enlaces http://) ──
   console.log('\n--- 7. Pruebas del Proxy Serverless /api/proxy (CORS y enlaces http://) ---');

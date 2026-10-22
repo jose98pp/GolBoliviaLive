@@ -209,7 +209,7 @@ export const iptvService = {
   /**
    * Agrega un nuevo canal IPTV personalizado desde el dashboard
    */
-  async addCustomChannel(channelData: Partial<IptvChannel>): Promise<IptvChannel> {
+  async addCustomChannel(channelData: Partial<IptvChannel> & { editingId?: string; editingStreamUrl?: string }): Promise<IptvChannel> {
     const res = await fetch('/api/iptv/custom', {
       method: 'POST',
       headers: {
