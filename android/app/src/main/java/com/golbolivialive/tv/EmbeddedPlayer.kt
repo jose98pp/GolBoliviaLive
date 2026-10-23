@@ -88,15 +88,14 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
             }
         }
         if (source.provider == "YouTube") {
-            val identity = "https://${BuildConfig.APPLICATION_ID}/"
+            val identity = EmbedDocument.origin
             val video = URI(source.url).path.substringAfterLast('/')
             val origin = JSONObject.quote(identity.removeSuffix("/"))
             web.loadDataWithBaseURL(identity, """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body,#player{margin:0;width:100%;height:100%;background:#000;overflow:hidden}</style></head><body><div id="player"></div><script src="https://www.youtube.com/iframe_api"></script><script>
                 var ytplayer;function onYouTubeIframeAPIReady(){ytplayer=new YT.Player('player',{videoId:${JSONObject.quote(video)},playerVars:{autoplay:${if (autoplay) 1 else 0},playsinline:1,controls:1,rel:0,enablejsapi:1,origin:$origin,widget_referrer:$origin},events:{onError:function(e){console.log('GBL_YT_ERROR:'+e.data)},onStateChange:function(e){if(e.data===1)console.log('GBL_YT_PLAYING')},onAutoplayBlocked:function(){console.log('GBL_YT_BLOCKED')}}});}
                 </script></body></html>""".trimIndent(), "text/html", "UTF-8", null)
         } else {
-            val url = if (source.provider == "Kick") source.url + "?autoplay=$autoplay&muted=false" else source.url
-            web.loadUrl(url)
+            web.loadDataWithBaseURL(EmbedDocument.origin, EmbedDocument.iframe(source, autoplay), "text/html", "UTF-8", null)
         }
         handler.postDelayed(reminder, 25000)
         web.isFocusable = true
@@ -107,6 +106,7 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
     private fun allowed(value: String): Boolean {
         if (Catalog.https(value) == null) return false
         val host = runCatching { URI(value).host }.getOrNull()
+        if (host == BuildConfig.APPLICATION_ID) return true
         return when (source.provider) {
             "YouTube" -> host in setOf("www.youtube.com", "www.youtube-nocookie.com", BuildConfig.APPLICATION_ID)
             "Kick" -> host == "player.kick.com"

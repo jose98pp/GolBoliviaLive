@@ -48,6 +48,7 @@ Ajustes persistentes: reproducción automática, CH+/CH−, texto grande y calid
 - Media3 ExoPlayer para HLS HTTPS: Cloudflare Stream, MediaMTX expuesto mediante HTTPS y canales HLS del catálogo.
 - Respeta el proveedor principal, `fallbackOrder`, respaldo activo y `autoFailoverEnabled`. Ante error de HLS prueba la siguiente fuente habilitada una vez. Para un error del reproductor web se ofrece Reintentar o Siguiente señal; no se infiere que una página cargada implique video reproduciéndose.
 - YouTube, Kick y fuentes `iframe`/externas se reproducen **dentro de la app**, mediante Android WebView. No se lanza un navegador ni una app externa. HLS conserva Media3.
+- Desde 0.2.1, Kick y las fuentes web se cargan como un `<iframe>` hijo de un documento interno, no como la página principal de WebView. Esto corrige la integración con proveedores que exigen `window.self !== window.top` y mostraban «Este contenido solo está disponible dentro de un iframe». Se mantienen la identidad real de la app y la política HTTPS; si el proveedor exige un dominio autorizado o bloquea la incrustación, debe habilitarlo el propio proveedor. No se falsifica el dominio de otra web.
 - YouTube utiliza IFrame Player API con la identidad real del paquete (`https://com.golbolivialive.tv`), controles oficiales, errores de incrustación y Play/Pausa mediante la API oficial. Kick usa `player.kick.com` con sus controles oficiales. Los enlaces de YouTube/Kick recibidos como iframe se normalizan al reproductor oficial.
 - La pantalla completa del proveedor se integra con la app; Atrás primero sale de pantalla completa. Se libera WebView al cerrar o pasar a segundo plano para detener el audio.
 - Se requiere Android System WebView disponible y actualizado. Un video privado, restringido o con incrustación desactivada puede no reproducirse. Se muestra el error del proveedor; no se extraen URLs de YouTube/Kick ni se eluden restricciones.
@@ -70,6 +71,8 @@ Antes de distribuir, probar en una tablet y en Android TV/Google TV reales:
 7. Escudos, contraste de tarjetas, marcador y estados con partidos configurados por el administrador. La actualización del marcador durante video no debe recargarlo.
 
 Las pruebas unitarias cubren el contrato JSON, estados y marcadores, resolución de equipos, selección y orden de proveedores nativos/integrados, failover desactivado, enlaces oficiales, catálogo vacío y validación de HTTPS/escudos. La compilación y el lint no sustituyen las pruebas de reproducción y del mando en hardware.
+
+Las pruebas de regresión de `EmbedDocumentTest` analizan el HTML generado: un iframe hijo con la URL original y permisos de video/pantalla completa, parámetros de Kick, escape de atributos y rechazo de contenido local/HTTP. No prueban el servidor concreto de un proveedor ni sustituyen una prueba con la URL que falló.
 
 ## Referencias de integración
 
