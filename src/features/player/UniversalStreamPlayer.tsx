@@ -1,3 +1,4 @@
+import { getMatchStatusInfo } from '../../utils/matchStatus';
 import React from 'react';
 import { LiveEvent, StreamProvider, StreamSettings } from '../../types/football';
 import { StreamPlayer } from './StreamPlayer';
@@ -62,6 +63,7 @@ export const UniversalStreamPlayer: React.FC<UniversalStreamPlayerProps> = ({
         streamSettings={effectiveSettings}
         viewerCount={viewerCount}
         onHlsPlaying={onHlsPlaying}
+        matchStatusLabel={event ? getMatchStatusInfo(event).label : undefined}
       />
     </div>
   );

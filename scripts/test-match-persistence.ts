@@ -1,3 +1,4 @@
+import { FOOTBALL_LEAGUES } from '../src/data/footballLeagues';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { transform } from 'esbuild';
@@ -22,13 +23,14 @@ new Function('module', 'exports', 'runTransaction', 'writeGate', 'sanitizeClubId
   module, module.exports, transaction, Promise.resolve(), (id: string) => id, (n: number) => n, (n: number) => n,
   (_db: unknown, collection: string, id: string) => `${collection}/${id}`, {});
 const { saveLiveEventToFirebase, hydrateLiveEventDoc } = module.exports;
-const base: LiveEvent = { id: 'partido-fixture', title: 'Partido fixture', homeTeam: 'bolivar', awayTeam: 'strongest', isLive: true,
+const base: LiveEvent = { espnLink: { eventId: '123456', league: 'arg.1', enabled: true }, id: 'partido-fixture', title: 'Partido fixture', homeTeam: 'bolivar', awayTeam: 'strongest', isLive: true,
   primaryProvider: 'external', externalSource: { url: 'https://streamxhd.st/live1.php?stream=dsports' },
   iptvSource: { channelId: 'custom-fixture', channelName: 'DSports', streamUrl: 'https://streamxhd.st/live1.php?stream=dsports', sourceType: 'iframe' },
   fallbackOrder: ['external', 'iptv', 'cloudflare'], homeScore: 2, awayScore: 1, activeStreamSource: 'obs', broadcastMode: 'obs_custom' };
 const load = (id = base.id) => hydrateLiveEventDoc({ id, data: () => documents.get(`liveEvents/${id}`) });
 const result = await saveLiveEventToFirebase(base);
 let restored = load();
+assert.deepEqual(restored.espnLink, base.espnLink, 'El vínculo ESPN sobrevive a guardar y recargar');
 assert.equal(restored.externalSource.url, base.externalSource!.url, 'La URL iframe sobrevive a guardar y recargar');
 assert.equal(restored.iptvSource.channelId, 'custom-fixture');
 assert.equal(getStreamUrlForEvent(restored), base.externalSource!.url);
@@ -135,8 +137,8 @@ const eventRoute = server.slice(server.indexOf("app.post(\n  ['/api/live-events'
 const eventHandler = eventRoute.slice(eventRoute.indexOf('async (req:'), eventRoute.lastIndexOf('\n);')).trim();
 const eventCode = await transform(`export const handle = ${eventHandler};`, { loader: 'ts', format: 'cjs' });
 const eventModule = { exports: {} as any };
-new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', eventCode.code)(eventModule, eventModule.exports,
-  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {});
+new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', 'FOOTBALL_LEAGUES', eventCode.code)(eventModule, eventModule.exports,
+  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {}, FOOTBALL_LEAGUES);
 const postEvent = async (body: LiveEvent) => {
   let status = 200; let response: any;
   const res: any = { status: (code: number) => { status = code; return res; }, json: (data: any) => { response = data; return res; } };

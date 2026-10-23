@@ -1,3 +1,4 @@
+import { ADDITIONAL_CLUBS, clubLeague } from './footballLeagues';
 import {
   Club,
   MatchEvent,
@@ -510,7 +511,7 @@ export const ENGLISH_CLUBS: Record<string, Club> = {
 };
 
 // Mezclar ligas internacionales en el catálogo global
-Object.assign(BOLIVIAN_CLUBS, SPANISH_CLUBS, ENGLISH_CLUBS);
+Object.assign(BOLIVIAN_CLUBS, SPANISH_CLUBS, ENGLISH_CLUBS, ADDITIONAL_CLUBS);
 
 // Asegurar valores por defecto de liga y país
 for (const club of Object.values(BOLIVIAN_CLUBS)) {
@@ -520,6 +521,8 @@ for (const club of Object.values(BOLIVIAN_CLUBS)) {
   }
 }
 
+export const DEFAULT_CLUB_CATALOG: Record<string, Club> = { ...BOLIVIAN_CLUBS };
+
 // ── Métodos de Actualización y Agrupación ──
 
 export function setGlobalClubs(newClubs: Record<string, Club>) {
@@ -528,58 +531,9 @@ export function setGlobalClubs(newClubs: Record<string, Club>) {
 
 export function groupClubsByLeague(clubs: Record<string, Club> | Club[]) {
   const list = Array.isArray(clubs) ? clubs : Object.values(clubs);
-  const groups: Record<string, Club[]> = {
-    '🇪🇸 España (LaLiga EA Sports)': [],
-    '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra (Premier League)': [],
-    '🇧🇴 Bolivia (División Profesional)': [],
-    'Otros Equipos': [],
-  };
-
-  for (const club of list) {
-    if (
-      club.league?.includes('España') ||
-      club.country === 'España' ||
-      [
-        'real_madrid',
-        'barcelona',
-        'atletico_madrid',
-        'athletic_club',
-        'sevilla',
-        'real_betis',
-        'real_sociedad',
-        'villarreal',
-        'valencia',
-        'girona',
-      ].includes(club.id)
-    ) {
-      groups['🇪🇸 España (LaLiga EA Sports)'].push(club);
-    } else if (
-      club.league?.includes('Inglaterra') ||
-      club.country === 'Inglaterra' ||
-      [
-        'man_city',
-        'arsenal',
-        'liverpool',
-        'man_united',
-        'chelsea',
-        'tottenham',
-        'aston_villa',
-        'newcastle',
-      ].includes(club.id)
-    ) {
-      groups['🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra (Premier League)'].push(club);
-    } else if (
-      club.league?.includes('Bolivia') ||
-      club.country === 'Bolivia' ||
-      club.altitudeMeters > 300
-    ) {
-      groups['🇧🇴 Bolivia (División Profesional)'].push(club);
-    } else {
-      groups['Otros Equipos'].push(club);
-    }
-  }
-
-  return groups;
+  const groups: Record<string, Club[]> = {};
+  for (const club of list) (groups[clubLeague(club)] ||= []).push(club);
+  return Object.fromEntries(Object.entries(groups).sort(([a], [b]) => a.localeCompare(b, 'es')).map(([league, teams]) => [league, teams.sort((a, b) => a.name.localeCompare(b.name, 'es'))]));
 }
 
 // ── Partidos Preconfigurados Internacionales ──

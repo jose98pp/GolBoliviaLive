@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Club } from '../types/football';
-import { BOLIVIAN_CLUBS, setGlobalClubs } from '../data/bolivianFootballData';
+import { BOLIVIAN_CLUBS, DEFAULT_CLUB_CATALOG, setGlobalClubs } from '../data/bolivianFootballData';
 import { resolveClubCrests } from '../services/clubCrests';
 import { getClubCrestUrl } from '../utils/clubCrests';
 import { apiClient } from '../services/apiClient';
@@ -15,16 +15,18 @@ export function useClubs() {
     // 1. Initial fetch from Firebase/Backend
     apiClient.getClubs().then((fetched) => {
       if (isMounted && fetched && Object.keys(fetched).length > 0) {
-        setClubs(fetched);
-        setGlobalClubs(fetched);
+        const merged = { ...DEFAULT_CLUB_CATALOG, ...fetched };
+        setClubs(merged);
+        setGlobalClubs(merged);
       }
     });
 
     // 2. Real-time subscription to Firebase Firestore & Server events
     const unsubscribe = apiClient.subscribeClubs((updated) => {
       if (isMounted && updated && Object.keys(updated).length > 0) {
-        setClubs(updated);
-        setGlobalClubs(updated);
+        const merged = { ...DEFAULT_CLUB_CATALOG, ...updated };
+        setClubs(merged);
+        setGlobalClubs(merged);
       }
     });
 

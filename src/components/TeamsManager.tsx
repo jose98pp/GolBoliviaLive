@@ -1,3 +1,5 @@
+import { groupClubsByLeague } from '../data/bolivianFootballData';
+import { FOOTBALL_LEAGUES, clubLeague, clubNameKey } from '../data/footballLeagues';
 import { normalizeCrestUrl } from '../utils/clubCrests';
 import { ClubCrest } from './ClubCrest';
 import React, { useState } from 'react';
@@ -22,8 +24,9 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
   currentHomeClubId = '',
   currentAwayClubId = '',
 }) => {
+  const [importLeague, setImportLeague] = useState('arg.1');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedLeague, setSelectedLeague] = useState<'all' | 'espana' | 'inglaterra' | 'bolivia'>('all');
+  const [selectedLeague, setSelectedLeague] = useState<string>('all');
   const [isEditing, setIsEditing] = useState(false);
   const [editingClub, setEditingClub] = useState<Partial<Club> | null>(null);
   const [isNewClub, setIsNewClub] = useState(false);
@@ -31,7 +34,7 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [clubToDelete, setClubToDelete] = useState<Club | null>(null);
 
-  const clubList = Object.values(clubs);
+  const clubList = Object.values(clubs).sort((a, b) => clubLeague(a).localeCompare(clubLeague(b), 'es') || a.name.localeCompare(b.name, 'es'));
   const filteredClubs = clubList.filter((c) => {
     const matchesSearch =
       c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -42,28 +45,7 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
 
     if (!matchesSearch) return false;
 
-    if (selectedLeague === 'espana') {
-      return (
-        c.league?.includes('España') ||
-        c.country === 'España' ||
-        ['real_madrid', 'barcelona', 'atletico_madrid', 'athletic_club', 'sevilla', 'real_betis', 'real_sociedad', 'villarreal', 'valencia', 'girona'].includes(c.id)
-      );
-    }
-    if (selectedLeague === 'inglaterra') {
-      return (
-        c.league?.includes('Inglaterra') ||
-        c.country === 'Inglaterra' ||
-        ['man_city', 'arsenal', 'liverpool', 'man_united', 'chelsea', 'tottenham', 'aston_villa', 'newcastle'].includes(c.id)
-      );
-    }
-    if (selectedLeague === 'bolivia') {
-      return (
-        c.league?.includes('Bolivia') ||
-        c.country === 'Bolivia' ||
-        (!c.league?.includes('España') && !c.league?.includes('Inglaterra') && c.altitudeMeters > 300)
-      );
-    }
-    return true;
+    return selectedLeague === 'all' || clubLeague(c) === selectedLeague;
   });
 
   const handleBatchImport = async (type: 'espana' | 'inglaterra') => {
@@ -80,13 +62,33 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
         message: `¡Se sincronizaron ${count} equipos de ${leagueName} en el marcador y base de datos con éxito!`,
         type: 'success',
       });
-      setSelectedLeague(type);
+      setSelectedLeague(type === 'espana' ? 'España (LaLiga EA Sports)' : 'Inglaterra (Premier League)');
       setTimeout(() => setFeedback(null), 6000);
     } catch (err: any) {
       setFeedback({ message: err.message || 'Error al importar equipos', type: 'error' });
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const importOfficialTeams = async () => {
+    setIsSaving(true); setFeedback(null);
+    try {
+      const response = await fetch(`/api/football-api/teams?league=${encodeURIComponent(importLeague)}&current=1`, { signal: AbortSignal.timeout(12000) });
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data.teams)) throw new Error(data.error || 'No se pudo consultar ESPN.');
+      let added = 0;
+      for (const team of data.teams) {
+        if (!/^\d+$/.test(team.id) || !team.names?.[0]) continue;
+        const existing = Object.values(clubs).find(c => c.id === `espn_${team.id}` || team.names.some((name: string) => clubNameKey(name) === clubNameKey(c.name) || clubNameKey(name) === clubNameKey(c.shortName)));
+        const league = FOOTBALL_LEAGUES[importLeague];
+        const domestic = league.includes(' (');
+        await onSaveClub({ ...(existing || { id: `espn_${team.id}`, name: team.names[0], shortName: team.names[1] || team.names[0], city: '', stadium: '', altitudeMeters: 0, primaryColor: '#334155', secondaryColor: '#ffffff', textColor: '#ffffff', badgeEmoji: '' }), logoUrl: existing?.logoUrl || team.logoUrl || '', league: domestic ? league : existing?.league || `Internacionales · ${league}`, country: domestic ? league.split(' (')[0] : existing?.country || '' });
+        added++;
+      }
+      setFeedback({ message: `${added} equipos actualizados desde ESPN. Se conservaron los equipos guardados de otras temporadas.`, type: 'success' });
+    } catch (error) { setFeedback({ message: error instanceof Error ? error.message : 'Error al actualizar equipos.', type: 'error' }); }
+    finally { setIsSaving(false); }
   };
 
   const handleOpenNewClub = () => {
@@ -165,16 +167,16 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
       id,
       name: cleanName,
       shortName: cleanShort,
-      city: editingClub.city?.trim().slice(0, 50) || 'Bolivia',
+      city: editingClub.city?.trim().slice(0, 50) || '',
       primaryColor: editingClub.primaryColor?.trim() || '#0284c7',
       secondaryColor: editingClub.secondaryColor?.trim() || '#ffffff',
       textColor: editingClub.textColor?.trim() || '#ffffff',
       badgeEmoji: editingClub.badgeEmoji?.trim() || '⚽',
       logoUrl: normalizeCrestUrl(editingClub.logoUrl),
       stadium: cleanStadium.slice(0, 80),
-      altitudeMeters: Math.round(alt) || 2500,
+      altitudeMeters: Math.max(0, Math.round(alt) || 0),
       league: editingClub.league?.trim() || 'Bolivia (División Profesional)',
-      country: editingClub.country?.trim() || 'Bolivia',
+      country: editingClub.country?.trim() || '',
     };
 
     setIsSaving(true);
@@ -267,6 +269,12 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 p-3">
+        <label className="text-sm text-slate-300" htmlFor="official-teams-league">Actualizar equipos oficiales</label>
+        <select id="official-teams-league" value={importLeague} onChange={e => setImportLeague(e.target.value)} className="bg-slate-900 text-white border border-slate-700 rounded-lg p-2 max-w-full">{Object.entries(FOOTBALL_LEAGUES).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
+        <button disabled={isSaving} onClick={importOfficialTeams} className="rounded-lg bg-sky-600 text-white px-3 py-2 text-sm disabled:opacity-50">{isSaving ? 'Actualizando…' : 'Consultar y guardar desde ESPN'}</button>
+      </div>
+
       {/* Selector de Pestañas por Liga */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
         <button
@@ -284,41 +292,7 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
           </span>
         </button>
 
-        <button
-          onClick={() => setSelectedLeague('espana')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-            selectedLeague === 'espana'
-              ? 'bg-red-600 text-white shadow-md shadow-red-950/30'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <span>🇪🇸</span>
-          <span>España (LaLiga EA Sports)</span>
-        </button>
-
-        <button
-          onClick={() => setSelectedLeague('inglaterra')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-            selectedLeague === 'inglaterra'
-              ? 'bg-sky-600 text-white shadow-md shadow-sky-950/30'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <span>🏴󠁧󠁢󠁥󠁮󠁧󠁿</span>
-          <span>Inglaterra (Premier League)</span>
-        </button>
-
-        <button
-          onClick={() => setSelectedLeague('bolivia')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-            selectedLeague === 'bolivia'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/30'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <span>🇧🇴</span>
-          <span>Bolivia (División Profesional)</span>
-        </button>
+        {Object.entries(groupClubsByLeague(clubs)).map(([league, teams]) => <button key={league} onClick={() => setSelectedLeague(league)} className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border ${selectedLeague === league ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-900 text-slate-300 border-slate-700'}`}>{league} ({teams.length})</button>)}
       </div>
 
       {/* Feedback Alert */}
@@ -409,15 +383,11 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                         <MapPin className="w-3 h-3 text-slate-500" />
                         {club.city}
                       </span>
-                      {club.league && (
+                      {clubLeague(club) && (
                         <>
                           <span>•</span>
                           <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-medium border border-slate-700">
-                            {club.league.includes('España')
-                              ? '🇪🇸 LaLiga'
-                              : club.league.includes('Inglaterra')
-                              ? '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier'
-                              : '🇧🇴 Bolivia'}
+                            {clubLeague(club)}
                           </span>
                         </>
                       )}
@@ -570,15 +540,8 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                     value={editingClub.league || 'España (LaLiga EA Sports)'}
                     onChange={(e) => {
                       const val = e.target.value;
-                      let country = 'Bolivia';
-                      let alt = 2500;
-                      if (val.includes('España')) {
-                        country = 'España';
-                        alt = 300;
-                      } else if (val.includes('Inglaterra')) {
-                        country = 'Inglaterra';
-                        alt = 50;
-                      }
+                      const country = val.includes(' (') ? val.split(' (')[0] : '';
+                      const alt = editingClub.altitudeMeters || 0;
                       setEditingClub({
                         ...editingClub,
                         league: val,
@@ -588,10 +551,7 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                     }}
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500"
                   >
-                    <option value="España (LaLiga EA Sports)">🇪🇸 España (LaLiga EA Sports)</option>
-                    <option value="Inglaterra (Premier League)">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra (Premier League)</option>
-                    <option value="Bolivia (División Profesional)">🇧🇴 Bolivia (División Profesional)</option>
-                    <option value="Torneo Internacional / UEFA Champions">🏆 Torneo Internacional / Champions</option>
+                    {Array.from(new Set([...Object.values(FOOTBALL_LEAGUES).filter(name => name.includes(' (')), 'Internacionales · UEFA Champions League', 'Internacionales · Copa CONMEBOL Libertadores', 'Internacionales · Copa CONMEBOL Sudamericana', editingClub.league].filter(Boolean))).map(name => <option key={name} value={name}>{name}</option>)}
                   </select>
                 </div>
 

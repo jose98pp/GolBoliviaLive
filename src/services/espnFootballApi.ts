@@ -1,3 +1,5 @@
+import { parseEspnMatch } from '../utils/espnMatch';
+import type { LiveEvent } from '../types/football';
 import { MatchStats, MatchEvent } from '../types/football';
 
 export interface ApiMatchSummary {
@@ -9,6 +11,7 @@ export interface ApiMatchSummary {
   isLive: boolean;
   isFinished: boolean;
   minute?: number;
+  liveState?: Partial<LiveEvent>;
   homeTeam: {
     id?: string;
     name: string;
@@ -61,6 +64,17 @@ function normalizePosition(posName?: string, abbreviation?: string): string {
 }
 
 class EspnFootballApiService {
+  async getLiveMatch(eventId: string, league: string): Promise<Partial<LiveEvent> | null> {
+    try {
+      const response = await fetch(`/api/football-api/match/${encodeURIComponent(eventId)}?league=${encodeURIComponent(league)}`, { signal: AbortSignal.timeout(12000) });
+      if (!response.ok) return null;
+      const data = await response.json();
+      const event = data.header;
+      if (String(event?.id) !== eventId) return null;
+      return parseEspnMatch(event);
+    } catch { return null; }
+  }
+
   /**
    * Obtiene la lista de partidos programados y en vivo para la liga boliviana o torneo internacional
    * desde la API gratuita y abierta de ESPN.
@@ -114,16 +128,15 @@ class EspnFootballApiService {
     const matches = await this.getMatches(league);
     if (!matches || matches.length === 0) return null;
 
-    const cleanH = homeName.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const cleanA = awayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanH = homeName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanA = awayName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
     return (
       matches.find((m) => {
-        const mH = m.homeTeam.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const mA = m.awayTeam.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return (mH.includes(cleanH) || cleanH.includes(mH)) && (mA.includes(cleanA) || cleanA.includes(mA));
+        const mH = m.homeTeam.displayName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const mA = m.awayTeam.displayName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return Boolean(cleanH && cleanA) && (mH.includes(cleanH) || cleanH.includes(mH)) && (mA.includes(cleanA) || cleanA.includes(mA));
       }) ||
-      matches[0] ||
       null
     );
   }
@@ -137,7 +150,7 @@ class EspnFootballApiService {
       const homeComp = competitors.find((c: any) => c.homeAway === 'home') || competitors[0];
       const awayComp = competitors.find((c: any) => c.homeAway === 'away') || competitors[1];
 
-      const statusType = evt.status?.type || {};
+      const statusType = comp?.status?.type || evt.status?.type || {};
       const isLive = Boolean(statusType.state === 'in');
       const isFinished = Boolean(statusType.completed || statusType.state === 'post');
 
@@ -149,7 +162,8 @@ class EspnFootballApiService {
         statusText: statusType.shortDetail || statusType.description || 'Programado',
         isLive,
         isFinished,
-        minute: evt.status?.clock,
+        minute: parseEspnMatch(evt)?.matchMinute,
+        liveState: parseEspnMatch(evt) || undefined,
         homeTeam: {
           id: homeComp?.team?.id,
           name: homeComp?.team?.name || 'Local',

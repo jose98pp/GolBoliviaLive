@@ -215,6 +215,10 @@ export interface MatchIptvSource {
 }
 
 export interface LiveEvent {
+  espnLink?: { eventId: string; league: string; enabled: boolean } | null;
+  statusText?: string;
+  displayClock?: string;
+  espnUpdatedAt?: number;
   id: string;
   title: string;
   homeTeam: string;

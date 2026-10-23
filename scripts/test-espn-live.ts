@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import { parseEspnMatch } from '../src/utils/espnMatch';
+import { groupClubsByLeague, BOLIVIAN_CLUBS } from '../src/data/bolivianFootballData';
+import { FOOTBALL_LEAGUES, clubLeague } from '../src/data/footballLeagues';
+import { getMatchStatusInfo } from '../src/utils/matchStatus';
+import { espnFootballApi } from '../src/services/espnFootballApi';
+import { fetchEspn } from '../src/services/espnCache';
+import type { LiveEvent } from '../src/types/football';
+
+const event = (state = 'in', name = 'STATUS_IN_PROGRESS', displayClock = "45'+2'", period = 1) => ({ id: '123', status: { type: { state, name, completed: state === 'post' }, clock: 2820, displayClock, period }, competitions: [{ competitors: [{ homeAway: 'away', score: '1', team: { displayName: 'River Plate' } }, { homeAway: 'home', score: '2', team: { displayName: 'Boca Juniors' } }] }] });
+const live = parseEspnMatch(event())!;
+assert.equal(live.matchMinute, 47); assert.equal(live.displayClock, "45'+2'"); assert.equal(live.homeScore, 2); assert.equal(live.awayScore, 1); assert.equal(live.isLive, true);
+assert.equal(parseEspnMatch(event('in', 'STATUS_IN_PROGRESS', '68:23', 2))!.matchMinute, 68);
+assert.equal(parseEspnMatch(event('in', 'STATUS_IN_PROGRESS', '', 2))!.matchMinute, 47, 'El reloj numérico ESPN se convierte de segundos a minutos');
+const half = parseEspnMatch(event('in', 'STATUS_HALFTIME', '45:00'))!;
+assert.equal(half.period, 'Descanso'); assert.equal(half.isClockRunning, false); assert.equal(getMatchStatusInfo(half as LiveEvent).label, 'ENTRETIEMPO');
+const pre = parseEspnMatch(event('pre', 'STATUS_SCHEDULED', '0:00'))!;
+assert.equal(pre.isLive, false); assert.equal(pre.broadcastMode, 'pre_match'); assert.equal(getMatchStatusInfo(pre as LiveEvent).category, 'today');
+const final = parseEspnMatch(event('post', 'STATUS_FULL_TIME', '90:00', 2))!;
+assert.equal(final.period, 'Finalizado'); assert.equal(final.isLive, false); assert.equal(final.isClockRunning, false); assert.equal(getMatchStatusInfo(final as LiveEvent).category, 'finished');
+assert.equal(parseEspnMatch(event('in', 'STATUS_IN_PROGRESS', '110:05', 3))!.period, 'Tiempo Extra');
+assert.equal(parseEspnMatch({}), null);
+const groups = groupClubsByLeague(BOLIVIAN_CLUBS);
+assert(groups[FOOTBALL_LEAGUES['arg.1']].length >= 28); assert(groups[FOOTBALL_LEAGUES['bra.1']].length >= 20);
+assert.equal(clubLeague({ ...BOLIVIAN_CLUBS.boca_juniors, altitudeMeters: 4200 }), FOOTBALL_LEAGUES['arg.1']);
+assert.equal(clubLeague({ ...BOLIVIAN_CLUBS.bolivar, id: 'unknown-ar', name: 'Club argentino', country: 'Argentina', league: '' }), FOOTBALL_LEAGUES['arg.1']);
+assert.equal(clubLeague({ ...BOLIVIAN_CLUBS.real_madrid, country: 'Bolivia', league: FOOTBALL_LEAGUES['bol.1'] }), FOOTBALL_LEAGUES['esp.1']);
+assert.equal(clubLeague({ ...BOLIVIAN_CLUBS.bolivar, id: 'unknown', name: 'Club externo', country: 'Ecuador', league: '' }), FOOTBALL_LEAGUES['ecu.1']);
+assert(!Object.values(groups).flat().some((c, i, list) => list.findIndex(t => t.id === c.id) !== i));
+assert(Object.values(groups).every(teams => teams.every((team, i) => !i || teams[i - 1].name.localeCompare(team.name, 'es') <= 0)));
+const original = globalThis.fetch;
+try {
+  globalThis.fetch = (async () => new Response(JSON.stringify({ events: [event()] }))) as typeof fetch;
+  assert.equal(await espnFootballApi.findMatchByTeams('Barcelona', 'PSG', 'uefa.champions'), null, 'Nunca devuelve el primer partido sin coincidencia');
+  const matches = await espnFootballApi.getMatches('arg.1'); assert.equal(matches[0].minute, 47);
+  globalThis.fetch = (async () => new Response(JSON.stringify({ header: event() }))) as typeof fetch;
+  assert.equal((await espnFootballApi.getLiveMatch('123', 'arg.1'))!.homeScore, 2);
+  assert.equal(await espnFootballApi.getLiveMatch('999', 'arg.1'), null, 'Una respuesta de otro partido se rechaza');
+  globalThis.fetch = (async () => new Response('upstream error', { status: 502 })) as typeof fetch;
+  assert.equal(await espnFootballApi.getLiveMatch('123', 'arg.1'), null, 'Un error no inventa ni reinicia el resultado');
+  let calls = 0;
+  globalThis.fetch = (async () => { calls++; return new Response(JSON.stringify({ header: event() })); }) as typeof fetch;
+  const [a, b] = await Promise.all([fetchEspn('https://fixture.test/123'), fetchEspn('https://fixture.test/123')]);
+  assert.equal(calls, 1); assert.deepEqual(await a.json(), await b.json()); await fetchEspn('https://fixture.test/123'); assert.equal(calls, 1);
+  globalThis.fetch = (async () => { calls++; return new Response('{}', { status: 503 }); }) as typeof fetch;
+  await fetchEspn('https://fixture.test/failure'); await fetchEspn('https://fixture.test/failure'); assert.equal(calls, 3, 'No se almacenan errores');
+} finally { globalThis.fetch = original; }
+console.log('ESPN: segundos, añadido, goles, previa, entretiempo, final, prórroga, ID exacto, fallo de origen, caché y clasificación por ligas comprobados.');

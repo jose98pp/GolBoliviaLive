@@ -24,6 +24,7 @@ import {
 import { FullscreenController } from './FullscreenController';
 
 interface PlayerControlsProps {
+  matchStatusLabel?: string;
   isPlaying: boolean;
   onTogglePlay: (e?: React.MouseEvent) => void;
   isMuted: boolean;
@@ -50,6 +51,7 @@ interface PlayerControlsProps {
 }
 
 export const PlayerControls: React.FC<PlayerControlsProps> = ({
+  matchStatusLabel,
   isPlaying,
   onTogglePlay,
   isMuted,
@@ -145,7 +147,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
           {/* Live Indicator Badge */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-600/20 border border-red-500/40 text-red-400 text-[10px] font-bold uppercase tracking-wider">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <span>EN VIVO</span>
+            <span>{matchStatusLabel || 'EN VIVO'}</span>
           </div>
 
           {/* Quick Reload Button */}

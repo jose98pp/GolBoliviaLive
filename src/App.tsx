@@ -1,3 +1,4 @@
+import { useEspnLiveEvents } from './hooks/useEspnLiveEvents';
 import { useMatchAudience } from './hooks/useMatchAudience';
 import { ClubCrest } from './components/ClubCrest';
 /**
@@ -289,7 +290,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
   // Multi-Provider Live Events (Cloudflare, YouTube, Kick)
   // Los partidos vienen SOLO del servidor/Firebase (fuente única). No se leen ni se guardan copias locales.
-  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
+  const [storedLiveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
+  const liveEvents = useEspnLiveEvents(storedLiveEvents);
   const [activeEventId, setActiveEventId] = useState<string>('');
   const activeEventIdRef = useRef(activeEventId);
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
@@ -1241,6 +1243,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         homeClub={currentHomeClub}
         awayClub={currentAwayClub}
         period={currentPeriod}
+        matchStatusLabel={currentStatusInfo.label}
         isClockRunning={Boolean(currentLiveEvent?.isClockRunning)}
         onToggleMatchClock={() => handleToggleMatchClock()}
         matchSeconds={matchSeconds}
@@ -1387,6 +1390,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                 )}
 
 
+                {currentLiveEvent?.espnLink?.enabled && <p role="status" className="text-xs text-slate-400 px-1">ESPN · {currentLiveEvent.espnUpdatedAt ? `Última actualización: ${new Date(currentLiveEvent.espnUpdatedAt).toLocaleTimeString()}` : 'Esperando datos oficiales…'} · consulta cada 30 segundos</p>}
                 {currentLiveEvent ? (
                   <UniversalStreamPlayer
                     key={`${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${currentLiveEvent.iptvSource?.channelId || 'no-iptv'}-${signalReloadKey}`}
@@ -1486,6 +1490,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
             {/* Minuto a minuto / Estadísticas / Alineaciones */}
             <div className="pt-2 sm:pt-4">
               <MatchStats
+                espnLink={currentLiveEvent?.espnLink}
                 showHeader={false}
                 homeScore={currentHomeScore}
                 awayScore={currentAwayScore}

@@ -13,7 +13,7 @@ import {
   Sparkles,
   RefreshCw
 } from 'lucide-react';
-import { MatchStats as IMatchStats, MatchEvent, StreamSettings } from '../types/football';
+import { MatchStats as IMatchStats, MatchEvent, StreamSettings, LiveEvent } from '../types/football';
 import {
   BOLIVIAN_CLUBS,
   STANDINGS_DATA,
@@ -23,6 +23,7 @@ import { useClubs } from '../hooks/useClubs';
 import { espnFootballApi, ApiMatchDetails } from '../services/espnFootballApi';
 
 interface MatchStatsProps {
+  espnLink?: LiveEvent['espnLink'];
   homeScore: number;
   awayScore: number;
   matchMinute: number;
@@ -48,6 +49,7 @@ const EMPTY_MATCH_STATS: IMatchStats = {
 };
 
 export const MatchStats: React.FC<MatchStatsProps> = ({
+  espnLink,
   homeScore,
   awayScore,
   matchMinute,
@@ -73,27 +75,20 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
     let isMounted = true;
     setIsLoadingApi(true);
 
-    espnFootballApi
-      .findMatchByTeams(homeClub.name, awayClub.name)
-      .then((matched) => {
-        if (!isMounted) return;
-        if (matched) {
-          return espnFootballApi.getMatchDetails(matched.id).then((details) => {
-            if (isMounted && details) {
-              setApiDetails(details);
-            }
-          });
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (isMounted) setIsLoadingApi(false);
-      });
+    setApiDetails(null);
+    const lookup = espnLink?.enabled
+      ? Promise.resolve({ id: espnLink.eventId })
+      : espnFootballApi.findMatchByTeams(homeClub.name, awayClub.name);
+    lookup.then(async matched => {
+      if (!isMounted || !matched) return;
+      const details = await espnFootballApi.getMatchDetails(matched.id, espnLink?.league || 'bol.1');
+      if (isMounted) setApiDetails(details);
+    }).catch(() => {}).finally(() => { if (isMounted) setIsLoadingApi(false); });
 
     return () => {
       isMounted = false;
     };
-  }, [homeClub.name, awayClub.name]);
+  }, [homeClub.name, awayClub.name, espnLink?.eventId, espnLink?.league, espnLink?.enabled]);
 
   const activeStats: IMatchStats = apiDetails?.stats || matchStats;
   const hasApiLineups = Boolean(apiDetails?.homeLineup?.starting?.length && apiDetails?.awayLineup?.starting?.length);

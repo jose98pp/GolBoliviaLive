@@ -243,6 +243,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
       title: (formData.title || '').trim(),
       homeTeam: sanitizeClubId(formData.homeTeam),
       awayTeam: sanitizeClubId(formData.awayTeam),
+      espnLink: formData.espnLink || null,
       isLive: formData.isLive,
       primaryProvider: formData.primaryProvider,
       cloudflare: {

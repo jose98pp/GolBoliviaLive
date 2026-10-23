@@ -1,3 +1,4 @@
+import { FOOTBALL_LEAGUES, clubNameKey } from '../data/footballLeagues';
 import { ClubCrest } from './ClubCrest';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -88,7 +89,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   onClearChat,
   events = [],
 }) => {
-  const { clubs } = useClubs();
+  const { clubs, saveClub } = useClubs();
   const clubKeys = Object.keys(clubs);
   const defaultHomeClubId = activeEvent?.homeTeam || streamSettings?.homeClubId || clubKeys[0] || 'bolivar';
   const defaultAwayClubId = activeEvent?.awayTeam || streamSettings?.awayClubId || clubKeys[1] || 'strongest';
@@ -203,6 +204,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       const srcPeriod = (activeEvent?.period || streamSettings?.period || '1T') as MatchPeriod;
       const srcIsLive = activeEvent?.isLive ?? streamSettings?.isLive ?? true;
 
+      setEspnLink(activeEvent?.espnLink);
       setTitle(srcTitle);
       setTournamentName(srcTourn);
       setHomeClubId(srcHome);
@@ -224,18 +226,23 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   }, [activeEventId, activeEvent, streamSettings, defaultHomeClubId, defaultAwayClubId, homeScore, awayScore, matchMinute, isDirty, isSaving]);
 
   // Free Football API (ESPN) state
+  const [espnLink, setEspnLink] = useState<LiveEvent['espnLink']>(activeEvent?.espnLink);
+  const [isImportingApi, setIsImportingApi] = useState(false);
   const [apiLeague, setApiLeague] = useState<string>('bol.1');
   const [apiMatches, setApiMatches] = useState<ApiMatchSummary[]>([]);
   const [isLoadingApiMatches, setIsLoadingApiMatches] = useState<boolean>(false);
   const [selectedApiMatchId, setSelectedApiMatchId] = useState<string>('');
+  const apiRequestRef = useRef(0);
   const [apiFeedback, setApiFeedback] = useState<string | null>(null);
   const [clearActionFeedback, setClearActionFeedback] = useState<string | null>(null);
 
   const handleLoadApiMatches = async () => {
+    const requestId = ++apiRequestRef.current;
     setIsLoadingApiMatches(true);
     setApiFeedback(null);
     try {
       const matches = await espnFootballApi.getMatches(apiLeague);
+      if (requestId !== apiRequestRef.current) return;
       setApiMatches(matches);
       if (matches.length > 0) {
         setSelectedApiMatchId(matches[0].id);
@@ -244,48 +251,46 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         setApiFeedback('No hay partidos programados en este momento para la liga seleccionada.');
       }
     } catch {
-      setApiFeedback('No se pudo conectar con la API deportiva.');
+      if (requestId === apiRequestRef.current) setApiFeedback('No se pudo conectar con la API deportiva.');
     } finally {
-      setIsLoadingApiMatches(false);
+      if (requestId === apiRequestRef.current) setIsLoadingApiMatches(false);
       setTimeout(() => setApiFeedback(null), 5000);
     }
   };
 
-  const handleImportSelectedApiMatch = () => {
-    if (!selectedApiMatchId) return;
-    const match = apiMatches.find((m) => m.id === selectedApiMatchId);
+  const handleImportSelectedApiMatch = async () => {
+    const match = apiMatches.find(m => m.id === selectedApiMatchId);
     if (!match) return;
-
-    setIsDirty(true);
-    const newTitle = `${match.homeTeam.displayName} vs ${match.awayTeam.displayName} — En Vivo`;
-    setTitle(newTitle);
-
-    const foundHomeKey = Object.keys(clubs).find((k) =>
-      clubs[k].name.toLowerCase().includes(match.homeTeam.displayName.toLowerCase()) ||
-      match.homeTeam.displayName.toLowerCase().includes(clubs[k].name.toLowerCase())
-    );
-    if (foundHomeKey) setHomeClubId(foundHomeKey);
-
-    const foundAwayKey = Object.keys(clubs).find((k) =>
-      clubs[k].name.toLowerCase().includes(match.awayTeam.displayName.toLowerCase()) ||
-      match.awayTeam.displayName.toLowerCase().includes(clubs[k].name.toLowerCase())
-    );
-    if (foundAwayKey) setAwayClubId(foundAwayKey);
-
-    if (match.venue) setStadiumName(match.venue);
-
-    if (match.isLive || match.isFinished || match.homeTeam.score > 0 || match.awayTeam.score > 0) {
-      setLocalHomeScore(match.homeTeam.score);
-      setLocalAwayScore(match.awayTeam.score);
-      onUpdateScore?.(match.homeTeam.score, match.awayTeam.score);
-      if (typeof match.minute === 'number') {
-        setLocalMinute(match.minute);
-        onUpdateMinute?.(match.minute);
-      }
-    }
-
-    setApiFeedback(`¡Datos de "${match.homeTeam.displayName} vs ${match.awayTeam.displayName}" importados al formulario!`);
-    setTimeout(() => setApiFeedback(null), 5000);
+    const targetEvent = activeEventId;
+    setIsImportingApi(true);
+    try {
+      const resolveTeam = async (team: ApiMatchSummary['homeTeam']) => {
+        const existing = Object.values(clubs).find(c => clubNameKey(c.name) === clubNameKey(team.displayName) || clubNameKey(c.shortName) === clubNameKey(team.displayName));
+        if (existing) return existing.id;
+        if (!team.id) throw new Error('ESPN no devolvió un identificador de equipo.');
+        const league = FOOTBALL_LEAGUES[apiLeague];
+        const domestic = league.includes(' (');
+        const id = `espn_${team.id}`;
+        await saveClub({ id, name: team.displayName, shortName: team.name, logoUrl: team.logo || '', league: domestic ? league : `Internacionales · ${league}`, country: domestic ? league.split(' (')[0] : '', city: '', stadium: '', altitudeMeters: 0, primaryColor: '#334155', secondaryColor: '#ffffff', textColor: '#ffffff', badgeEmoji: '' });
+        return id;
+      };
+      const homeId = await resolveTeam(match.homeTeam);
+      const awayId = await resolveTeam(match.awayTeam);
+      if (prevEventIdRef.current !== targetEvent) return;
+      setHomeClubId(homeId); setAwayClubId(awayId);
+      setTitle(`${match.homeTeam.displayName} vs ${match.awayTeam.displayName}`);
+      setTournamentName(FOOTBALL_LEAGUES[apiLeague]);
+      if (match.venue) setStadiumName(match.venue);
+      setLocalHomeScore(match.homeTeam.score); setLocalAwayScore(match.awayTeam.score);
+      setLocalMinute(match.minute || 0);
+      setPeriod(match.liveState?.period || '1T');
+      setBroadcastMode(match.liveState?.broadcastMode || 'pre_match');
+      setIsLiveMatch(match.isLive);
+      setEspnLink({ eventId: match.id, league: apiLeague, enabled: true });
+      setIsDirty(true);
+      setApiFeedback('Partido vinculado a ESPN. Guarda el formulario para activar la actualización automática de marcador, minutos y estado.');
+    } catch (error) { setApiFeedback(error instanceof Error ? error.message : 'No se pudieron importar los equipos.'); }
+    finally { setIsImportingApi(false); }
   };
 
   const handleGenerateTitle = () => {
@@ -457,6 +462,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
     const fullEventPayload: LiveEvent = {
       id: activeId,
+      espnLink: espnLink || null,
       title: cleanTitle,
       homeTeam: effectiveHomeId,
       awayTeam: effectiveAwayId,
@@ -1367,14 +1373,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               </label>
               <select
                 value={apiLeague}
-                onChange={(e) => setApiLeague(e.target.value)}
+                onChange={(e) => { apiRequestRef.current++; setIsLoadingApiMatches(false); setApiLeague(e.target.value); setApiMatches([]); setSelectedApiMatchId(''); }}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
               >
-                <option value="bol.1">🇧🇴 División Profesional de Bolivia (Liga Tigo)</option>
-                <option value="conmebol.libertadores">🏆 Copa CONMEBOL Libertadores</option>
-                <option value="conmebol.sudamericana">⭐ Copa CONMEBOL Sudamericana</option>
-                <option value="esp.1">🇪🇸 LaLiga de España</option>
-                <option value="uefa.champions">⭐ UEFA Champions League</option>
+                {Object.entries(FOOTBALL_LEAGUES).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
               </select>
             </div>
 
@@ -1395,6 +1397,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                 <button
                   type="button"
                   onClick={handleImportSelectedApiMatch}
+                  disabled={isImportingApi}
                   className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -1404,6 +1407,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             )}
           </div>
 
+          {espnLink && <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={espnLink.enabled} onChange={e => { setEspnLink({ ...espnLink, enabled: e.target.checked }); setIsDirty(true); }} /> Actualizar automáticamente con ESPN · {FOOTBALL_LEAGUES[espnLink.league]} · ID {espnLink.eventId}. Guarda para aplicar. Desactiva para editar el marcador manualmente.</label>}
           {apiMatches.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-slate-800/80">
               <label className="block text-xs font-semibold text-slate-300">

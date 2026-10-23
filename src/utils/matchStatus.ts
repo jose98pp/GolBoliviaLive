@@ -82,7 +82,7 @@ export function getMatchStatusInfo(event?: LiveEvent | null): MatchStatusInfo {
   ) {
     return {
       category: 'live',
-      label: 'MEDIO TIEMPO',
+      label: 'ENTRETIEMPO',
       shortLabel: 'DESCANSO',
       badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-amber-950/30',
       dotClass: 'bg-amber-400',
@@ -111,7 +111,8 @@ export function getMatchStatusInfo(event?: LiveEvent | null): MatchStatusInfo {
   }
 
   // 5. En Vivo (1T, 2T, Tiempo Extra)
-  const minuteText = event.matchMinute !== undefined && event.matchMinute > 0 ? ` · ${event.matchMinute}'` : '';
+  const clock = event.displayClock || (event.matchMinute !== undefined && event.matchMinute > 0 ? `${event.matchMinute}'` : '');
+  const minuteText = clock ? ` · ${clock}` : '';
   return {
     category: 'live',
     label: `EN VIVO (${rawPeriod}${minuteText})`,

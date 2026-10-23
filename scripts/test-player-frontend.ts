@@ -571,7 +571,7 @@ async function runTests() {
   const descansoStatus = getMatchStatusInfo(descansoEvt);
   assert(descansoStatus.category === 'live', 'Medio Tiempo: Categorizado como En Vivo');
   assert(descansoStatus.icon === 'pause', 'Medio Tiempo: Icono pause asignado');
-  assert(descansoStatus.label === 'MEDIO TIEMPO', 'Medio Tiempo: Etiqueta oficial MEDIO TIEMPO');
+  assert(descansoStatus.label === 'ENTRETIEMPO', 'Medio Tiempo: Etiqueta ENTRETIEMPO');
   assert(descansoStatus.badgeClass.includes('amber'), 'Medio Tiempo: Estilo ámbar cálido');
 
   // c) Finalizado

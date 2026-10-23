@@ -25,6 +25,7 @@ export interface StreamPlayerProps {
   streamSettings?: StreamSettings;
   viewerCount?: number;
   onHlsPlaying?: () => void;
+  matchStatusLabel?: string;
 }
 
 export const StreamPlayer: React.FC<StreamPlayerProps> = ({
@@ -38,6 +39,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   streamSettings,
   viewerCount = 0,
   onHlsPlaying,
+  matchStatusLabel,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -281,6 +283,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
 
       {/* Player Controls Bar */}
       {!isExternalPlayer && <PlayerControls
+        matchStatusLabel={matchStatusLabel}
         isPlaying={isPlaying}
         onTogglePlay={handleTogglePlay}
         isMuted={isMuted}

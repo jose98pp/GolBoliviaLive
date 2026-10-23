@@ -1,3 +1,5 @@
+import { fetchEspn } from './src/services/espnCache';
+import { FOOTBALL_LEAGUES } from './src/data/footballLeagues';
 import 'dotenv/config';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
@@ -1117,6 +1119,10 @@ app.post(
       }
     }
 
+    if (raw.espnLink != null && (!/^[0-9]{1,20}$/.test(String(raw.espnLink.eventId)) || !Object.hasOwn(FOOTBALL_LEAGUES, raw.espnLink.league) || typeof raw.espnLink.enabled !== 'boolean')) {
+      return res.status(400).json({ error: 'El vínculo ESPN no es válido.' });
+    }
+
     const existingIndex = state.liveEvents.findIndex((e) => e.id === cleanId);
     const existingEvent = existingIndex >= 0 ? state.liveEvents[existingIndex] : null;
     const nextVersion = (existingEvent?.version || raw.version || 0) + 1;
@@ -1138,6 +1144,8 @@ app.post(
     // Sanitize to NEVER store or accept stream keys in public event
     const safeEvent: LiveEvent = {
       id: cleanId,
+      espnLink: raw.espnLink === null ? null : raw.espnLink && /^[0-9]{1,20}$/.test(String(raw.espnLink.eventId)) && Object.hasOwn(FOOTBALL_LEAGUES, raw.espnLink.league)
+        ? { eventId: String(raw.espnLink.eventId), league: raw.espnLink.league, enabled: Boolean(raw.espnLink.enabled) } : existingEvent?.espnLink,
       title: cleanTitle,
       homeTeam: cleanHome,
       awayTeam: cleanAway,
@@ -1713,15 +1721,15 @@ app.post(
       logoUrl,
       name: String(club.name).trim(),
       shortName: String(club.shortName).trim(),
-      city: String(club.city || existing.city || 'Bolivia').trim(),
+      city: String(club.city ?? existing.city ?? '').trim(),
       primaryColor: String(club.primaryColor || existing.primaryColor || '#0284c7').trim(),
       secondaryColor: String(club.secondaryColor || existing.secondaryColor || '#ffffff').trim(),
       textColor: String(club.textColor || existing.textColor || '#ffffff').trim(),
       badgeEmoji: String(club.badgeEmoji || existing.badgeEmoji || '⚽').trim(),
-      stadium: String(club.stadium || existing.stadium || 'Estadio Departamental').trim(),
-      altitudeMeters: Number(club.altitudeMeters || existing.altitudeMeters || 2500),
+      stadium: String(club.stadium ?? existing.stadium ?? '').trim(),
+      altitudeMeters: Math.max(0, Number(club.altitudeMeters ?? existing.altitudeMeters ?? 0) || 0),
       league: String(club.league || existing.league || 'Bolivia (División Profesional)').trim(),
-      country: String(club.country || existing.country || 'Bolivia').trim(),
+      country: String(club.country ?? existing.country ?? '').trim(),
     };
 
     try { await saveSingleClubToFirebase(updatedClub); }
@@ -1758,25 +1766,27 @@ app.delete(
 // ==========================================
 // 10.6 FREE SPORTS API PROXY (ESPN Open Soccer API)
 // ==========================================
-const clubCrestCache = new Map<string, { expires: number; teams: { names: string[]; logoUrl: string }[] }>();
+const clubCrestCache = new Map<string, { expires: number; teams: { id?: string; names: string[]; logoUrl: string }[] }>();
 app.get(['/api/football-api/teams', '/football-api/teams'], async (req: Request, res: Response) => {
   const league = String(req.query.league || 'bol.1');
-  if (!['bol.1', 'esp.1', 'eng.1', 'arg.1', 'bra.1', 'col.1', 'per.1', 'chi.1', 'uru.1'].includes(league)) return res.status(400).json({ error: 'Liga no compatible.' });
-  const cached = clubCrestCache.get(league);
+  if (!Object.hasOwn(FOOTBALL_LEAGUES, league)) return res.status(400).json({ error: 'Liga no compatible.' });
+  const cacheKey = league + (req.query.current === '1' ? ':current' : '');
+  const cached = clubCrestCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return res.json({ teams: cached.teams });
   try {
-    const responses = await Promise.allSettled(['', '&season=2024'].map(async season => {
+    const responses = await Promise.allSettled((req.query.current === '1' ? [''] : ['', '&season=2024']).map(async season => {
       const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/teams?limit=100${season}`, { signal: AbortSignal.timeout(8000) });
       if (!response.ok) throw new Error('No se pudo consultar el catálogo de escudos.');
       const data = await response.json();
       return (data.sports?.[0]?.leagues?.[0]?.teams || []).map((entry: any) => ({
+        id: String(entry.team?.id || ''),
         names: [entry.team?.displayName, entry.team?.name, entry.team?.shortDisplayName].filter((name: unknown) => typeof name === 'string'),
         logoUrl: normalizeCrestUrl(entry.team?.logos?.[0]?.href),
       })).filter((team: any) => team.names.length && team.logoUrl);
     }));
     const teams = responses.flatMap(response => response.status === 'fulfilled' ? response.value : []);
     if (!teams.length) return res.status(502).json({ error: 'Los escudos deportivos no están disponibles.', teams: [] });
-    clubCrestCache.set(league, { expires: Date.now() + 21600000, teams });
+    clubCrestCache.set(cacheKey, { expires: Date.now() + 21600000, teams });
     res.setHeader('Cache-Control', 'public, max-age=3600');
     return res.json({ teams });
   } catch { return res.status(502).json({ error: 'No se pudo cargar el catálogo de escudos.', teams: [] }); }
@@ -1784,11 +1794,11 @@ app.get(['/api/football-api/teams', '/football-api/teams'], async (req: Request,
 
 app.get(['/api/football-api/matches', '/football-api/matches'], async (req: Request, res: Response) => {
   const league = String(req.query.league || 'bol.1').trim();
+  if (!Object.hasOwn(FOOTBALL_LEAGUES, league)) return res.status(400).json({ error: 'Liga no compatible.' });
+  res.setHeader('Cache-Control', 'public, max-age=15');
   const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/scoreboard`;
   try {
-    const apiRes = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-    });
+    const apiRes = await fetchEspn(url);
     if (!apiRes.ok) {
       res.status(apiRes.status).json({ error: 'Error al consultar API deportiva gratuita de ESPN' });
       return;
@@ -1802,12 +1812,13 @@ app.get(['/api/football-api/matches', '/football-api/matches'], async (req: Requ
 
 app.get(['/api/football-api/match/:id', '/football-api/match/:id'], async (req: Request, res: Response) => {
   const eventId = String(req.params.id).trim();
+  if (!/^[0-9]{1,20}$/.test(eventId)) return res.status(400).json({ error: 'ID ESPN no válido.' });
   const league = String(req.query.league || 'bol.1').trim();
+  if (!Object.hasOwn(FOOTBALL_LEAGUES, league)) return res.status(400).json({ error: 'Liga no compatible.' });
+  res.setHeader('Cache-Control', 'public, max-age=15');
   const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/summary?event=${encodeURIComponent(eventId)}`;
   try {
-    const apiRes = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-    });
+    const apiRes = await fetchEspn(url);
     if (!apiRes.ok) {
       res.status(apiRes.status).json({ error: 'Error al consultar detalles de partido en ESPN' });
       return;
@@ -1826,7 +1837,7 @@ if (!process.env.VERCEL) {
   setInterval(() => {
     let anyUpdated = false;
     for (const evt of state.liveEvents) {
-      if (evt.isLive && evt.isClockRunning && evt.period !== 'Descanso' && evt.period !== 'Finalizado' && evt.period !== 'Revisión VAR') {
+      if (!evt.espnLink?.enabled && evt.isLive && evt.isClockRunning && evt.period !== 'Descanso' && evt.period !== 'Finalizado' && evt.period !== 'Revisión VAR') {
         const currentMin = typeof evt.matchMinute === 'number' ? evt.matchMinute : 0;
         if (currentMin < 130) {
           evt.matchMinute = currentMin + 1;

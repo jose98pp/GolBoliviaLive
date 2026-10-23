@@ -25,6 +25,7 @@ interface NavbarProps {
   homeClub?: Club;
   awayClub?: Club;
   period?: string;
+  matchStatusLabel?: string;
   isClockRunning?: boolean;
   onToggleMatchClock?: () => void;
   matchSeconds?: number;
@@ -50,6 +51,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   homeClub,
   awayClub,
   period = '2T',
+  matchStatusLabel,
   isClockRunning = false,
   onToggleMatchClock,
   matchSeconds = 0,
@@ -208,7 +210,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
                 <span className="text-[10px] font-mono font-bold text-red-400 uppercase tracking-widest">
-                  EN VIVO · Minuto {matchMinute}&apos;
+                  {matchStatusLabel || `${period} · ${matchMinute}'`}
                 </span>
               </div>
             </div>
