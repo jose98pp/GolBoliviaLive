@@ -53,3 +53,7 @@ Guardar el borrador del entorno no aplica ni publica los permisos de red. Esa ac
 ### Pruebas reales de Security Rules
 
 Instala las dependencias independientes con `bun install --cwd security_rules_test_firestore` y ejecuta `bun run test:rules` (requiere Java 21 y acceso a la descarga oficial del emulador). Consulta [las instrucciones y el estado de validación](security_rules_test_firestore/README.md). Usa un proyecto `demo-` local sin escribir en producción. El emulador compila el archivo real `firestore.rules` antes de comprobar los permisos. Estas pruebas no se ejecutan dentro de la suite rápida `bun run test`.
+
+### App pública para Android TV y tablets
+
+La carpeta [`android/`](android/README.md) contiene el cliente nativo para Android TV, Google TV y tablets Android: catálogo público, navegación con mando y táctil, favoritos locales y reproducción HLS con Media3. Consulta su guía para compilar e instalar el APK, configurar el mando y conocer las limitaciones de los proveedores web. La app usa la API pública existente y no incluye el panel administrativo.
