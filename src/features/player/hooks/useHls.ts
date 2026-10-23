@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
+import { HLS_PLAYBACK_CONFIG } from '../hlsConfig';
 import { getProxiedStreamUrl, normalizeExternalPlayerUrl } from '../../../utils/streamUtils';
 
 interface UseHlsOptions {
@@ -150,23 +151,7 @@ export function useHls({
     armDeadline();
 
     if (Hls.isSupported()) {
-      hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 60,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 6,
-        manifestLoadingTimeOut: 10000,
-        manifestLoadingMaxRetry: 2,
-        levelLoadingTimeOut: 10000,
-        levelLoadingMaxRetry: 2,
-        fragLoadingTimeOut: 12000,
-        fragLoadingMaxRetry: 2,
-        startLevel: -1,
-        progressive: true,
-      });
+      hls = new Hls(HLS_PLAYBACK_CONFIG);
       const instance = hls;
       hlsRef.current = instance;
       setHlsInstance(instance);

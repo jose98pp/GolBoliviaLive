@@ -252,16 +252,6 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         !showControls ? 'cursor-none' : 'cursor-pointer'
       }`}
     >
-      {/* Club Ambient Glow */}
-      <div
-        className="absolute -top-24 -left-24 w-72 h-72 rounded-full blur-3xl opacity-20 pointer-events-none transition-all duration-700"
-        style={{ backgroundColor: homeClub.primaryColor }}
-      />
-      <div
-        className="absolute -bottom-24 -right-24 w-72 h-72 rounded-full blur-3xl opacity-20 pointer-events-none transition-all duration-700"
-        style={{ backgroundColor: awayClub.primaryColor }}
-      />
-
       {sourceInfo.type === 'external' && <ExternalPlayer url={sourceInfo.url} />}
 
       {/* Real Video Element for HLS / Custom Stream */}
@@ -270,6 +260,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
           id="player-golbolivia"
           ref={videoRef}
           playsInline
+          preload="auto"
           muted={isMuted}
           className="w-full h-full object-contain"
         />

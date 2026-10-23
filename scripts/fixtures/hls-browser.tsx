@@ -55,6 +55,8 @@ async function run() {
 
   await render();
   const first = current();
+  check(first.config.startLevel === 0 && !first.config.testBandwidth, 'Startup plays the lowest rendition without downloading a bandwidth-test fragment');
+  check(first.config.manifestLoadPolicy.default.errorRetry.maxNumRetry === 0, 'Manifest retries are owned by the hook rather than duplicated internally');
   await act(async () => first.emit('manifest', { levels: [{ height: 720, bitrate: 1000000 }] }));
   check(!hook.isLoaded && successes === 0, 'A manifest alone must not report playback success');
   await act(async () => video.dispatchEvent(new Event('playing')));

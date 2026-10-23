@@ -46,7 +46,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   const [volume, setVolume] = useState<number>(0.85);
 
   // Settings & popovers state
-  const [currentResolution, setCurrentResolution] = useState<StreamResolution>('1080p60');
+  const [currentResolution, setCurrentResolution] = useState<StreamResolution>('auto');
   const [latencyMode, setLatencyMode] = useState<'ultra-low' | 'standard'>('ultra-low');
   const [audioTrack, setAudioTrack] = useState<'oficial' | 'radio' | 'ambiente'>('oficial');
   const [cameraAngle, setCameraAngle] = useState<'principal' | 'arco' | 'tactica' | 'ras_piso'>('principal');
