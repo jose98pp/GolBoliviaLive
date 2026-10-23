@@ -36,9 +36,9 @@ object TeamCatalog {
             .firstOrNull { Regex(it.first).containsMatchIn(source) }?.second.orEmpty()
     }
 
-    fun load(events: JSONObject): Map<String, TeamInfo> {
+    fun load(events: JSONObject, allowNetwork: Boolean = true, fetch: (String) -> JSONObject = { Catalog.fetch(it, 8000) }): Map<String, TeamInfo> {
         val now = System.currentTimeMillis()
-        if (now - clubsLoaded > 300000) runCatching { Catalog.fetch("/api/clubs").getJSONObject("clubs") }
+        if (allowNetwork && now - clubsLoaded > 300000) runCatching { fetch("/api/clubs").getJSONObject("clubs") }
             .onSuccess { clubs = it; clubsLoaded = now }
         val rows = events.getJSONArray("events")
         val ids = (0 until rows.length()).flatMap { listOf(rows.getJSONObject(it).optString("homeTeam"), rows.getJSONObject(it).optString("awayTeam")) }.distinct()
@@ -50,19 +50,19 @@ object TeamCatalog {
             val competition = league(club)
             if (logo.isBlank() && competition.isNotBlank()) {
                 var cached = leagues[competition]
-                if (cached == null || now > cached.first) {
+                if (allowNetwork && (cached == null || now > cached.first)) {
                     val loaded = runCatching {
-                        val teams = Catalog.fetch("/api/football-api/teams?league=$competition").getJSONArray("teams")
+                        val teams = fetch("/api/football-api/teams?league=$competition").getJSONArray("teams")
                         (0 until teams.length()).map { index ->
                             val team = teams.getJSONObject(index); val names = team.getJSONArray("names")
                             (0 until names.length()).map { normalize(names.getString(it)) } to crest(team.optString("logoUrl"))
                         }
-                    }.getOrDefault(emptyList())
+                    }.getOrDefault(cached?.second.orEmpty())
                     cached = (now + if (loaded.isEmpty()) 300000 else 7200000) to loaded
                     leagues[competition] = cached
                 }
                 val names = listOf(name, club.optString("name"), aliases[id].orEmpty()).map(::normalize).filter { it.isNotBlank() }
-                logo = cached.second.firstOrNull { entry -> entry.first.any { it in names } }?.second.orEmpty()
+                logo = cached?.second?.firstOrNull { entry -> entry.first.any { it in names } }?.second.orEmpty()
             }
             TeamInfo(id, name.ifBlank { "Equipo por confirmar" }, logo, club.optString("primaryColor", "#15314D"))
         }

@@ -63,4 +63,21 @@ class EspnSyncTest {
         assertEquals(1, calls)
         assertTrue(Catalog.matches(enriched).all { it.live })
     }
+    @Test fun previewKeepsFinalResultBetweenNetworkRefreshes() {
+        EspnSync.refresh(events(id = "8801")) { summary(id = "8801", state = "post") }
+        val item = Catalog.matches(EspnSync.preview(events(id = "8801"))).single()
+        assertEquals("FINALIZADO", item.status)
+        assertEquals("2 – 1", item.score)
+    }
+
+    @Test fun uncachedPreviewShowsPendingRatherThanIncorrectScheduledState() {
+        val original = events(id = "8802")
+        assertEquals("CONSULTANDO ESPN", Catalog.matches(EspnSync.preview(original)).single().status)
+        assertFalse(original.getJSONArray("events").getJSONObject(0).optBoolean("espnSyncPending"))
+    }
+
+    @Test fun firstPaintOfTeamsDoesNotWaitForNetwork() {
+        val teams = TeamCatalog.load(events(), false) { error("First paint must not fetch metadata") }
+        assertEquals(setOf("h", "a"), teams.keys)
+    }
 }

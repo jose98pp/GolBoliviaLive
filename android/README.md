@@ -48,7 +48,7 @@ Ajustes persistentes: reproducción automática, CH+/CH−, texto grande y calid
 
 - El giro y los cambios de tamaño conservan la Activity y el reproductor existentes; se redimensiona la vista sin salir del partido ni reiniciar la señal. El catálogo se vuelve a distribuir cuando cambia su tamaño.
 - Si Android recrea la Activity por otro motivo, el estado guardado permite recuperar partido/canal, fuente seleccionada e intención de reproducción. La recuperación abre de nuevo la señal; no mantiene un proceso de video vivo cuando Android lo destruye.
-- El video usa toda la vista, sin reservar espacio para cabeceras o botones. Estado, marcador y acciones son una capa superpuesta que se oculta. El botón ☰ o la tecla Menú permiten mostrarla otra vez.
+- El video usa toda la vista, sin reservar espacio para cabeceras o botones. Estado, marcador y acciones son una capa superpuesta que se oculta. Todos los controles, incluido el botón ☰, desaparecen tras cinco segundos sin interacción. Un toque o la tecla Menú permiten mostrarlos otra vez. Los toques se entregan al video antes de mostrar la capa.
 - En HLS, Encajar conserva la imagen entera y Llenar ocupa la pantalla recortando bordes. El ajuste se recuerda. Los reproductores web conservan los controles y límites de imagen de su proveedor; una señal panorámica en pantalla vertical puede tener bandas por su proporción.
 - El enlace `espnLink` del partido debe tener `enabled`, `league` y `eventId` válidos. La app consulta el resumen ESPN a través del backend cada 30 segundos y actualiza los campos deportivos en memoria; no cambia la configuración del video ni escribe resultados en producción. Si falla la consulta conserva el último resultado del mismo vínculo e indica «ESPN sin actualizar». Un partido sin vínculo activo usa el estado manual.
 
@@ -91,3 +91,11 @@ Las pruebas de regresión de `EmbedDocumentTest` analizan el HTML generado: un i
 - [Identidad de cliente para YouTube en WebView](https://developers.google.com/youtube/terms/required-minimum-functionality#api-client-identity-and-credentials)
 - [YouTube IFrame API y errores](https://developers.google.com/youtube/iframe_api_reference)
 - [Reproductor oficial de Kick](https://help.kick.com/en/articles/8010826-how-to-embed-your-kick-livestream)
+
+## Navegación iframe y carga progresiva (0.2.2, compilación 5)
+
+- En las opciones del reproductor, activar **Cursor iframe**. Flechas mueven el cursor y OK pulsa en el punto indicado, por ejemplo Reproducir, Cerrar o Saltar cuando el proveedor ofrece esos botones. Abrir Menú y pulsar Cursor iframe otra vez lo desactiva. En tablet se mantiene el toque normal.
+- WebView rechaza ventanas adicionales y navegación que intente reemplazar el documento principal; el iframe conserva su sandbox sin permisos para abrir ventanas o navegar la página superior. No se garantiza eliminar publicidad dentro del propio video o iframe ni se automatiza el salto de anuncios.
+- Los partidos se publican al llegar la respuesta principal, sin esperar a los canales ni a los escudos. ESPN y los equipos se actualizan en segundo plano de forma independiente. El estado ESPN anterior permanece entre consultas; la primera consulta muestra CONSULTANDO ESPN. Una falla conserva los datos anteriores.
+- Los partidos se consultan cada 30 segundos; los canales se reutilizan durante cinco minutos. Actualizar catálogo fuerza también los canales. Estas cargas no reinician el reproductor.
+- Probar en tablet y TV: pulsación de botones del iframe con cursor y toque, bloqueo de ventanas nuevas, retorno de controles ocultos y permanencia del video al actualizar datos. Las pruebas unitarias no sustituyen esta verificación física.

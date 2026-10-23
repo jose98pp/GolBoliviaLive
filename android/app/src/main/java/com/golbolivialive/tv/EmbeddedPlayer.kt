@@ -3,9 +3,16 @@ package com.golbolivialive.tv
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
+import android.os.Message
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.*
@@ -23,11 +30,23 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
     private var closed = false
     private var failed = false
     private var originalUi = 0
+    private var pointerMode = false
+    private var cursorX = 0f
+    private var cursorY = 0f
+    private val pointer = object : View(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3 * resources.displayMetrics.density }
+        override fun onDraw(canvas: Canvas) {
+            paint.color = Color.BLACK; canvas.drawCircle(cursorX, cursorY, 11 * resources.displayMetrics.density, paint)
+            paint.color = Color.WHITE; canvas.drawCircle(cursorX, cursorY, 8 * resources.displayMetrics.density, paint)
+        }
+    }.apply { visibility = View.GONE; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+
     private val reminder = Runnable { if (!closed) status("Si el video no comienza, pulsa Reintentar o Siguiente señal.") }
 
     init {
         setBackgroundColor(Color.BLACK)
         addView(web, LayoutParams(-1, -1))
+        addView(pointer, LayoutParams(-1, -1))
         web.setBackgroundColor(Color.BLACK)
         web.settings.apply {
             javaScriptEnabled = true
@@ -37,14 +56,14 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
             allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             javaScriptCanOpenWindowsAutomatically = false
-            setSupportMultipleWindows(false)
+            setSupportMultipleWindows(true)
         }
         web.webViewClient = object : WebViewClient() {
             @Deprecated("Used on Android 6")
-            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = !allowed(url)
+            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = !EmbedNavigation.allowed(source, url, true)
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val blocked = !allowed(request.url.toString())
-                if (blocked && request.isForMainFrame) status("El enlace del proveedor no está disponible dentro de este reproductor.")
+                val blocked = !EmbedNavigation.allowed(source, request.url.toString(), request.isForMainFrame)
+                if (blocked && request.isForMainFrame) status("Se bloqueó un enlace que intentaba salir del reproductor.")
                 return blocked
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -58,8 +77,13 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
             }
         }
         web.webChromeClient = object : WebChromeClient() {
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+                status("Se bloqueó una ventana adicional del proveedor.")
+                return false
+            }
             override fun onShowCustomView(view: View, callback: CustomViewCallback) {
                 if (fullView != null) { callback.onCustomViewHidden(); return }
+                pointerMode = false; pointer.visibility = View.GONE
                 fullView = view; fullCallback = callback; web.visibility = View.GONE
                 val decor = (context as Activity).window.decorView as ViewGroup
                 originalUi = decor.systemUiVisibility
@@ -103,15 +127,55 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
         web.requestFocus()
     }
 
-    private fun allowed(value: String): Boolean {
-        if (Catalog.https(value) == null) return false
-        val host = runCatching { URI(value).host }.getOrNull()
-        if (host == BuildConfig.APPLICATION_ID) return true
-        return when (source.provider) {
-            "YouTube" -> host in setOf("www.youtube.com", "www.youtube-nocookie.com", BuildConfig.APPLICATION_ID)
-            "Kick" -> host == "player.kick.com"
-            else -> host == URI(source.url).host
+    fun togglePointer(): Boolean {
+        if (fullView != null) exitFullscreen()
+        pointerMode = !pointerMode
+        pointer.visibility = if (pointerMode) View.VISIBLE else View.GONE
+        if (cursorX == 0f && cursorY == 0f) { cursorX = width / 2f; cursorY = height / 2f }
+        pointer.invalidate()
+        status(if (pointerMode) "Cursor activo · Flechas: mover · OK: pulsar · Menú: opciones" else "Cursor desactivado · Usa los controles del video")
+        focusVideo()
+        return pointerMode
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        cursorX = if (oldw > 0) cursorX / oldw * w else w / 2f
+        cursorY = if (oldh > 0) cursorY / oldh * h else h / 2f
+        pointer.invalidate()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (pointerMode && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val step = 22 * resources.displayMetrics.density
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_LEFT -> cursorX -= step
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> cursorX += step
+                    KeyEvent.KEYCODE_DPAD_UP -> cursorY -= step
+                    KeyEvent.KEYCODE_DPAD_DOWN -> cursorY += step
+                    else -> if (event.repeatCount == 0) clickPointer()
+                }
+                cursorX = cursorX.coerceIn(1f, (width - 1).coerceAtLeast(1).toFloat())
+                cursorY = cursorY.coerceIn(1f, (height - 1).coerceAtLeast(1).toFloat())
+                pointer.invalidate()
+            }
+            return true
         }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun clickPointer() {
+        val time = SystemClock.uptimeMillis()
+        fun send(action: Int) {
+            val event = MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, cursorX, cursorY, 0)
+            event.source = InputDevice.SOURCE_TOUCHSCREEN
+            web.dispatchTouchEvent(event)
+            event.recycle()
+        }
+        send(MotionEvent.ACTION_DOWN)
+        handler.postDelayed({ if (!closed) send(MotionEvent.ACTION_UP) }, 40)
     }
 
     fun mediaKey(play: Boolean? = null): Boolean {

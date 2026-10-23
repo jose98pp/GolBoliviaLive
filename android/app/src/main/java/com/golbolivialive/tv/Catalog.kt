@@ -43,6 +43,7 @@ object Catalog {
     }
 
     fun status(row: JSONObject): MatchStatus {
+        if (row.optBoolean("espnSyncPending")) return MatchStatus("CONSULTANDO ESPN", "today")
         val period = row.optString("period", "1T").trim()
         val mode = row.optString("broadcastMode")
         val lower = period.lowercase()

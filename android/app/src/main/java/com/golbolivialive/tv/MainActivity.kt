@@ -17,6 +17,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
+import org.json.JSONObject
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -34,7 +36,7 @@ import java.util.concurrent.Executors
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
-    private val executor = Executors.newFixedThreadPool(2)
+    private val executor = Executors.newFixedThreadPool(4)
     private val preferences by lazy { getSharedPreferences("viewer", MODE_PRIVATE) }
     private val backgroundColor = Color.rgb(8, 13, 22)
     private val green = Color.rgb(54, 220, 150)
@@ -48,7 +50,7 @@ class MainActivity : Activity() {
     private val hideChrome = object : Runnable {
         override fun run() {
             if (selected == null || !active) return
-            if (watchChrome?.hasFocus() == true) handler.postDelayed(this, 1500) else showWatchChrome(false)
+            showWatchChrome(false)
         }
     }
     private lateinit var root: LinearLayout
@@ -68,7 +70,13 @@ class MainActivity : Activity() {
     private var resumePlayback = true
     private var returnFocus: String? = null
     private var active = false
-    private var pendingLoads = 0
+    private var matchesLoading = false
+    private var channelsLoading = false
+    private var channelsLoadedAt = 0L
+    private var latestEvents = JSONObject("{\"events\":[]}")
+    private var latestTeams = emptyMap<String, TeamInfo>()
+    private var matchNotice = ""
+    private var channelNotice = ""
     private val refresh = object : Runnable {
         override fun run() {
             loadCatalog()
@@ -158,6 +166,7 @@ class MainActivity : Activity() {
     private fun showWatchChrome(show: Boolean) {
         chromeVisible = show
         watchChrome?.visibility = if (show) View.VISIBLE else View.GONE
+        watchMenu?.visibility = if (show) View.VISIBLE else View.GONE
         handler.removeCallbacks(hideChrome)
         if (show) handler.postDelayed(hideChrome, 5000)
         else { embedded?.focusVideo(); playerView?.requestFocus() }
@@ -261,7 +270,7 @@ class MainActivity : Activity() {
                 "Canales" -> grid("Canales", filtered(channels))
                 "Favoritos" -> grid("Tus favoritos", filtered(matches + channels).filter { it.id in favorites() })
             }
-            body.addView(button(if (loading) "Actualizando…" else "Actualizar catálogo") { loadCatalog() })
+            body.addView(button(if (loading) "Actualizando…" else "Actualizar catálogo") { loadCatalog(true) })
         }
         val target = focusTag?.let { root.findViewWithTag<View>(it) }
             ?: root.findViewWithTag("nav:$section")
@@ -397,50 +406,83 @@ class MainActivity : Activity() {
         body.addView(label("El volumen se controla con los botones del dispositivo o del televisor.\nYouTube, Kick y señales web se reproducen dentro de la app.\nGolBoliviaLive · Versión ${BuildConfig.VERSION_NAME}", 14f, true))
     }
 
-    private fun loadCatalog() {
-        if (loading || !active) return
-        loading = true
-        pendingLoads = 2
-        val previousMatches = matches
-        val previousChannels = channels
-        val previousNotice = notice
-        listOf("/api/live-events", "/api/iptv/sports").forEach { path ->
+    private fun catalogChanged() {
+        loading = matchesLoading || channelsLoading
+        notice = listOf(matchNotice, channelNotice).filter { it.isNotBlank() }.joinToString(" · ")
+            .ifBlank { if (loading) "Actualizando datos…" else "Catálogo actualizado · Mantén OK para favoritos" }
+        selected?.let { current ->
+            (matches + channels).find { it.id == current.id }?.let { updated ->
+                selected = current.copy(title = updated.title, subtitle = updated.subtitle, home = updated.home, away = updated.away,
+                    status = updated.status, score = updated.score, category = updated.category, live = updated.live)
+                watchHeader?.text = "${updated.title} · ${updated.score} · ${updated.status}"
+            }
+        }
+        if (active && selected == null) {
+            val count = when (section) { "Canales" -> channels.size; "Partidos" -> matches.size; else -> (matches + channels).size }
+            if (page * 24 >= count) page = 0
+            render(currentFocus?.tag as? String)
+        }
+    }
+
+    private fun loadCatalog(forceChannels: Boolean = false) {
+        if (!active) return
+        if (!matchesLoading) {
+            matchesLoading = true
             executor.execute {
                 val result = runCatching {
-                    val json = Catalog.fetch(path)
-                    if (path.endsWith("sports")) Catalog.channels(json) else {
-                        val enriched = EspnSync.refresh(json)
-                        Catalog.matches(enriched, TeamCatalog.load(enriched))
-                    }
+                    val raw = Catalog.fetch("/api/live-events", 12000)
+                    EspnSync.preview(raw) to TeamCatalog.load(raw, false)
                 }
                 handler.post {
                     if (isDestroyed) return@post
-                    val focus = currentFocus?.tag as? String
-                    result.onSuccess {
-                        if (path.endsWith("sports")) channels = it else matches = it
-                    }
-                    if (pendingLoads == 2) notice = ""
-                    result.onFailure { notice += "No se pudo actualizar ${if (path.endsWith("sports")) "los canales" else "los partidos"}. Se conserva el catálogo anterior. " }
-                    pendingLoads--
-                    if (pendingLoads == 0) {
-                        loading = false
-                        selected?.let { current ->
-                            (matches + channels).find { it.id == current.id }?.let { updated ->
-                                selected = current.copy(title = updated.title, subtitle = updated.subtitle, home = updated.home, away = updated.away,
-                                    status = updated.status, score = updated.score, category = updated.category, live = updated.live)
-                                watchHeader?.text = "${updated.title} · ${updated.score} · ${updated.status}"
+                    result.onSuccess { (events, teams) ->
+                        latestEvents = events; latestTeams = teams; matchNotice = ""
+                        matches = Catalog.matches(latestEvents, latestTeams)
+                        var remaining = 2
+                        fun complete() {
+                            remaining--
+                            matchesLoading = remaining > 0
+                            matches = Catalog.matches(latestEvents, latestTeams)
+                            catalogChanged()
+                        }
+                        executor.execute {
+                            val enriched = runCatching { EspnSync.refresh(events) }
+                            handler.post {
+                                if (!isDestroyed) {
+                                    enriched.onSuccess { latestEvents = it }
+                                    enriched.onFailure { matchNotice = "No se pudo actualizar ESPN" }
+                                    complete()
+                                }
                             }
                         }
-                        if (active && selected == null) {
-                            if (notice.isBlank()) notice = "Catálogo actualizado · Mantén OK para favoritos"
-                            val itemCount = when (section) { "Canales" -> channels.size; "Partidos" -> matches.size; else -> (matches + channels).size }
-                            if (page * 24 >= itemCount) page = 0
-                            if (matches != previousMatches || channels != previousChannels || notice != previousNotice) render(focus)
+                        executor.execute {
+                            val enriched = runCatching { TeamCatalog.load(events) }
+                            handler.post {
+                                if (!isDestroyed) { enriched.onSuccess { latestTeams = it }; complete() }
+                            }
                         }
+                    }.onFailure {
+                        matchesLoading = false
+                        matchNotice = "No se pudieron actualizar los partidos. Se conserva el catálogo anterior"
                     }
+                    catalogChanged()
                 }
             }
         }
+        if (!channelsLoading && (forceChannels || System.currentTimeMillis() - channelsLoadedAt > 300000)) {
+            channelsLoading = true
+            executor.execute {
+                val result = runCatching { Catalog.channels(Catalog.fetch("/api/iptv/sports", 12000)) }
+                handler.post {
+                    if (isDestroyed) return@post
+                    channelsLoading = false
+                    result.onSuccess { channels = it; channelsLoadedAt = System.currentTimeMillis(); channelNotice = "" }
+                        .onFailure { channelNotice = "No se pudieron actualizar los canales. Se conserva el catálogo anterior" }
+                    catalogChanged()
+                }
+            }
+        }
+        loading = matchesLoading || channelsLoading
     }
 
     private fun open(item: WatchItem, restored: PlaybackSnapshot? = null) {
@@ -485,6 +527,12 @@ class MainActivity : Activity() {
                     playerStatus?.text = if (playerView != null) {
                         if (zoom) "Llenar: se recortan los bordes para ocupar toda la pantalla." else "Encajar: se conserva la imagen completa."
                     } else "En reproductores web usa el ajuste de imagen del proveedor."
+                })
+                addView(button("Cursor iframe") {
+                    if (embedded != null) {
+                        embedded?.togglePointer()
+                        showWatchChrome(false)
+                    } else playerStatus?.text = "El cursor se utiliza con señales web."
                 })
                 addView(button("Favorito ★") { toggleFavorite(item) })
             })
@@ -591,7 +639,23 @@ class MainActivity : Activity() {
         render(returnFocus)
     }
 
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        val watching = selected != null
+        val wasHidden = watching && !chromeVisible
+        if (watching && chromeVisible) {
+            handler.removeCallbacks(hideChrome)
+            handler.postDelayed(hideChrome, 5000)
+        }
+        val handled = super.dispatchTouchEvent(event)
+        if (wasHidden && event.actionMasked == MotionEvent.ACTION_UP && selected != null) showWatchChrome(true)
+        return handled
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (selected != null && chromeVisible && event.action == KeyEvent.ACTION_DOWN) {
+            handler.removeCallbacks(hideChrome)
+            handler.postDelayed(hideChrome, 5000)
+        }
         if (selected != null && event.keyCode == KeyEvent.KEYCODE_MENU) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 showWatchChrome(!chromeVisible)

@@ -4,6 +4,23 @@ import org.json.JSONObject
 
 object EspnSync {
     private val updates = mutableMapOf<String, JSONObject>()
+    private val failedKeys = mutableSetOf<String>()
+
+    fun preview(events: JSONObject): JSONObject {
+        val result = JSONObject(events.toString())
+        val rows = result.getJSONArray("events")
+        for (i in 0 until rows.length()) {
+            val row = rows.getJSONObject(i)
+            val link = row.optJSONObject("espnLink") ?: continue
+            val id = link.optString("eventId"); val league = link.optString("league")
+            if (!link.optBoolean("enabled") || !id.matches(Regex("[0-9]{1,20}")) || !league.matches(Regex("[a-z0-9._-]{2,60}"))) continue
+            val key = "$league:$id"
+            val update = updates[key]
+            update?.keys()?.forEach { row.put(it, update.get(it)) }
+            row.put("espnSyncPending", update == null).put("espnSyncFailed", key in failedKeys)
+        }
+        return result
+    }
 
     fun parse(summary: JSONObject, eventId: String): JSONObject? {
         val header = summary.optJSONObject("header") ?: return null
@@ -50,12 +67,13 @@ object EspnSync {
             activeKeys.add(key)
             if (!requested.containsKey(key)) requested[key] = runCatching { parse(fetch("/api/football-api/match/$id?league=$league"), id) }.getOrNull()
             val current = requested[key]
-            if (current != null) updates[key] = current
+            if (current != null) { updates[key] = current; failedKeys.remove(key) } else failedKeys.add(key)
             val update = current ?: updates[key]
             update?.keys()?.forEach { field -> row.put(field, update.get(field)) }
-            row.put("espnSyncFailed", current == null)
+            row.put("espnSyncFailed", current == null).put("espnSyncPending", false)
         }
         updates.keys.retainAll(activeKeys)
+        failedKeys.retainAll(activeKeys)
         return result
     }
 }
