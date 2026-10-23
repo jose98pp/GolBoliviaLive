@@ -658,7 +658,8 @@ class MainActivity : Activity() {
         }
         if (selected != null && event.keyCode == KeyEvent.KEYCODE_MENU) {
             if (event.action == KeyEvent.ACTION_DOWN) {
-                showWatchChrome(!chromeVisible)
+                if (embedded?.exitFullscreen() == true) { applyImmersive(); showWatchChrome(true) }
+                else showWatchChrome(!chromeVisible)
                 if (chromeVisible) window.decorView.findViewWithTag<View>("watch:back")?.requestFocus()
             }
             return true

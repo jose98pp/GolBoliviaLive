@@ -149,7 +149,7 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
         if (pointerMode && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)) {
             if (event.action == KeyEvent.ACTION_DOWN) {
-                val step = 22 * resources.displayMetrics.density
+                val step = (if (event.repeatCount > 4) 22 else 6) * resources.displayMetrics.density
                 when (event.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> cursorX -= step
                     KeyEvent.KEYCODE_DPAD_RIGHT -> cursorX += step
@@ -168,8 +168,9 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
 
     private fun clickPointer() {
         val time = SystemClock.uptimeMillis()
+        val x = cursorX; val y = cursorY
         fun send(action: Int) {
-            val event = MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, cursorX, cursorY, 0)
+            val event = MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, x, y, 0)
             event.source = InputDevice.SOURCE_TOUCHSCREEN
             web.dispatchTouchEvent(event)
             event.recycle()
