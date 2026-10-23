@@ -101,7 +101,7 @@ object Catalog {
             WatchItem("match:$id", row.optString("title").ifBlank { "${home.name} vs ${away.name}" },
                 listOf(row.optString("tournamentName"), row.optString("stadiumName")).filter { it.isNotBlank() }.joinToString(" · "),
                 state.category == "live", sources, "/live/${encode(id)}", home = home, away = away,
-                status = state.label, category = state.category, score = score)
+                status = state.label + if (row.optBoolean("espnSyncFailed")) " · ESPN sin actualizar" else "", category = state.category, score = score)
         }
     }
 
@@ -120,10 +120,10 @@ object Catalog {
 
     private fun encode(value: String) = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
-    fun fetch(path: String): JSONObject {
+    fun fetch(path: String, timeoutMs: Int = 20000): JSONObject {
         val connection = URL(BuildConfig.PUBLIC_BASE_URL + path).openConnection() as HttpURLConnection
-        connection.connectTimeout = 15000
-        connection.readTimeout = 20000
+        connection.connectTimeout = minOf(15000, timeoutMs)
+        connection.readTimeout = timeoutMs
         connection.setRequestProperty("Accept", "application/json")
         connection.setRequestProperty("Cache-Control", "no-cache")
         try {

@@ -4,6 +4,11 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.res.Configuration
+import android.os.Build
+import android.view.WindowInsets
+import android.view.WindowInsetsController
+import androidx.media3.ui.AspectRatioFrameLayout
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -37,6 +42,15 @@ class MainActivity : Activity() {
     private var embedded: EmbeddedPlayer? = null
     private var videoHost: FrameLayout? = null
     private var watchHeader: TextView? = null
+    private var watchChrome: FrameLayout? = null
+    private var watchMenu: Button? = null
+    private var chromeVisible = true
+    private val hideChrome = object : Runnable {
+        override fun run() {
+            if (selected == null || !active) return
+            if (watchChrome?.hasFocus() == true) handler.postDelayed(this, 1500) else showWatchChrome(false)
+        }
+    }
     private lateinit var root: LinearLayout
     private lateinit var body: LinearLayout
     private var matches = emptyList<WatchItem>()
@@ -67,16 +81,19 @@ class MainActivity : Activity() {
         section = savedInstanceState?.getString("section") ?: "Inicio"
         query = savedInstanceState?.getString("query").orEmpty()
         window.decorView.setOnApplyWindowInsetsListener { view, insets ->
-            view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
+            if (selected != null) view.setPadding(0, 0, 0, 0)
+            else view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
                 insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
             insets
         }
         render()
+        PlaybackSnapshot.decode(savedInstanceState?.getString("playback"))?.let { open(it.item, it) }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("section", section)
         outState.putString("query", query)
+        selected?.let { outState.putString("playback", PlaybackSnapshot(it, sourceIndex, player?.playWhenReady ?: resumePlayback).encode()) }
         super.onSaveInstanceState(outState)
     }
 
@@ -86,11 +103,13 @@ class MainActivity : Activity() {
         if (selected != null) startPlayer()
         loadCatalog()
         handler.postDelayed(refresh, 30000)
+        if (selected != null) { applyImmersive(); handler.postDelayed(hideChrome, 5000) }
     }
 
     override fun onStop() {
         active = false
         handler.removeCallbacks(refresh)
+        handler.removeCallbacks(hideChrome)
         resumePlayback = player?.playWhenReady ?: resumePlayback
         releasePlayer()
         super.onStop()
@@ -101,6 +120,47 @@ class MainActivity : Activity() {
         executor.shutdownNow()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (selected == null) render(currentFocus?.tag as? String)
+        else {
+            applyImmersive()
+            videoHost?.requestLayout()
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && selected != null) applyImmersive()
+    }
+
+    private fun applyImmersive() {
+        val watching = selected != null
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(!watching)
+            window.insetsController?.apply {
+                if (watching) {
+                    systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    hide(WindowInsets.Type.systemBars())
+                } else show(WindowInsets.Type.systemBars())
+            }
+        } else {
+            window.decorView.systemUiVisibility = if (watching) View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE else View.SYSTEM_UI_FLAG_VISIBLE
+        }
+        if (watching) window.decorView.setPadding(0, 0, 0, 0)
+        window.decorView.requestApplyInsets()
+    }
+
+    private fun showWatchChrome(show: Boolean) {
+        chromeVisible = show
+        watchChrome?.visibility = if (show) View.VISIBLE else View.GONE
+        handler.removeCallbacks(hideChrome)
+        if (show) handler.postDelayed(hideChrome, 5000)
+        else { embedded?.focusVideo(); playerView?.requestFocus() }
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
@@ -348,7 +408,10 @@ class MainActivity : Activity() {
             executor.execute {
                 val result = runCatching {
                     val json = Catalog.fetch(path)
-                    if (path.endsWith("sports")) Catalog.channels(json) else Catalog.matches(json, TeamCatalog.load(json))
+                    if (path.endsWith("sports")) Catalog.channels(json) else {
+                        val enriched = EspnSync.refresh(json)
+                        Catalog.matches(enriched, TeamCatalog.load(enriched))
+                    }
                 }
                 handler.post {
                     if (isDestroyed) return@post
@@ -380,7 +443,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun open(item: WatchItem) {
+    private fun open(item: WatchItem, restored: PlaybackSnapshot? = null) {
         returnFocus = item.id
         if (item.sources.isEmpty()) {
             AlertDialog.Builder(this).setTitle(item.title)
@@ -391,26 +454,50 @@ class MainActivity : Activity() {
         }
         releasePlayer()
         selected = item
-        sourceIndex = 0
-        resumePlayback = preferences.getBoolean("autoplay", true)
-        val screen = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(backgroundColor); setPadding(dp(20), dp(12), dp(20), dp(12)) }
-        watchHeader = label("${item.title} · ${item.score} · ${item.status}", 20f)
-        screen.addView(watchHeader)
+        sourceIndex = restored?.sourceIndex ?: 0
+        resumePlayback = restored?.playWhenReady ?: preferences.getBoolean("autoplay", true)
+        val screen = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         videoHost = FrameLayout(this)
-        screen.addView(videoHost, LinearLayout.LayoutParams(-1, 0, 1f))
-        playerStatus = label("Preparando señal…", 14f, true)
-        screen.addView(playerStatus)
-        screen.addView(HorizontalScrollView(this).apply {
+        screen.addView(videoHost, FrameLayout.LayoutParams(-1, -1))
+        val chrome = FrameLayout(this)
+        watchChrome = chrome
+        val information = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(72), dp(8))
+            setBackgroundColor(Color.argb(185, 8, 13, 22))
+        }
+        watchHeader = label("${item.title} · ${item.score} · ${item.status}", 18f)
+        information.addView(watchHeader)
+        playerStatus = label("Preparando señal…", 13f, true)
+        information.addView(playerStatus)
+        chrome.addView(information, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+        val toolbar = HorizontalScrollView(this).apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8)); setBackgroundColor(Color.argb(185, 8, 13, 22))
             addView(LinearLayout(this@MainActivity).apply {
                 addView(button("Volver", "watch:back") { closePlayer() })
                 addView(button("Reintentar") { startPlayer() })
                 if (item.sources.size > 1) addView(button("Siguiente señal") {
                     sourceIndex = (sourceIndex + 1) % item.sources.size; startPlayer()
                 })
+                addView(button("Encajar / Llenar") {
+                    val zoom = !preferences.getBoolean("zoomVideo", false)
+                    preferences.edit().putBoolean("zoomVideo", zoom).apply()
+                    playerView?.resizeMode = if (zoom) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    playerStatus?.text = if (playerView != null) {
+                        if (zoom) "Llenar: se recortan los bordes para ocupar toda la pantalla." else "Encajar: se conserva la imagen completa."
+                    } else "En reproductores web usa el ajuste de imagen del proveedor."
+                })
                 addView(button("Favorito ★") { toggleFavorite(item) })
             })
+        }
+        chrome.addView(toolbar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        screen.addView(chrome, FrameLayout.LayoutParams(-1, -1))
+        watchMenu = button("☰", "watch:menu") { showWatchChrome(!chromeVisible) }.apply { contentDescription = "Mostrar u ocultar controles" }
+        screen.addView(watchMenu, FrameLayout.LayoutParams(dp(60), dp(52), Gravity.TOP or Gravity.END).apply {
+            setMargins(dp(4), dp(4), dp(8), dp(4))
         })
         setContentView(screen)
+        applyImmersive()
+        showWatchChrome(true)
         startPlayer()
     }
 
@@ -424,7 +511,10 @@ class MainActivity : Activity() {
         if (source.embedded) {
             runCatching {
                 EmbeddedPlayer(this, source, resumePlayback) { message ->
-                    if (selected?.id == item.id && active) playerStatus?.text = message
+                    if (selected?.id == item.id && active) {
+                        playerStatus?.text = message
+                        if (message.contains("no pudo", true) || message.contains("no se pudo", true) || message.contains("HTTP") || message.contains("no permite", true)) showWatchChrome(true)
+                    }
                 }.also { embedded = it; videoHost?.addView(it, FrameLayout.LayoutParams(-1, -1)) }
             }.onFailure {
                 playerStatus?.text = "No se pudo iniciar Android System WebView. Actualízalo para reproducir ${source.provider} dentro de la app."
@@ -434,6 +524,7 @@ class MainActivity : Activity() {
         }
         playerView = PlayerView(this).apply {
             useController = true; controllerShowTimeoutMs = 5000; isFocusable = true
+            resizeMode = if (preferences.getBoolean("zoomVideo", false)) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowNextButton(false); setShowPreviousButton(false)
         }
         videoHost?.addView(playerView, FrameLayout.LayoutParams(-1, -1))
@@ -455,6 +546,7 @@ class MainActivity : Activity() {
             }
             override fun onPlayerError(error: PlaybackException) {
                 if (player !== instance) return
+                showWatchChrome(true)
                 var cause: Throwable? = error
                 var status: Int? = null
                 while (cause != null) {
@@ -493,15 +585,17 @@ class MainActivity : Activity() {
     }
 
     private fun closePlayer() {
-        releasePlayer(); selected = null; videoHost = null; watchHeader = null; playerStatus = null
+        releasePlayer(); selected = null; videoHost = null; watchHeader = null; playerStatus = null; watchChrome = null; watchMenu = null
+        handler.removeCallbacks(hideChrome)
+        applyImmersive()
         render(returnFocus)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (selected != null && event.keyCode == KeyEvent.KEYCODE_MENU) {
             if (event.action == KeyEvent.ACTION_DOWN) {
-                val back = window.decorView.findViewWithTag<View>("watch:back")
-                if (back?.hasFocus() == true) { embedded?.focusVideo(); playerView?.requestFocus() } else back?.requestFocus()
+                showWatchChrome(!chromeVisible)
+                if (chromeVisible) window.decorView.findViewWithTag<View>("watch:back")?.requestFocus()
             }
             return true
         }
@@ -542,7 +636,7 @@ class MainActivity : Activity() {
 
     @Deprecated("Compatible with Android TV remotes on API 23+")
     override fun onBackPressed() {
-        if (embedded?.exitFullscreen() == true) return
+        if (embedded?.exitFullscreen() == true) { applyImmersive(); return }
         if (selected != null) { closePlayer(); return }
         if (section != "Inicio" || query.isNotBlank()) { section = "Inicio"; query = ""; page = 0; render(); return }
         AlertDialog.Builder(this).setTitle("¿Salir de GolBoliviaLive?")

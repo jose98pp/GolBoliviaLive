@@ -22,6 +22,7 @@ GitHub Actions también genera el APK en el workflow **Android TV and tablet APK
 | GET | `/api/iptv/sports` | Catálogo compartido de canales |
 | GET | `/api/clubs` | Nombres, colores y escudos configurados |
 | GET | `/api/football-api/teams?league=…` | Completar escudos cuando faltan |
+| GET | `/api/football-api/match/:id?league=…` | Estado, minuto y marcador del evento ESPN vinculado |
 
 Actualiza partidos y canales cada 30 segundos en primer plano. Durante la reproducción actualiza el encabezado con marcador y estado sin reconstruir el reproductor ni interrumpir la señal. Los escudos se resuelven con el catálogo del sitio y su API pública de equipos, con caché de imágenes en memoria. Si faltan o no se pueden descargar se muestran iniciales, sin inventar escudos. Los marcadores y minutos proceden de la API: no se simulan ni se avanza el reloj localmente. Si falla una consulta conserva el último resultado **en memoria** y permite reintentar. Al volver del segundo plano reanuda las consultas. No hay catálogo inventado ni modo de video sin conexión.
 
@@ -42,6 +43,14 @@ Actualiza partidos y canales cada 30 segundos en primer plano. Durante la reprod
 | Salir | Atrás en Inicio y confirmar |
 
 Ajustes persistentes: reproducción automática, CH+/CH−, texto grande y calidad máxima (automática, 480p, 720p, 1080p). El volumen lo controla Android/TV. No requiere emparejar un mando dentro de la app: se usa el mando que ya funciona con Android TV o un teclado/mando Bluetooth emparejado en los ajustes de Android. No incluye control desde otro teléfono por Wi-Fi.
+
+## Giro y pantalla completa (0.2.2)
+
+- El giro y los cambios de tamaño conservan la Activity y el reproductor existentes; se redimensiona la vista sin salir del partido ni reiniciar la señal. El catálogo se vuelve a distribuir cuando cambia su tamaño.
+- Si Android recrea la Activity por otro motivo, el estado guardado permite recuperar partido/canal, fuente seleccionada e intención de reproducción. La recuperación abre de nuevo la señal; no mantiene un proceso de video vivo cuando Android lo destruye.
+- El video usa toda la vista, sin reservar espacio para cabeceras o botones. Estado, marcador y acciones son una capa superpuesta que se oculta. El botón ☰ o la tecla Menú permiten mostrarla otra vez.
+- En HLS, Encajar conserva la imagen entera y Llenar ocupa la pantalla recortando bordes. El ajuste se recuerda. Los reproductores web conservan los controles y límites de imagen de su proveedor; una señal panorámica en pantalla vertical puede tener bandas por su proporción.
+- El enlace `espnLink` del partido debe tener `enabled`, `league` y `eventId` válidos. La app consulta el resumen ESPN a través del backend cada 30 segundos y actualiza los campos deportivos en memoria; no cambia la configuración del video ni escribe resultados en producción. Si falla la consulta conserva el último resultado del mismo vínculo e indica «ESPN sin actualizar». Un partido sin vínculo activo usa el estado manual.
 
 ## Reproducción
 
@@ -69,10 +78,13 @@ Antes de distribuir, probar en una tablet y en Android TV/Google TV reales:
 5. Home de Android y regreso: sin audio en segundo plano ni dos reproductores simultáneos.
 6. YouTube/Kick/iframe sin salir de la app, con Android System WebView actualizado; reproducción manual/automática, error 101/150/153, canales offline, pantalla completa y Atrás.
 7. Escudos, contraste de tarjetas, marcador y estados con partidos configurados por el administrador. La actualización del marcador durante video no debe recargarlo.
+8. Girar varias veces durante HLS, iframe, YouTube y Kick, también con controles ocultos y en pantalla completa del proveedor: conservar partido y fuente. Probar la vuelta de segundo plano y la recuperación tras recreación de Activity.
 
 Las pruebas unitarias cubren el contrato JSON, estados y marcadores, resolución de equipos, selección y orden de proveedores nativos/integrados, failover desactivado, enlaces oficiales, catálogo vacío y validación de HTTPS/escudos. La compilación y el lint no sustituyen las pruebas de reproducción y del mando en hardware.
 
 Las pruebas de regresión de `EmbedDocumentTest` analizan el HTML generado: un iframe hijo con la URL original y permisos de video/pantalla completa, parámetros de Kick, escape de atributos y rechazo de contenido local/HTTP. No prueban el servidor concreto de un proveedor ni sustituyen una prueba con la URL que falló.
+
+`EspnSyncTest` valida el reemplazo del estado manual, estados ESPN pre/in/post, entretiempo, finalización, marcador local/visitante, vínculo incorrecto/desactivado, caché ante fallo y deduplicación. `PlaybackSnapshotTest` cubre recuperación de partido/canal, fuente y pausa, así como estado inválido. Estas pruebas no ejecutan la rotación física ni reproducen video en Android.
 
 ## Referencias de integración
 

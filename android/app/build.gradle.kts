@@ -9,8 +9,8 @@ android {
         applicationId = "com.golbolivialive.tv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 4
+        versionName = "0.2.2"
         buildConfigField("String", "PUBLIC_BASE_URL", "\"https://golbolivialive-beta.vercel.app\"")
     }
     buildFeatures { buildConfig = true }
