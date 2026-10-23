@@ -25,8 +25,21 @@ service cloud.firestore {
       allow write: if isBackend();
     }
 
-    match /matchAnalytics/{matchId}/{document=**} {
+    // Audiencia por partido: colección privada matchAnalytics y sus subcolecciones visitors y plays; exclusivo del backend.
+    match /matchAnalytics/{matchId} {
       allow read, write: if isBackend();
+
+      match /visitors/{visitorId} {
+        allow read, write: if isBackend();
+      }
+
+      match /plays/{playId} {
+        allow read, write: if isBackend();
+      }
+
+      match /{document=**} {
+        allow read, write: if isBackend();
+      }
     }
 
     match /iptvCustomChannels/{channelId} {
