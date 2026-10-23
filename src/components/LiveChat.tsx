@@ -35,7 +35,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({
   officialAnnouncement,
   activePoll,
   onVotePoll,
-  viewerCount = 14820,
+  viewerCount = 0,
   onToggleChat,
 }) => {
   // Solo mensajes reales de usuarios que entran a la página (sin generador simulado)

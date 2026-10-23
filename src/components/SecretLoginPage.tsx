@@ -1,3 +1,4 @@
+import { MatchAudiencePanel } from './MatchAudiencePanel';
 import React, { useState } from 'react';
 import {
   Lock,
@@ -735,15 +736,6 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
             )}
           </div>
 
-          <div className="hidden lg:flex items-center gap-2">
-            {presenceStats && (
-              <span className="text-[11px] px-2.5 py-1 rounded-lg font-mono font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>{presenceStats.totalOnSite.toLocaleString()} en vivo</span>
-              </span>
-            )}
-          </div>
-
           <div className="flex items-center gap-3">
             <div className="hidden xl:flex items-center gap-2 text-xs text-slate-400 font-mono">
               <span>Marcador: <strong className="text-white">{homeScore} - {awayScore}</strong></span>
@@ -756,6 +748,7 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
         {/* Main Body */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+          {['ADMIN', 'TRANSMISOR', 'EDITOR'].includes(currentUser?.role || '') && <MatchAudiencePanel event={currentEvent} />}
           {effectiveTab === 'stream' ? (
             /* PESTAÑA 1: TRANSMISIÓN & SEÑALES M3U8 */
             <div className="space-y-6">

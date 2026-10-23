@@ -1,3 +1,4 @@
+import type { MatchAudienceStats } from '../types/matchAudience';
 import React from 'react';
 import { Radio, X, Tv } from 'lucide-react';
 import { RealPresenceStats } from '../hooks/useRealPresence';
@@ -5,19 +6,23 @@ import { RealPresenceStats } from '../hooks/useRealPresence';
 interface LiveAudienceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  presenceStats: RealPresenceStats;
+  presenceStats?: RealPresenceStats;
+  matchStats?: MatchAudienceStats | null;
+  matchTitle?: string;
+  matchMinute?: number;
 }
 
 export const LiveAudienceModal: React.FC<LiveAudienceModalProps> = ({
   isOpen,
   onClose,
-  presenceStats,
+  matchStats,
+  matchTitle,
+  matchMinute,
 }) => {
   if (!isOpen) return null;
 
-  // For public viewers, display the live match audience count (e.g., 14,820)
-  const displayCount = presenceStats.totalOnSite > 10 ? presenceStats.totalOnSite : 14820;
-  const displayPeak = presenceStats.peakOnSite > 10 ? presenceStats.peakOnSite : 18450;
+  const displayCount = matchStats?.activeNow;
+  const displayPeak = matchStats?.peakViewers;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
@@ -54,17 +59,17 @@ export const LiveAudienceModal: React.FC<LiveAudienceModalProps> = ({
           </div>
 
           <div className="font-mono text-4xl sm:text-5xl font-black text-white tracking-tight my-1">
-            {displayCount.toLocaleString()}
+            {displayCount?.toLocaleString() ?? '—'}
           </div>
 
           <p className="text-xs text-slate-300 font-medium">
-            Hinchas conectados a la página
+            Navegadores con este partido visible
           </p>
 
           <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-center gap-4 text-[11px] text-slate-400">
-            <span>Pico del partido: <strong className="text-white font-mono">{displayPeak.toLocaleString()}</strong></span>
+            <span>Pico del partido: <strong className="text-white font-mono">{displayPeak?.toLocaleString() ?? '—'}</strong></span>
             <span>·</span>
-            <span className="text-emerald-400 font-medium">1080p HD</span>
+            <span className="text-emerald-400 font-medium">Medición por navegador</span>
           </div>
         </div>
 
@@ -72,10 +77,10 @@ export const LiveAudienceModal: React.FC<LiveAudienceModalProps> = ({
         <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 mb-5 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <Tv className="w-4 h-4 text-emerald-400" />
-            <span className="text-slate-300">Bolívar vs The Strongest</span>
+            <span className="text-slate-300">{matchTitle || 'Selecciona un partido'}</span>
           </div>
           <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold font-mono">
-            Minuto 78&apos;
+            Minuto {matchMinute ?? 0}&apos;
           </span>
         </div>
 

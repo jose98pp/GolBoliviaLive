@@ -58,9 +58,9 @@ export function useRealPresence(isStreamPlaying: boolean = true): RealPresenceSt
   const [audienceMode, setAudienceMode] = useState<AudienceMode>(() => {
     try {
       const saved = localStorage.getItem('golbolivia_audience_mode');
-      if (saved === 'strict_local' || saved === 'broadcast_calibrated') return saved;
+      if (saved === 'strict_local') return saved;
     } catch {}
-    return 'broadcast_calibrated';
+    return 'strict_local';
   });
 
   // Track verified local browser tabs in strict mode

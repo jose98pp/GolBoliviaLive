@@ -1,3 +1,4 @@
+import { useMatchAudience } from './hooks/useMatchAudience';
 import { ClubCrest } from './components/ClubCrest';
 /**
  * @license
@@ -154,7 +155,7 @@ export default function App() {
 
   // Real-time live connected presence exclusively on this web & app
   const presence = useRealPresence(true);
-  const liveViewerCount = presence.totalOnSite;
+
 
   // Secret /login & /admin route detection with session persistence across page reload
   const [isLoginRoute, setIsLoginRoute] = useState<boolean>(() => {
@@ -323,6 +324,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   };
 
   const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || null;
+  const matchAudience = useMatchAudience(currentLiveEvent?.id, !isLoginRoute && activeTab === 'stream');
+  const liveViewerCount = matchAudience.stats?.activeNow || 0;
   const currentHomeClub = (currentLiveEvent?.homeTeam && (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam]))
     || (streamSettings?.homeClubId && (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId]))
     || Object.values(clubs)[0]
@@ -1229,9 +1232,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         isStreamingLive={isStreamingLive}
         isVipMember={isVipMember}
         toggleVipMembership={() => setIsVipMember(!isVipMember)}
-        viewerCount={presence.totalOnSite}
-        activeCount={presence.activeInteracting}
-        totalCount={presence.totalOnSite}
+        viewerCount={liveViewerCount}
+        activeCount={liveViewerCount}
+        totalCount={liveViewerCount}
         homeScore={currentHomeScore}
         awayScore={currentAwayScore}
         matchMinute={currentMatchMinute}
@@ -1388,6 +1391,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                   <UniversalStreamPlayer
                     key={`${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${currentLiveEvent.iptvSource?.channelId || 'no-iptv'}-${signalReloadKey}`}
                     event={currentLiveEvent}
+                    onHlsPlaying={matchAudience.onHlsPlaying}
                     isTheaterMode={isTheaterMode}
                     setIsTheaterMode={setIsTheaterMode}
                     homeScore={currentHomeScore}
@@ -1596,6 +1600,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         isOpen={isAudienceModalOpen}
         onClose={() => setIsAudienceModalOpen(false)}
         presenceStats={presence}
+        matchStats={matchAudience.stats}
+        matchTitle={currentLiveEvent?.title}
+        matchMinute={currentMatchMinute}
       />
 
       {/* DONATION & SUPPORT QR MODAL */}

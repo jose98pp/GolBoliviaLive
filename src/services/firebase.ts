@@ -46,6 +46,7 @@ export const FIRESTORE_DATABASE_ID = firebaseConfig.firestoreDatabaseId;
 
 // Writes wait for the backend's Firebase Auth sign-in so Firestore rules see an authenticated writer.
 let writeGate: Promise<unknown> = Promise.resolve();
+export async function waitForFirestoreWriter(): Promise<void> { await writeGate; }
 export function setFirestoreWriteGate(gate: Promise<unknown>): void {
   writeGate = gate.catch(() => undefined);
 }

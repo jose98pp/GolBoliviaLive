@@ -37,6 +37,7 @@ import { iptvRouter } from './src/services/iptvBackend';
 import proxyHandler from './api/proxy.js';
 
 import { normalizeVercelUrl } from './src/utils/serverUrl';
+import { getMatchAudienceStats, recordMatchAudience } from './src/services/matchAudienceStore';
 import { normalizeCrestUrl } from './src/utils/clubCrests';
 import { buildMatchStreamPatch } from './src/utils/matchStreamConfig';
 import { normalizeExternalPlayerUrl, normalizeMatchIptvSource } from './src/utils/streamUtils';
@@ -1646,6 +1647,33 @@ app.post(
 );
 
 // 10. Viewers API & Heartbeat
+const audienceId = /^[a-zA-Z0-9_-]{8,100}$/;
+const audienceMatchId = /^[a-zA-Z0-9_-]{1,160}$/;
+app.post('/api/match-audience/:id/heartbeat', async (req: Request, res: Response) => {
+  if (req.get('Sec-Fetch-Site') === 'cross-site') return res.status(403).json({ error: 'Registro de audiencia desde otro sitio no permitido.' });
+  const { visitorId, sessionId, playbackId, action } = req.body || {};
+  const matchId = String(req.params.id);
+  if (!audienceMatchId.test(matchId) || typeof visitorId !== 'string' || !audienceId.test(visitorId) || typeof sessionId !== 'string' || !audienceId.test(sessionId)
+    || (playbackId !== undefined && (typeof playbackId !== 'string' || !audienceId.test(playbackId))) || !['heartbeat', 'leave'].includes(action)) return res.status(400).json({ error: 'Registro de audiencia no válido.' });
+  try {
+    await ensureStateLoaded();
+    if (!state.liveEvents.some(event => event.id === matchId)) return res.status(404).json({ error: 'Partido no encontrado.' });
+    const visitorKey = crypto.createHash('sha256').update(`${matchId}:${visitorId}`).digest('hex');
+    const playbackKey = playbackId ? crypto.createHash('sha256').update(`${visitorKey}:${playbackId}`).digest('hex') : undefined;
+    const stats = await recordMatchAudience(matchId, visitorKey, sessionId, playbackKey, action === 'leave');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ stats });
+  } catch { return res.status(503).json({ error: 'No se pudo registrar la audiencia.' }); }
+});
+app.get('/api/match-audience/:id', authenticate, requireRoles(['ADMIN', 'TRANSMISOR', 'EDITOR']), async (req: Request, res: Response) => {
+  const matchId = String(req.params.id);
+  if (!audienceMatchId.test(matchId)) return res.status(400).json({ error: 'Partido no válido.' });
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ stats: await getMatchAudienceStats(matchId) });
+  } catch { return res.status(503).json({ error: 'No se pudo consultar la audiencia. Revisa las reglas de matchAnalytics y la autenticación Firebase del backend.' }); }
+});
+
 app.get(['/api/viewers', '/viewers'], (_req: Request, res: Response) => {
   res.json({
     activeRealSessions: viewerSessions.size,

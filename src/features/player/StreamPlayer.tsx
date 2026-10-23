@@ -24,6 +24,7 @@ export interface StreamPlayerProps {
   matchMinute?: number;
   streamSettings?: StreamSettings;
   viewerCount?: number;
+  onHlsPlaying?: () => void;
 }
 
 export const StreamPlayer: React.FC<StreamPlayerProps> = ({
@@ -35,7 +36,8 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
   awayScore = 0,
   matchMinute = 0,
   streamSettings,
-  viewerCount = 14820,
+  viewerCount = 0,
+  onHlsPlaying,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -111,7 +113,8 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
 
   const handleHlsSuccess = useCallback(() => {
     resetRecovery();
-  }, [resetRecovery]);
+    onHlsPlaying?.();
+  }, [resetRecovery, onHlsPlaying]);
 
   const handleHlsFailover = useCallback((source: 'backup' | 'primary') => {
     if (source === 'backup') {

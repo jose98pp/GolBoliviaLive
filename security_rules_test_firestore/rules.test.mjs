@@ -87,3 +87,12 @@ test('Revocar admins/{UID} revoca las escrituras del backend', async () => {
   });
   await assertFails(setDoc(doc(backend(), 'iptvCustomChannels/revoked'), { name: 'Rechazado' }));
 });
+
+test('Audiencia: los visitantes no pueden leer registros ni alterar contadores directamente', async () => {
+  for (const path of ['matchAnalytics/match-a', 'matchAnalytics/match-a/visitors/browser-a', 'matchAnalytics/match-a/plays/play-a']) {
+    await assertFails(setDoc(doc(anonymous(), path), { uniqueVisitors: 999 }));
+    await assertFails(getDoc(doc(anonymous(), path)));
+    await assertSucceeds(setDoc(doc(backend(), path), { uniqueVisitors: 1 }));
+    await assertSucceeds(getDoc(doc(backend(), path)));
+  }
+});

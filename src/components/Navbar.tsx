@@ -41,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isStreamingLive,
   isVipMember,
   toggleVipMembership,
-  viewerCount = 14820,
+  viewerCount = 0,
   activeCount,
   totalCount,
   homeScore = 2,
@@ -82,8 +82,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
-  const displayActive = activeCount || Math.round(viewerCount * 0.74);
-  const displayTotal = totalCount || viewerCount;
+  const displayActive = activeCount ?? viewerCount;
+  const displayTotal = totalCount ?? viewerCount;
 
   // Formatted compact viewer count (e.g., 10.9k)
   const formattedActiveCompact =

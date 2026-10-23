@@ -12,6 +12,7 @@ export interface UniversalStreamPlayerProps {
   awayScore?: number;
   matchMinute?: number;
   viewerCount?: number;
+  onHlsPlaying?: () => void;
   streamSettings?: StreamSettings;
 }
 
@@ -22,7 +23,8 @@ export const UniversalStreamPlayer: React.FC<UniversalStreamPlayerProps> = ({
   homeScore = 0,
   awayScore = 0,
   matchMinute = 0,
-  viewerCount = 14820,
+  viewerCount = 0,
+  onHlsPlaying,
   streamSettings,
 }) => {
   const effectiveSettings: StreamSettings = streamSettings || {
@@ -59,6 +61,7 @@ export const UniversalStreamPlayer: React.FC<UniversalStreamPlayerProps> = ({
         matchMinute={matchMinute}
         streamSettings={effectiveSettings}
         viewerCount={viewerCount}
+        onHlsPlaying={onHlsPlaying}
       />
     </div>
   );
