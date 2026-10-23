@@ -33,6 +33,10 @@ class MainActivity : Activity() {
     private val preferences by lazy { getSharedPreferences("viewer", MODE_PRIVATE) }
     private val backgroundColor = Color.rgb(8, 13, 22)
     private val green = Color.rgb(54, 220, 150)
+    private val crestImages = CrestImages()
+    private var embedded: EmbeddedPlayer? = null
+    private var videoHost: FrameLayout? = null
+    private var watchHeader: TextView? = null
     private lateinit var root: LinearLayout
     private lateinit var body: LinearLayout
     private var matches = emptyList<WatchItem>()
@@ -53,7 +57,7 @@ class MainActivity : Activity() {
     private var pendingLoads = 0
     private val refresh = object : Runnable {
         override fun run() {
-            if (selected == null) loadCatalog()
+            loadCatalog()
             handler.postDelayed(this, 30000)
         }
     }
@@ -79,7 +83,8 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart()
         active = true
-        if (selected != null) startPlayer() else loadCatalog()
+        if (selected != null) startPlayer()
+        loadCatalog()
         handler.postDelayed(refresh, 30000)
     }
 
@@ -92,6 +97,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        crestImages.close()
         executor.shutdownNow()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
@@ -184,14 +190,10 @@ class MainActivity : Activity() {
             when (section) {
                 "Inicio" -> {
                     val live = filtered(matches).filter { it.live }
-                    live.firstOrNull()?.let { featured ->
-                        body.addView(label("TU CANCHA. TU PANTALLA.", 13f, true))
-                        body.addView(label(featured.title, 34f).apply { setTypeface(typeface, Typeface.BOLD) })
-                        body.addView(label(featured.subtitle, 16f, true))
-                        body.addView(button("▶ Ver en vivo", "hero:${featured.id}") { open(featured) })
-                    }
+                    (live.firstOrNull() ?: filtered(matches).firstOrNull())?.let { featured -> hero(featured) }
                     row("En vivo", live)
-                    row("Más partidos", filtered(matches).filter { !it.live })
+                    row("Próximos partidos", filtered(matches).filter { it.category == "today" })
+                    row("Resultados", filtered(matches).filter { it.category == "finished" })
                     row("Tus favoritos", filtered(matches + channels).filter { it.id in favorites() })
                     row("Explorar canales", filtered(channels).take(24))
                 }
@@ -206,20 +208,72 @@ class MainActivity : Activity() {
         target?.post { target.requestFocus() }
     }
 
+    private fun shield(team: TeamInfo, size: Int): View = FrameLayout(this).apply {
+        layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        addView(label(team.name.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase(), size / 3f).apply {
+            gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
+        }, FrameLayout.LayoutParams(-1, -1))
+        val image = ImageView(this@MainActivity).apply { scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = null }
+        addView(image, FrameLayout.LayoutParams(-1, -1).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+        if (team.crest.isNotBlank()) crestImages.load(team.crest, image)
+    }
+
+    private fun matchup(item: WatchItem, large: Boolean): LinearLayout = LinearLayout(this).apply {
+        gravity = Gravity.CENTER
+        val size = if (large) 90 else 58
+        item.home?.let { addView(shield(it, size)) }
+        addView(label(item.score, if (large) 35f else 25f).apply {
+            gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        item.away?.let { addView(shield(it, size)) }
+    }
+
+    private fun matchSurface(view: View, item: WatchItem, featured: Boolean = false) {
+        view.background = MatchArt(item.home?.color ?: "#193D57", item.away?.color ?: "#122438", featured)
+        view.setOnFocusChangeListener { target, focused ->
+            target.foreground = if (focused) GradientDrawable().apply {
+                setColor(Color.TRANSPARENT); cornerRadius = dp(16).toFloat(); setStroke(dp(3), green)
+            } else null
+            target.elevation = dp(if (focused) 8 else 0).toFloat()
+        }
+    }
+
+    private fun hero(item: WatchItem) {
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(20), dp(24), dp(20))
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(4), 0, dp(24)) }
+            background = MatchArt(item.home?.color ?: "#163A51", item.away?.color ?: "#14283E", true)
+        }
+        hero.addView(label("PARTIDO DESTACADO  ·  ${item.status}", 14f).apply { setTypeface(typeface, Typeface.BOLD) })
+        hero.addView(label(item.title, 32f).apply { setTypeface(typeface, Typeface.BOLD); maxLines = 2 })
+        hero.addView(matchup(item, true), LinearLayout.LayoutParams(-1, dp(96)))
+        hero.addView(label("${item.home?.name.orEmpty()}   /   ${item.away?.name.orEmpty()}", 18f).apply { gravity = Gravity.CENTER })
+        hero.addView(label(item.subtitle, 15f))
+        hero.addView(button(if (item.sources.isEmpty()) "Ver detalle" else "▶ Ver partido", "hero:${item.id}") { open(item) })
+        body.addView(hero)
+    }
+
     private fun card(item: WatchItem, width: Int): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(18), dp(14), dp(18), dp(14))
-        layoutParams = LinearLayout.LayoutParams(dp(width), dp(if (largeText()) 200 else 170)).apply {
+        setPadding(dp(16), dp(12), dp(16), dp(12))
+        layoutParams = LinearLayout.LayoutParams(dp(width), dp(if (largeText()) 244 else 220)).apply {
             setMargins(dp(5), dp(8), dp(10), dp(8))
         }
         focusable(this, item.id)
-        contentDescription = "${item.title}. ${item.subtitle}. ${if (item.live) "En vivo" else ""}. Pulsa OK para abrir. Mantén OK para favoritos."
-        addView(label(if (item.live) "● EN VIVO" else if (item.channel) "TV · CANAL" else "PARTIDO", 12f).apply { setTextColor(green) })
-        addView(label(item.title, 20f).apply {
+        matchSurface(this, item)
+        contentDescription = "${item.title}. ${item.home?.name.orEmpty()} ${item.away?.name.orEmpty()}. ${item.status}. ${item.score}. ${item.subtitle}. Pulsa OK para abrir. Mantén OK para favoritos."
+        addView(label(item.status, 12f).apply {
+            setTypeface(typeface, Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(Color.argb(190, 4, 10, 18)); cornerRadius = dp(6).toFloat() }
+        })
+        if (!item.channel) addView(matchup(item, false), LinearLayout.LayoutParams(-1, dp(70)))
+        else if (item.logo.isNotBlank()) addView(shield(TeamInfo(item.id, item.title, item.logo), 62))
+        addView(label(if (item.channel) item.title else "${item.home?.name.orEmpty()} vs ${item.away?.name.orEmpty()}", 18f).apply {
             maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
             setTypeface(typeface, Typeface.BOLD)
         }, LinearLayout.LayoutParams(-1, 0, 1f))
-        addView(label((if (item.id in favorites()) "★ " else "") + item.subtitle, 13f, true).apply {
+        addView(label((if (item.id in favorites()) "★ " else "") + item.subtitle, 12f).apply {
             maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
         })
         setOnClickListener { open(item) }
@@ -280,7 +334,7 @@ class MainActivity : Activity() {
                 render("quality")
             }.show()
         })
-        body.addView(label("El volumen se controla con los botones del dispositivo o del televisor.\nYouTube, Kick y páginas externas se abren en la web pública.\nGolBoliviaLive · Versión ${BuildConfig.VERSION_NAME}", 14f, true))
+        body.addView(label("El volumen se controla con los botones del dispositivo o del televisor.\nYouTube, Kick y señales web se reproducen dentro de la app.\nGolBoliviaLive · Versión ${BuildConfig.VERSION_NAME}", 14f, true))
     }
 
     private fun loadCatalog() {
@@ -294,7 +348,7 @@ class MainActivity : Activity() {
             executor.execute {
                 val result = runCatching {
                     val json = Catalog.fetch(path)
-                    if (path.endsWith("sports")) Catalog.channels(json) else Catalog.matches(json)
+                    if (path.endsWith("sports")) Catalog.channels(json) else Catalog.matches(json, TeamCatalog.load(json))
                 }
                 handler.post {
                     if (isDestroyed) return@post
@@ -307,6 +361,13 @@ class MainActivity : Activity() {
                     pendingLoads--
                     if (pendingLoads == 0) {
                         loading = false
+                        selected?.let { current ->
+                            (matches + channels).find { it.id == current.id }?.let { updated ->
+                                selected = current.copy(title = updated.title, subtitle = updated.subtitle, home = updated.home, away = updated.away,
+                                    status = updated.status, score = updated.score, category = updated.category, live = updated.live)
+                                watchHeader?.text = "${updated.title} · ${updated.score} · ${updated.status}"
+                            }
+                        }
                         if (active && selected == null) {
                             if (notice.isBlank()) notice = "Catálogo actualizado · Mantén OK para favoritos"
                             val itemCount = when (section) { "Canales" -> channels.size; "Partidos" -> matches.size; else -> (matches + channels).size }
@@ -321,12 +382,11 @@ class MainActivity : Activity() {
 
     private fun open(item: WatchItem) {
         returnFocus = item.id
-        if (item.streams.isEmpty()) {
+        if (item.sources.isEmpty()) {
             AlertDialog.Builder(this).setTitle(item.title)
-                .setMessage("Esta señal utiliza un reproductor web. Se abrirá en el navegador del dispositivo.")
-                .setPositiveButton("Abrir web") { _, _ -> openWeb(item) }
-                .setNeutralButton(if (item.id in favorites()) "Quitar favorito" else "Guardar favorito") { _, _ -> toggleFavorite(item) }
-                .setNegativeButton("Cancelar", null).show()
+                .setMessage("${item.status} · ${item.score}\n${item.subtitle}\nTodavía no hay una señal disponible para este partido.")
+                .setPositiveButton("Aceptar", null)
+                .setNeutralButton(if (item.id in favorites()) "Quitar favorito" else "Guardar favorito") { _, _ -> toggleFavorite(item) }.show()
             return
         }
         releasePlayer()
@@ -334,32 +394,49 @@ class MainActivity : Activity() {
         sourceIndex = 0
         resumePlayback = preferences.getBoolean("autoplay", true)
         val screen = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(backgroundColor); setPadding(dp(20), dp(12), dp(20), dp(12)) }
-        screen.addView(label(item.title, 22f))
-        playerView = PlayerView(this).apply {
-            useController = true; controllerShowTimeoutMs = 5000; isFocusable = true
-            setShowNextButton(false); setShowPreviousButton(false)
-        }
-        screen.addView(playerView, LinearLayout.LayoutParams(-1, 0, 1f))
+        watchHeader = label("${item.title} · ${item.score} · ${item.status}", 20f)
+        screen.addView(watchHeader)
+        videoHost = FrameLayout(this)
+        screen.addView(videoHost, LinearLayout.LayoutParams(-1, 0, 1f))
         playerStatus = label("Preparando señal…", 14f, true)
         screen.addView(playerStatus)
         screen.addView(HorizontalScrollView(this).apply {
             addView(LinearLayout(this@MainActivity).apply {
-                addView(button("Volver") { closePlayer() })
-                addView(button("Reintentar") { sourceIndex = 0; startPlayer() })
+                addView(button("Volver", "watch:back") { closePlayer() })
+                addView(button("Reintentar") { startPlayer() })
+                if (item.sources.size > 1) addView(button("Siguiente señal") {
+                    sourceIndex = (sourceIndex + 1) % item.sources.size; startPlayer()
+                })
                 addView(button("Favorito ★") { toggleFavorite(item) })
-                addView(button("Ver en la web") { openWeb(item) })
             })
         })
         setContentView(screen)
         startPlayer()
-        playerView?.requestFocus()
     }
 
     private fun startPlayer() {
         val item = selected ?: return
         if (!active) return
+        val source = item.sources.getOrNull(sourceIndex) ?: return
         releasePlayer()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        playerStatus?.text = "Cargando ${source.provider}…"
+        if (source.embedded) {
+            runCatching {
+                EmbeddedPlayer(this, source, resumePlayback) { message ->
+                    if (selected?.id == item.id && active) playerStatus?.text = message
+                }.also { embedded = it; videoHost?.addView(it, FrameLayout.LayoutParams(-1, -1)) }
+            }.onFailure {
+                playerStatus?.text = "No se pudo iniciar Android System WebView. Actualízalo para reproducir ${source.provider} dentro de la app."
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            return
+        }
+        playerView = PlayerView(this).apply {
+            useController = true; controllerShowTimeoutMs = 5000; isFocusable = true
+            setShowNextButton(false); setShowPreviousButton(false)
+        }
+        videoHost?.addView(playerView, FrameLayout.LayoutParams(-1, -1))
         val instance = ExoPlayer.Builder(this).build()
         instance.setAudioAttributes(AudioAttributes.DEFAULT, true)
         player = instance
@@ -370,8 +447,8 @@ class MainActivity : Activity() {
             override fun onPlaybackStateChanged(state: Int) {
                 if (player !== instance) return
                 playerStatus?.text = when (state) {
-                    Player.STATE_BUFFERING -> "Cargando señal ${sourceIndex + 1}…"
-                    Player.STATE_READY -> "Señal ${sourceIndex + 1} · OK: controles · Atrás: catálogo"
+                    Player.STATE_BUFFERING -> "Cargando ${source.provider}…"
+                    Player.STATE_READY -> "${source.provider} · OK: controles · Atrás: catálogo"
                     Player.STATE_ENDED -> "La transmisión ha terminado."
                     else -> "Preparando señal…"
                 }
@@ -384,66 +461,74 @@ class MainActivity : Activity() {
                     if (cause is HttpDataSource.InvalidResponseCodeException) status = cause.responseCode
                     cause = cause.cause
                 }
-                if (sourceIndex + 1 < item.streams.size) {
+                if (sourceIndex + 1 < item.sources.size) {
                     resumePlayback = instance.playWhenReady
                     sourceIndex++
-                    handler.post { if (active && selected == item && player === instance) startPlayer() }
+                    handler.post { if (active && selected?.id == item.id && player === instance) startPlayer() }
                 } else {
                     playerStatus?.text = when (status) {
                         403 -> "HTTP 403: el proveedor denegó el acceso a esta señal."
                         404 -> "HTTP 404: la señal ya no está disponible."
-                        null -> "No se pudo reproducir (${error.errorCodeName}). Reintenta o abre la web."
-                        else -> "Error HTTP $status del proveedor. Puedes reintentar o abrir la web."
+                        null -> "No se pudo reproducir (${error.errorCodeName}). Pulsa Reintentar."
+                        else -> "Error HTTP $status del proveedor. Puedes reintentar."
                     }
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
             }
         })
-        val stream = item.streams[sourceIndex]
-        val media = MediaItem.Builder().setUri(stream)
-        if (!Uri.parse(stream).path.orEmpty().endsWith(".mp4", ignoreCase = true)) media.setMimeType(MimeTypes.APPLICATION_M3U8)
+        val media = MediaItem.Builder().setUri(source.url)
+        if (!Uri.parse(source.url).path.orEmpty().endsWith(".mp4", ignoreCase = true)) media.setMimeType(MimeTypes.APPLICATION_M3U8)
         instance.setMediaItem(media.build())
         instance.prepare()
         instance.playWhenReady = resumePlayback
+        playerView?.requestFocus()
     }
 
     private fun releasePlayer() {
         playerView?.player = null
-        player?.release()
-        player = null
+        player?.release(); player = null; playerView = null
+        embedded?.close(); embedded = null
+        videoHost?.removeAllViews()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     private fun closePlayer() {
-        releasePlayer(); selected = null; playerView = null; playerStatus = null
+        releasePlayer(); selected = null; videoHost = null; watchHeader = null; playerStatus = null
         render(returnFocus)
     }
 
-    private fun openWeb(item: WatchItem) {
-        player?.pause()
-        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.PUBLIC_BASE_URL + item.webPath))) }
-        catch (_: ActivityNotFoundException) {
-            AlertDialog.Builder(this).setTitle("Navegador no disponible")
-                .setMessage("Abre esta dirección en otro dispositivo:\n${BuildConfig.PUBLIC_BASE_URL}${item.webPath}")
-                .setPositiveButton("Aceptar", null).show()
-        }
-    }
-
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (selected != null && event.keyCode in listOf(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE)) {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) player?.let {
-                it.playWhenReady = when (event.keyCode) {
-                    KeyEvent.KEYCODE_MEDIA_PLAY -> true
-                    KeyEvent.KEYCODE_MEDIA_PAUSE -> false
-                    else -> !it.playWhenReady
-                }
+        if (selected != null && event.keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val back = window.decorView.findViewWithTag<View>("watch:back")
+                if (back?.hasFocus() == true) { embedded?.focusVideo(); playerView?.requestFocus() } else back?.requestFocus()
             }
             return true
+        }
+        if (selected != null && event.keyCode in listOf(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE)) {
+            if (player != null) {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) player?.let {
+                    it.playWhenReady = when (event.keyCode) {
+                        KeyEvent.KEYCODE_MEDIA_PLAY -> true
+                        KeyEvent.KEYCODE_MEDIA_PAUSE -> false
+                        else -> !it.playWhenReady
+                    }
+                }
+                return true
+            }
+            if (embedded != null && selected?.sources?.getOrNull(sourceIndex)?.provider == "YouTube") {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) embedded?.mediaKey(when(event.keyCode) {
+                    KeyEvent.KEYCODE_MEDIA_PLAY -> true
+                    KeyEvent.KEYCODE_MEDIA_PAUSE -> false
+                    else -> null
+                })
+                return true
+            }
         }
         if (selected?.channel == true && preferences.getBoolean("channelKeys", true) &&
             event.keyCode in listOf(KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_CHANNEL_DOWN)) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-                val playable = channels.filter { it.streams.isNotEmpty() }
+                val playable = channels.filter { it.sources.isNotEmpty() }
                 val index = playable.indexOfFirst { it.id == selected?.id }
                 if (index >= 0 && playable.isNotEmpty()) {
                     val step = if (event.keyCode == KeyEvent.KEYCODE_CHANNEL_UP) 1 else -1
@@ -457,6 +542,7 @@ class MainActivity : Activity() {
 
     @Deprecated("Compatible with Android TV remotes on API 23+")
     override fun onBackPressed() {
+        if (embedded?.exitFullscreen() == true) return
         if (selected != null) { closePlayer(); return }
         if (section != "Inicio" || query.isNotBlank()) { section = "Inicio"; query = ""; page = 0; render(); return }
         AlertDialog.Builder(this).setTitle("¿Salir de GolBoliviaLive?")
