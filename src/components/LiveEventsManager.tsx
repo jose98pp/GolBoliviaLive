@@ -1,3 +1,5 @@
+import { SPORTS_STATE_LABELS } from '../utils/sportsEvents';
+import { SportsEventEditor } from './SportsEventEditor';
 import React, { useState, useEffect, useRef } from 'react';
 import { LiveEvent, StreamProvider } from '../types/football';
 import { BOLIVIAN_CLUBS, groupClubsByLeague, PRESET_INTERNATIONAL_MATCHES } from '../data/bolivianFootballData';
@@ -244,6 +246,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
       homeTeam: sanitizeClubId(formData.homeTeam),
       awayTeam: sanitizeClubId(formData.awayTeam),
       espnLink: formData.espnLink || null,
+      sports: formData.sports || null,
       isLive: formData.isLive,
       primaryProvider: formData.primaryProvider,
       cloudflare: {
@@ -517,6 +520,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
               <input
                 type="checkbox"
                 checked={formData.isLive}
+                disabled={Boolean(formData.sports)}
                 onChange={(e) => {
                   isDirtyRef.current = true;
                   setFormData({ ...formData, isLive: e.target.checked });
@@ -524,12 +528,17 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
                 className="w-4 h-4 text-emerald-500 rounded bg-slate-800 border-slate-700 focus:ring-0 cursor-pointer"
               />
               <span className="text-xs font-semibold text-white">
-                {formData.isLive ? '🔴 Transmisión EN VIVO' : '⚪ Transmisión Finalizada'}
+                {formData.sports ? SPORTS_STATE_LABELS[formData.sports.state] : formData.isLive ? '🔴 Transmisión EN VIVO' : '⚪ Transmisión Finalizada'}
               </span>
             </label>
           </div>
         </div>
 
+        <SportsEventEditor key={formData.id || 'new'} value={formData.sports || null} onChange={(data, title) => {
+          isDirtyRef.current = true;
+          setFormData({ ...formData, sports: data, ...(data ? { espnLink: null, tournamentName: data.competition, homeTeam: 'participant_a', awayTeam: 'participant_b', isClockRunning: false, isLive: data.state === 'live' || data.state === 'break', homeScore: 0, awayScore: 0, matchMinute: 0 } : { homeTeam: 'bolivar', awayTeam: 'strongest' }), ...(title ? { title } : {}) });
+        }} />
+        {!formData.sports && <>
         {/* Selector Rápido de Partidos Clásicos (España, Inglaterra, Bolivia) */}
         <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
           <div className="flex items-center justify-between">
@@ -727,6 +736,8 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
             </div>
           </div>
         </div>
+
+        </>}
 
         {/* Row 3: Primary Provider Selection (Paso 9) */}
         <div>

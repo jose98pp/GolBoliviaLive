@@ -1,3 +1,6 @@
+import { SportsEventEditor } from './SportsEventEditor';
+import { sanitizeSportsEvent } from '../utils/sportsEvents';
+import type { SportsEvent } from '../types/sports';
 import { FOOTBALL_LEAGUES, clubNameKey } from '../data/footballLeagues';
 import { ClubCrest } from './ClubCrest';
 import React, { useState, useEffect, useRef } from 'react';
@@ -110,6 +113,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const [localAwayScore, setLocalAwayScore] = useState<number>(activeEvent?.awayScore ?? awayScore);
   const [localMinute, setLocalMinute] = useState<number>(activeEvent?.matchMinute ?? matchMinute);
 
+  const [sportsEvent, setSportsEvent] = useState<SportsEvent | null>(activeEvent?.sports || null);
   const [broadcastMode, setBroadcastMode] = useState<string>(activeEvent?.broadcastMode || 'obs_custom');
   const [iptvChannels, setIptvChannels] = useState<IptvChannel[]>([]);
   const [iptvLoading, setIptvLoading] = useState(false);
@@ -204,6 +208,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       const srcPeriod = (activeEvent?.period || streamSettings?.period || '1T') as MatchPeriod;
       const srcIsLive = activeEvent?.isLive ?? streamSettings?.isLive ?? true;
 
+      setSportsEvent(activeEvent?.sports || null);
       setEspnLink(activeEvent?.espnLink);
       setTitle(srcTitle);
       setTournamentName(srcTourn);
@@ -295,6 +300,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
   const handleGenerateTitle = () => {
     setIsDirty(true);
+    if (sportsEvent) { setTitle(sportsEvent.participants.map(p => p.name).filter(Boolean).join(' vs ')); return; }
     const home = clubs[homeClubId]?.name || 'Local';
     const away = clubs[awayClubId]?.name || 'Visitante';
     const generated = `${home} vs ${away} — Fútbol Boliviano en Vivo`;
@@ -329,7 +335,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
     const newEv: LiveEvent = {
       id: newId,
-      title: `Nuevo Partido ${nextNum}`,
+      title: `Nuevo Evento ${nextNum}`,
       homeTeam: 'bolivar',
       awayTeam: 'strongest',
       isLive: true,
@@ -430,8 +436,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     const cleanTitle = title.trim();
     const cleanTournament = tournamentName.trim();
     const cleanStadium = stadiumName.trim();
-    const effectiveHomeId = (homeClubId || defaultHomeClubId).trim().toLowerCase();
-    const effectiveAwayId = (awayClubId || defaultAwayClubId).trim().toLowerCase();
+    let sports: SportsEvent | null;
+    try { sports = sanitizeSportsEvent(sportsEvent); } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Revisa los participantes.'); return false; }
+    const effectiveHomeId = sports ? 'participant_a' : (homeClubId || defaultHomeClubId).trim().toLowerCase();
+    const effectiveAwayId = sports ? 'participant_b' : (awayClubId || defaultAwayClubId).trim().toLowerCase();
     const alt = Number(altitudeMeters);
 
     // Validations
@@ -462,16 +470,17 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
 
     const fullEventPayload: LiveEvent = {
       id: activeId,
+      sports,
       espnLink: espnLink || null,
       title: cleanTitle,
       homeTeam: effectiveHomeId,
       awayTeam: effectiveAwayId,
-      tournamentName: cleanTournament || 'Liga Tigo División Profesional',
+      tournamentName: sports?.competition || cleanTournament || 'Liga Tigo División Profesional',
       stadiumName: cleanStadium || 'Estadio Departamental',
-      isLive: isLiveMatch,
-      homeScore: localHomeScore,
-      awayScore: localAwayScore,
-      matchMinute: localMinute,
+      isLive: sports ? ['live', 'break'].includes(sports.state) : isLiveMatch,
+      homeScore: sports ? 0 : localHomeScore,
+      awayScore: sports ? 0 : localAwayScore,
+      matchMinute: sports ? 0 : localMinute,
       period,
       primaryProvider: preservedPrimaryProvider,
       fallbackOrder: matchFallbackOrder,
@@ -484,7 +493,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       activeStreamSource: matchActiveSource,
       autoFailoverEnabled: currentEvt?.autoFailoverEnabled ?? streamSettings.autoFailoverEnabled ?? true,
       broadcastMode,
-      isClockRunning,
+      isClockRunning: sports ? false : isClockRunning,
       clockUpdatedAt: Date.now(),
       version: typeof currentEvt?.version === 'number' ? currentEvt.version : undefined,
       force: false,
@@ -540,7 +549,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
               className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-950/40 transition cursor-pointer active:scale-95 disabled:opacity-50"
             >
               <Plus className="w-3.5 h-3.5 text-black" />
-              <span>Crear Nuevo Partido</span>
+              <span>Crear Nuevo Evento</span>
             </button>
 
             {liveEvents.length > 0 && (
@@ -561,12 +570,12 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         {/* Match Pills Selector */}
         <div className="flex flex-wrap items-center gap-2">
           {liveEvents.length === 0 ? (
-            <span className="text-xs text-slate-400 italic py-1">No hay partidos creados en el sistema. Haz clic en "Crear Nuevo Partido" para agregar uno.</span>
+            <span className="text-xs text-slate-400 italic py-1">No hay partidos creados en el sistema. Haz clic en "Crear Nuevo Evento" para agregar uno.</span>
           ) : (
             liveEvents.map((evt) => {
               const isSelected = evt.id === (activeEventId || activeEvent?.id);
-              const h = clubs[evt.homeTeam]?.name || evt.homeTeam || 'Local';
-              const a = clubs[evt.awayTeam]?.name || evt.awayTeam || 'Visitante';
+              const h = evt.sports?.participants[0].name || clubs[evt.homeTeam]?.name || evt.homeTeam || 'Local';
+              const a = evt.sports?.participants[1].name || clubs[evt.awayTeam]?.name || evt.awayTeam || 'Visitante';
               return (
                 <div
                   key={evt.id}
@@ -584,7 +593,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                     <span className="flex items-center gap-1">
                       <span>{h}</span>
                       <span className="text-[11px] font-mono font-black opacity-80">
-                        {evt.homeScore ?? 0} - {evt.awayScore ?? 0}
+                        {evt.sports ? evt.sports.sport === 'mma' ? 'VS' : `${evt.sports.participants[0].score ?? '—'} - ${evt.sports.participants[1].score ?? '—'}` : `${evt.homeScore ?? 0} - ${evt.awayScore ?? 0}`}
                       </span>
                       <span>{a}</span>
                     </span>
@@ -615,6 +624,19 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         </div>
       </div>
 
+      <SportsEventEditor key={activeEventId || 'new-event'} value={sportsEvent} onChange={(data, importedTitle) => {
+        setSportsEvent(data); setIsDirty(true);
+        if (data) { setEspnLink(null); setTournamentName(data.competition); if (importedTitle) setTitle(importedTitle); }
+        else if (sportsEvent) {
+          setEspnLink(null);
+          setHomeClubId(clubs.bolivar ? 'bolivar' : Object.keys(clubs)[0] || '');
+          setAwayClubId(clubs.strongest ? 'strongest' : Object.keys(clubs)[1] || '');
+          setLocalHomeScore(0); setLocalAwayScore(0); setLocalMinute(0); setPeriod('1T');
+          setBroadcastMode('pre_match'); setIsLiveMatch(false);
+        }
+      }} />
+
+      {!sportsEvent && <>
       {/* 2. TABLERO DE MARCADOR OFICIAL EN DIRECTO (LIVE SCOREBOARD CARD) */}
       <div className="bg-[#070b14] border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 shadow-2xl relative overflow-hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3.5 border-b border-slate-800/80 mb-4">
@@ -922,6 +944,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         </div>
       </div>
 
+      </>}
+
       {/* 3. CONFIGURACIÓN DETALLADA DEL PARTIDO (DETAILS FORM) */}
       <div className="bg-[#0b1222] border-2 border-slate-800 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -983,7 +1007,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                 className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Generar con equipos</span>
+                <span>{sportsEvent ? 'Generar con participantes' : 'Generar con equipos'}</span>
               </button>
             </div>
             <input
@@ -999,6 +1023,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             />
           </div>
 
+          {!sportsEvent && <>
           {/* Row 2: Clubs Selection */}
           <div className="p-3.5 bg-slate-900/70 border border-slate-800 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
@@ -1073,6 +1098,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             </div>
           </div>
 
+          </>}
           {/* Row 3: Tournament */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-white block">
@@ -1344,6 +1370,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           )}
         </form>
 
+        {!sportsEvent && <>
         {/* SECCIÓN API GRATUITA DEL PARTIDO (ESPN FÚTBOL) */}
         <div className="bg-[#0a0f1d] border border-sky-500/30 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
@@ -1496,6 +1523,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             </div>
           </div>
         )}
+        </>}
       </div>
     </div>
   );

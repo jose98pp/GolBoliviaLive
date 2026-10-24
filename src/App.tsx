@@ -1,3 +1,5 @@
+import { SportsScoreboard } from './components/SportsScoreboard';
+import { sportsParticipantClub } from './utils/sportsEvents';
 import { useEspnLiveEvents } from './hooks/useEspnLiveEvents';
 import { useMatchAudience } from './hooks/useMatchAudience';
 import { ClubCrest } from './components/ClubCrest';
@@ -328,11 +330,11 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
   const currentLiveEvent = liveEvents.find((e) => e.id === activeEventId) || liveEvents[0] || null;
   const matchAudience = useMatchAudience(currentLiveEvent?.id, !isLoginRoute && activeTab === 'stream');
   const liveViewerCount = matchAudience.stats?.activeNow || 0;
-  const currentHomeClub = (currentLiveEvent?.homeTeam && (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam]))
+  const currentHomeClub = sportsParticipantClub(currentLiveEvent, 0) || (currentLiveEvent?.homeTeam && (clubs[currentLiveEvent.homeTeam] || BOLIVIAN_CLUBS[currentLiveEvent.homeTeam]))
     || (streamSettings?.homeClubId && (clubs[streamSettings.homeClubId] || BOLIVIAN_CLUBS[streamSettings.homeClubId]))
     || Object.values(clubs)[0]
     || defaultFallbackClub;
-  const currentAwayClub = (currentLiveEvent?.awayTeam && (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam]))
+  const currentAwayClub = sportsParticipantClub(currentLiveEvent, 1) || (currentLiveEvent?.awayTeam && (clubs[currentLiveEvent.awayTeam] || BOLIVIAN_CLUBS[currentLiveEvent.awayTeam]))
     || (streamSettings?.awayClubId && (clubs[streamSettings.awayClubId] || BOLIVIAN_CLUBS[streamSettings.awayClubId]))
     || Object.values(clubs)[1]
     || defaultAwayClub;
@@ -1002,7 +1004,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
       );
     }
     return (
-      <div className="w-full h-full min-h-screen bg-[#060911] flex items-center justify-center p-0 m-0 overflow-hidden select-none">
+      <div className="w-full h-full min-h-screen bg-[#060911] flex flex-col items-center justify-center p-0 m-0 overflow-hidden select-none">
+        {currentLiveEvent.sports && <SportsScoreboard data={currentLiveEvent.sports} />}
         <UniversalStreamPlayer
           event={currentLiveEvent}
           isTheaterMode={false}
@@ -1244,6 +1247,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         awayClub={currentAwayClub}
         period={currentPeriod}
         matchStatusLabel={currentStatusInfo.label}
+        sportsEvent={currentLiveEvent?.sports}
         isClockRunning={Boolean(currentLiveEvent?.isClockRunning)}
         onToggleMatchClock={() => handleToggleMatchClock()}
         matchSeconds={matchSeconds}
@@ -1272,7 +1276,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                 {/* Fútbol Libre Style: Barra del Partido Activo y Opciones de Señal (Cloudflare, YouTube, Kick) */}
                 {currentLiveEvent && (
                   <div className="mb-3 p-3 rounded-2xl liquid-glass-panel border border-white/10 flex flex-col gap-3 shadow-lg">
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    {currentLiveEvent.sports ? <SportsScoreboard data={currentLiveEvent.sports} /> : <div className="flex items-center gap-2.5 min-w-0">
                       <span className="relative flex h-2.5 w-2.5 shrink-0">
                         {currentStatusInfo.isPulsing && (
                           <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentStatusInfo.dotClass}`} />
@@ -1307,6 +1311,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                         </div>
                       </div>
                     </div>
+
+                    }
 
                     {/* Canales / Opciones de Señal estilo Fútbol Libre + Recarga y Toggle de Chat */}
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5">
@@ -1488,7 +1494,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
             )}
 
             {/* Minuto a minuto / Estadísticas / Alineaciones */}
-            <div className="pt-2 sm:pt-4">
+            {!currentLiveEvent?.sports && <div className="pt-2 sm:pt-4">
               <MatchStats
                 espnLink={currentLiveEvent?.espnLink}
                 showHeader={false}
@@ -1509,6 +1515,8 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                 events={events}
               />
             </div>
+
+            }
 
             {/* Vitrina de Partidos: Filtro por categoría y reproducción directa */}
             {liveEvents.length > 0 && (
@@ -1607,6 +1615,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
         presenceStats={presence}
         matchStats={matchAudience.stats}
         matchTitle={currentLiveEvent?.title}
+        eventStatus={currentLiveEvent?.sports ? currentStatusInfo.label : undefined}
         matchMinute={currentMatchMinute}
       />
 

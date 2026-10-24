@@ -1,3 +1,4 @@
+import { SPORTS_STATE_LABELS } from './sportsEvents';
 import { LiveEvent } from '../types/football';
 
 export type MatchFilterCategory = 'all' | 'live' | 'today' | 'finished';
@@ -32,6 +33,15 @@ export function getMatchStatusInfo(event?: LiveEvent | null): MatchStatusInfo {
       isPulsing: false,
       icon: 'clock',
     };
+  }
+
+  if (event.sports) {
+    const data = event.sports;
+    const live = data.state === 'live' || data.state === 'break';
+    const finished = data.state === 'final' || data.state === 'cancelled';
+    const label = [SPORTS_STATE_LABELS[data.state], data.phase, data.clock].filter(Boolean).join(' · ');
+    return { category: finished ? 'finished' : live ? 'live' : 'today', label, shortLabel: label,
+      badgeClass: live ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-slate-900 text-slate-300 border-slate-700', dotClass: live ? 'bg-emerald-400' : 'bg-slate-500', isPulsing: data.state === 'live', icon: data.state === 'break' ? 'pause' : finished ? 'finish' : live ? 'live' : 'clock' };
   }
 
   const rawPeriod = (event.period || '1T').trim();

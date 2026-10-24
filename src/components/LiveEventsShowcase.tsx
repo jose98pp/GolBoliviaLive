@@ -1,3 +1,4 @@
+import { SportsScoreboard } from './SportsScoreboard';
 import { ClubCrest } from './ClubCrest';
 import React, { useState } from 'react';
 import { LiveEvent } from '../types/football';
@@ -25,9 +26,10 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
   onSelectEvent,
 }) => {
   const { clubs } = useClubs();
+  const [sportFilter, setSportFilter] = useState('all');
   const [filter, setFilter] = useState<MatchFilterCategory>('all');
 
-  const validEvents = events.filter((e) => e && (e.id || e.title));
+  const validEvents = events.filter((e) => e && (e.id || e.title) && (sportFilter === 'all' || (e.sports?.sport || 'football') === sportFilter));
   const counts = getMatchCategoryCounts(validEvents);
 
   // En vivo primero, luego el resto
@@ -38,15 +40,16 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
     { id: 'all', label: 'Todos', count: counts.all },
     { id: 'live', label: 'En vivo', count: counts.live },
     { id: 'today', label: 'Hoy', count: counts.today },
+    { id: 'finished', label: 'Finalizados', count: counts.finished },
   ];
 
   return (
     <section className="my-5 w-full">
-      <div className="flex items-center justify-between gap-3 mb-3 px-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3 px-1">
         <h2 className="text-sm sm:text-base font-black tracking-wider text-white uppercase font-display">
-          Partidos
+          Eventos en vivo
         </h2>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1">
           {tabs.map((tab) => {
             const active = filter === tab.id;
             return (
@@ -66,6 +69,8 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
           })}
         </div>
       </div>
+
+      <label className="block mb-3 text-sm text-slate-300">Deporte <select value={sportFilter} onChange={e => setSportFilter(e.target.value)} className="ml-2 max-w-full rounded-lg border border-slate-700 bg-slate-900 text-white p-2"><option value="all">Todos los deportes</option><option value="football">Fútbol</option><option value="basketball">Básquet</option><option value="mma">MMA / UFC</option><option value="other">Otros eventos</option></select></label>
 
       {matches.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -99,7 +104,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
                   )}
                 </div>
 
-                <div className="flex items-center justify-between gap-3">
+                {event.sports ? <SportsScoreboard data={event.sports} /> : <div className="flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0 flex items-center gap-2">
                     <span className="text-xl"><ClubCrest club={home} /></span>
                     <span className="text-sm font-bold text-white truncate">{home?.name || event.homeTeam}</span>
@@ -113,7 +118,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
                     <span className="text-sm font-bold text-white truncate text-right">{away?.name || event.awayTeam}</span>
                     <span className="text-xl"><ClubCrest club={away} /></span>
                   </div>
-                </div>
+                </div>}
 
                 <div
                   className={`mt-3 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider ${
@@ -121,7 +126,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
                   }`}
                 >
                   <Play className="w-3.5 h-3.5 fill-black" />
-                  {selected ? 'En reproducción' : 'Ver partido'}
+                  {selected ? 'En reproducción' : 'Ver evento'}
                 </div>
               </button>
             );
@@ -129,7 +134,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
         </div>
       ) : (
         <div className="p-6 text-center rounded-2xl liquid-glass-panel border border-white/10 text-sm text-slate-300">
-          {validEvents.length === 0 ? 'Aún no hay partidos creados.' : 'No hay partidos en esta categoría.'}
+          {validEvents.length === 0 ? events.length ? 'No hay eventos para este deporte.' : 'Aún no hay eventos creados.' : 'No hay eventos en esta categoría.'}
           {validEvents.length > 0 && (
             <button
               type="button"

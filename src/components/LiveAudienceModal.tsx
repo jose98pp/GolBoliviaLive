@@ -10,6 +10,7 @@ interface LiveAudienceModalProps {
   matchStats?: MatchAudienceStats | null;
   matchTitle?: string;
   matchMinute?: number;
+  eventStatus?: string;
 }
 
 export const LiveAudienceModal: React.FC<LiveAudienceModalProps> = ({
@@ -18,6 +19,7 @@ export const LiveAudienceModal: React.FC<LiveAudienceModalProps> = ({
   matchStats,
   matchTitle,
   matchMinute,
+  eventStatus,
 }) => {
   if (!isOpen) return null;
 
@@ -80,7 +82,7 @@ export const LiveAudienceModal: React.FC<LiveAudienceModalProps> = ({
             <span className="text-slate-300">{matchTitle || 'Selecciona un partido'}</span>
           </div>
           <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold font-mono">
-            Minuto {matchMinute ?? 0}&apos;
+            {eventStatus || `Minuto ${matchMinute ?? 0}'`}
           </span>
         </div>
 

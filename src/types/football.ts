@@ -1,3 +1,4 @@
+import type { SportsEvent } from './sports';
 export type StreamResolution = '1080p60' | '720p60' | '480p' | '360p' | 'auto';
 
 export interface ResolutionConfig {
@@ -143,6 +144,7 @@ export interface PrivateIngestCredentials {
 export type StreamProvider = 'cloudflare' | 'youtube' | 'kick' | 'iptv' | 'external';
 
 export interface StreamSettings {
+  eventSport?: SportsEvent['sport'];
   title: string;
   tournamentName: string;
   homeClubId: string;
@@ -215,6 +217,7 @@ export interface MatchIptvSource {
 }
 
 export interface LiveEvent {
+  sports?: SportsEvent | null;
   espnLink?: { eventId: string; league: string; enabled: boolean } | null;
   statusText?: string;
   displayClock?: string;
