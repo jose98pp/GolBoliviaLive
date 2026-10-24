@@ -69,7 +69,7 @@ try {
 } finally { globalThis.fetch = originalFetch; }
 console.log('Escudos automáticos: coincidencia, consulta compartida y prioridad de imágenes guardadas comprobadas.');
 
-const catalogRoute = source.slice(source.indexOf("app.get(['/api/football-api/teams'"), source.indexOf("app.get(['/api/football-api/matches'"));
+const catalogRoute = source.slice(source.indexOf("app.get(['/api/football-api/teams'"), source.indexOf("app.get(['/api/sports-api/events'"));
 const catalogHandler = catalogRoute.slice(catalogRoute.indexOf('async (req:'), catalogRoute.lastIndexOf('\n});') + 2).trim();
 const catalogCode = await transform(`export const handler = ${catalogHandler};`, { loader: 'ts', format: 'cjs' });
 const catalogModule = { exports: {} as any };

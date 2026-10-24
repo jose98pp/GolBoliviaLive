@@ -10,6 +10,8 @@ data class PlaybackSnapshot(val item: WatchItem, val sourceIndex: Int, val playW
             .put("live", item.live).put("channel", item.channel).put("webPath", item.webPath)
             .put("home", team(item.home)).put("away", team(item.away)).put("status", item.status)
             .put("category", item.category).put("score", item.score).put("logo", item.logo)
+            .put("sport", item.sport).put("competition", item.competition).put("competitionLogo", item.competitionLogo)
+            .put("result", item.result).put("winner", item.winner)
             .put("sources", JSONArray(item.sources.map { JSONObject().put("provider", it.provider).put("url", it.url).put("embedded", it.embedded) }))
             .put("sourceIndex", sourceIndex).put("playWhenReady", playWhenReady).toString()
     }
@@ -29,7 +31,8 @@ data class PlaybackSnapshot(val item: WatchItem, val sourceIndex: Int, val playW
             require(sources.isNotEmpty())
             val item = WatchItem(row.getString("id"), row.getString("title"), row.optString("subtitle"), row.optBoolean("live"),
                 sources, row.optString("webPath"), row.optBoolean("channel"), team("home"), team("away"),
-                row.optString("status"), row.optString("category"), row.optString("score"), row.optString("logo"))
+                row.optString("status"), row.optString("category"), row.optString("score"), row.optString("logo"),
+                row.optString("sport", "football"), row.optString("competition"), SportsEvents.image(row.optString("competitionLogo")), row.optString("result"), row.optString("winner"))
             PlaybackSnapshot(item, row.optInt("sourceIndex").coerceIn(sources.indices), row.optBoolean("playWhenReady"))
         }.getOrNull()
     }

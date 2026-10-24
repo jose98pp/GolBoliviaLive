@@ -115,7 +115,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
 
   // Canvas pitch simulation when no custom video URL is provided
   useEffect(() => {
-    if (hasCustomStream) return;
+    if (hasCustomStream || streamSettings?.eventSport) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -241,7 +241,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [hasCustomStream, isPlaying, homeClub.primaryColor, awayClub.primaryColor]);
+  }, [hasCustomStream, isPlaying, homeClub.primaryColor, awayClub.primaryColor, streamSettings?.eventSport]);
 
   return (
     <div
@@ -289,7 +289,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       )}
 
       {/* Fallback Interactive Pitch Simulation */}
-      {sourceInfo.type === 'simulation' && (
+      {sourceInfo.type === 'simulation' && !streamSettings?.eventSport && (
         <canvas
           ref={canvasRef}
           width={800}
@@ -297,6 +297,8 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
           className="w-full h-full object-contain"
         />
       )}
+
+      {sourceInfo.type === 'simulation' && streamSettings?.eventSport && <p className="text-slate-300 text-sm text-center p-6">Señal aún no configurada para este evento.</p>}
 
       {/* TV Corner Badge / Watermark — Sin marcador en pantalla */}
       {!isCleanScreen && (

@@ -62,7 +62,7 @@ type AdminSection = 'live' | 'match' | 'settings';
 
 const ADMIN_SECTIONS: { id: AdminSection; label: string; tabs: AdminTab[] }[] = [
   { id: 'live', label: 'En vivo', tabs: ['stream', 'events_chat', 'iptv_channels'] },
-  { id: 'match', label: 'Partido', tabs: ['match', 'teams'] },
+  { id: 'match', label: 'Eventos', tabs: ['match', 'teams'] },
   { id: 'settings', label: 'Ajustes', tabs: ['qr_donations', 'vip_analytics'] },
 ];
 
@@ -738,9 +738,10 @@ export const SecretLoginPage: React.FC<SecretLoginPageProps> = ({
 
           <div className="flex items-center gap-3">
             <div className="hidden xl:flex items-center gap-2 text-xs text-slate-400 font-mono">
+              {currentEvent?.sports ? <span>{currentEvent.sports.competition} · {currentEvent.sports.phase} {currentEvent.sports.clock}</span> : <>
               <span>Marcador: <strong className="text-white">{homeScore} - {awayScore}</strong></span>
               <span>·</span>
-              <span>Minuto: <strong className="text-emerald-400">{matchMinute}&apos;</strong></span>
+              <span>Minuto: <strong className="text-emerald-400">{matchMinute}&apos;</strong></span></>}
             </div>
 
           </div>

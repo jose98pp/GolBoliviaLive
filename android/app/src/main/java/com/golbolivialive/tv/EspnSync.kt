@@ -11,6 +11,7 @@ object EspnSync {
         val rows = result.getJSONArray("events")
         for (i in 0 until rows.length()) {
             val row = rows.getJSONObject(i)
+            if (!row.isNull("sports")) continue
             val link = row.optJSONObject("espnLink") ?: continue
             val id = link.optString("eventId"); val league = link.optString("league")
             if (!link.optBoolean("enabled") || !id.matches(Regex("[0-9]{1,20}")) || !league.matches(Regex("[a-z0-9._-]{2,60}"))) continue
@@ -46,7 +47,16 @@ object EspnSync {
             val raw = if (value is JSONObject) value.optString("displayValue").ifBlank { value.optString("value") } else value?.toString().orEmpty()
             return raw.toDoubleOrNull()?.takeIf { it.isFinite() }?.toInt()?.coerceAtLeast(0) ?: JSONObject.NULL
         }
-        return JSONObject().put("homeScore", score(home)).put("awayScore", score(away))
+        fun logo(team: JSONObject): String {
+            val identity = team.optJSONObject("team") ?: return ""
+            return SportsEvents.image(identity.optString("logo").ifBlank { identity.optJSONArray("logos")?.optJSONObject(0)?.optString("href").orEmpty() })
+        }
+        val league = header.optJSONObject("league")
+        return JSONObject().put("espnHomeLogo", logo(home)).put("espnAwayLogo", logo(away))
+            .put("espnCompetitionName", league?.optString("name").orEmpty())
+            .put("espnCompetitionLogo", SportsEvents.image(league?.optJSONArray("logos")?.optJSONObject(0)?.optString("href")
+                ?: league?.optString("logo").orEmpty()))
+            .put("homeScore", score(home)).put("awayScore", score(away))
             .put("isLive", live).put("isClockRunning", live && !halftime).put("displayClock", clock).put("matchMinute", minute)
             .put("period", when { finished -> "Finalizado"; halftime -> "Descanso"; status.optInt("period") > 2 -> "Tiempo Extra"; status.optInt("period") == 2 -> "2T"; else -> "1T" })
             .put("broadcastMode", when { finished -> "post_match"; halftime -> "halftime"; live -> "obs_custom"; else -> "pre_match" })
@@ -59,6 +69,7 @@ object EspnSync {
         val activeKeys = mutableSetOf<String>()
         for (i in 0 until rows.length()) {
             val row = rows.getJSONObject(i)
+            if (!row.isNull("sports")) continue
             val link = row.optJSONObject("espnLink") ?: continue
             if (!link.optBoolean("enabled")) continue
             val id = link.optString("eventId"); val league = link.optString("league")

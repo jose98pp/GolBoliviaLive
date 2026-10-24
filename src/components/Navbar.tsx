@@ -1,3 +1,5 @@
+import type { SportsEvent } from '../types/sports';
+import { SportsScoreboard } from './SportsScoreboard';
 import { ClubCrest } from './ClubCrest';
 import React, { useState } from 'react';
 import { Radio, Bell, Tv, ShieldCheck, Menu, X, Users, Eye, Sparkles, ChevronRight, Activity, Zap, RefreshCw, Heart } from 'lucide-react';
@@ -26,6 +28,7 @@ interface NavbarProps {
   awayClub?: Club;
   period?: string;
   matchStatusLabel?: string;
+  sportsEvent?: SportsEvent | null;
   isClockRunning?: boolean;
   onToggleMatchClock?: () => void;
   matchSeconds?: number;
@@ -52,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   awayClub,
   period = '2T',
   matchStatusLabel,
+  sportsEvent,
   isClockRunning = false,
   onToggleMatchClock,
   matchSeconds = 0,
@@ -215,7 +219,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-xs font-bold text-white px-1">
+            {sportsEvent ? <SportsScoreboard data={sportsEvent} /> : <div className="flex items-center justify-between text-xs font-bold text-white px-1">
               <span className="flex items-center gap-1 truncate max-w-[45%]">
                 <span><ClubCrest club={homeClub} /></span>
                 <span className="truncate">{homeClub?.shortName || homeClub?.name || 'Local'}</span>
@@ -227,7 +231,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="truncate">{awayClub?.shortName || awayClub?.name || 'Visitante'}</span>
                 <span><ClubCrest club={awayClub} /></span>
               </span>
-            </div>
+            </div>}
           </div>
 
           {/* 1.5 Botón Apóyame en Móvil */}

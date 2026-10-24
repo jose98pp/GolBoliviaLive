@@ -13,7 +13,8 @@ data class WatchItem(
     val sources: List<WatchSource>, val webPath: String, val channel: Boolean = false,
     val home: TeamInfo? = null, val away: TeamInfo? = null,
     val status: String = "TV · CANAL", val category: String = "channel", val score: String = "VS",
-    val logo: String = "",
+    val logo: String = "", val sport: String = "football", val competition: String = "",
+    val competitionLogo: String = "", val result: String = "", val winner: String = "",
 ) {
     val streams: List<String> get() = sources.filter { !it.embedded }.map { it.url }
 }
@@ -43,6 +44,7 @@ object Catalog {
     }
 
     fun status(row: JSONObject): MatchStatus {
+        SportsEvents.data(row)?.let { return SportsEvents.status(it) }
         if (row.optBoolean("espnSyncPending")) return MatchStatus("CONSULTANDO ESPN", "today")
         val period = row.optString("period", "1T").trim()
         val mode = row.optString("broadcastMode")
@@ -59,8 +61,10 @@ object Catalog {
 
     fun matches(json: JSONObject, teams: Map<String, TeamInfo> = emptyMap()): List<WatchItem> {
         val rows = json.getJSONArray("events")
-        return (0 until rows.length()).map { index ->
+        return (0 until rows.length()).mapNotNull { index ->
             val row = rows.getJSONObject(index)
+            val sports = SportsEvents.data(row)
+            if (!row.isNull("sports") && sports == null) return@mapNotNull null
             val primary = row.optString("primaryProvider", "cloudflare")
             val failover = row.optBoolean("autoFailoverEnabled", true)
             val providers = if (failover) listOf(primary) + row.optJSONArray("fallbackOrder").let { a ->
@@ -91,18 +95,34 @@ object Catalog {
                 if (failover) add("Respaldo", row.optString("backupVideoUrl"))
             }
             val id = row.getString("id")
-            fun team(field: String): TeamInfo {
+            fun team(field: String, side: Int): TeamInfo {
+                if (sports != null) {
+                    val participant = sports.getJSONArray("participants").getJSONObject(side)
+                    return TeamInfo("$id:$side", participant.getString("name"), SportsEvents.image(participant.optString("imageUrl")))
+                }
                 val raw = row.optString(field)
-                return teams[raw] ?: TeamInfo(raw, raw.replace('_', ' ').ifBlank { "Equipo por confirmar" })
+                val team = teams[raw] ?: TeamInfo(raw, raw.replace('_', ' ').ifBlank { "Equipo por confirmar" })
+                return if (team.crest.isBlank()) team.copy(crest = SportsEvents.image(row.optString(if (side == 0) "espnHomeLogo" else "espnAwayLogo"))) else team
             }
-            val home = team("homeTeam"); val away = team("awayTeam")
+            val home = team("homeTeam", 0); val away = team("awayTeam", 1)
             val state = status(row)
-            val score = if (state.category != "today" && !row.isNull("homeScore") && !row.isNull("awayScore"))
+            val sport = sports?.optString("sport") ?: "football"
+            val score = if (sports != null) {
+                if (sport == "mma" || sports.optString("state") in listOf("pre", "cancelled", "postponed")) "VS"
+                else (0..1).joinToString(" – ") { SportsEvents.score(sports.getJSONArray("participants").getJSONObject(it))?.toString() ?: "—" }
+            } else if (state.category != "today" && !row.isNull("homeScore") && !row.isNull("awayScore"))
                 "${row.optInt("homeScore")} – ${row.optInt("awayScore")}" else "VS"
+            val competition = sports?.optString("competition") ?: row.optString("tournamentName").ifBlank { row.optString("espnCompetitionName") }
+            val winner = if (sports?.optString("state") == "final") (0..1).map { sports.getJSONArray("participants").getJSONObject(it) }
+                .filter { it.optBoolean("winner") }.joinToString(" / ") { it.optString("name") } else ""
             WatchItem("match:$id", row.optString("title").ifBlank { "${home.name} vs ${away.name}" },
-                listOf(row.optString("tournamentName"), row.optString("stadiumName")).filter { it.isNotBlank() }.joinToString(" · "),
+                listOf(competition, row.optString("stadiumName")).filter { it.isNotBlank() }.joinToString(" · "),
                 state.category == "live", sources, "/live/${encode(id)}", home = home, away = away,
-                status = state.label + if (row.optBoolean("espnSyncFailed")) " · ESPN sin actualizar" else "", category = state.category, score = score)
+                status = state.label + if (row.optBoolean(if (sports != null) "sportsSyncFailed" else "espnSyncFailed")) " · ESPN sin actualizar" else "",
+                category = state.category, score = score, sport = sport, competition = competition,
+                competitionLogo = SportsEvents.image(sports?.optString("competitionLogo") ?: row.optString("espnCompetitionLogo")),
+                result = sports?.optString("result").orEmpty(), winner = winner)
+
         }
     }
 

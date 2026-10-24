@@ -80,4 +80,14 @@ class EspnSyncTest {
         val teams = TeamCatalog.load(events(), false) { error("First paint must not fetch metadata") }
         assertEquals(setOf("h", "a"), teams.keys)
     }
+    @Test fun footballSummaryProvidesLeagueAndTeamArtworkWhenCatalogLacksIt() {
+        val raw = summary()
+        raw.getJSONObject("header").put("league", JSONObject("""{"name":"Liga","logos":[{"href":"https://images.test/league.png"}]}"""))
+        val competitors = raw.getJSONObject("header").getJSONArray("competitions").getJSONObject(0).getJSONArray("competitors")
+        competitors.getJSONObject(1).put("team", JSONObject("""{"logo":"https://images.test/home.png"}"""))
+        val item = Catalog.matches(EspnSync.refresh(events(id = "991")) { raw }).single()
+        assertEquals("https://images.test/league.png", item.competitionLogo)
+        assertEquals("https://images.test/home.png", item.home!!.crest)
+        assertEquals("Liga", item.competition)
+    }
 }

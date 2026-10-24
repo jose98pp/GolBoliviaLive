@@ -1,3 +1,4 @@
+import { SPORTS_COMPETITIONS, sanitizeSportsEvent } from './src/utils/sportsEvents';
 import { fetchEspn } from './src/services/espnCache';
 import { FOOTBALL_LEAGUES } from './src/data/footballLeagues';
 import 'dotenv/config';
@@ -1123,6 +1124,10 @@ app.post(
       return res.status(400).json({ error: 'El vínculo ESPN no es válido.' });
     }
 
+    let sports;
+    try { sports = raw.sports === undefined ? undefined : sanitizeSportsEvent(raw.sports); }
+    catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : 'Evento deportivo no válido.' }); }
+
     const existingIndex = state.liveEvents.findIndex((e) => e.id === cleanId);
     const existingEvent = existingIndex >= 0 ? state.liveEvents[existingIndex] : null;
     const nextVersion = (existingEvent?.version || raw.version || 0) + 1;
@@ -1141,15 +1146,17 @@ app.post(
       return;
     }
 
+    const eventSports = sports === undefined ? existingEvent?.sports : sports;
     // Sanitize to NEVER store or accept stream keys in public event
     const safeEvent: LiveEvent = {
       id: cleanId,
+      sports: eventSports,
       espnLink: raw.espnLink === null ? null : raw.espnLink && /^[0-9]{1,20}$/.test(String(raw.espnLink.eventId)) && Object.hasOwn(FOOTBALL_LEAGUES, raw.espnLink.league)
         ? { eventId: String(raw.espnLink.eventId), league: raw.espnLink.league, enabled: Boolean(raw.espnLink.enabled) } : existingEvent?.espnLink,
       title: cleanTitle,
       homeTeam: cleanHome,
       awayTeam: cleanAway,
-      isLive: Boolean(raw.isLive ?? true),
+      isLive: eventSports ? ['live', 'break'].includes(eventSports.state) : Boolean(raw.isLive ?? true),
       primaryProvider: ['cloudflare', 'youtube', 'kick', 'iptv', 'external'].includes(raw.primaryProvider)
         ? raw.primaryProvider
         : 'cloudflare',
@@ -1792,6 +1799,32 @@ app.get(['/api/football-api/teams', '/football-api/teams'], async (req: Request,
   } catch { return res.status(502).json({ error: 'No se pudo cargar el catálogo de escudos.', teams: [] }); }
 });
 
+app.get(['/api/sports-api/events', '/api/sports-api/event'], async (req: Request, res: Response) => {
+  const key = String(req.query.competition || '');
+  if (!Object.hasOwn(SPORTS_COMPETITIONS, key)) return res.status(400).json({ error: 'Competición no compatible.' });
+  const definition = SPORTS_COMPETITIONS[key];
+  const detail = req.path.endsWith('/event');
+  const id = String(req.query.eventId || '');
+  const date = String(req.query.date || '');
+  if ((detail && !/^\d{1,20}$/.test(id)) || (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) || (req.query.boutId && !/^\d{1,20}$/.test(String(req.query.boutId)))) return res.status(400).json({ error: 'Identificador o fecha no válidos.' });
+  const base = `https://site.api.espn.com/apis/site/v2/sports/${definition.path}`;
+  let dates = date ? `?dates=${date.replace(/-/g, '')}` : '';
+  if (detail && definition.sport === 'mma' && date) {
+    const anchor = Date.parse(date);
+    if (!Number.isFinite(anchor)) return res.status(400).json({ error: 'Fecha no válida.' });
+    const day = (offset: number) => new Date(anchor + offset * 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+    dates = `?dates=${day(-1)}-${day(1)}`;
+  }
+  const url = detail && definition.sport !== 'mma' ? `${base}/summary?event=${id}` : `${base}/scoreboard${dates}`;
+  try {
+    let response = await fetchEspn(url);
+    if (detail && definition.sport === 'mma' && !response.ok) response = await fetchEspn(`${base}/summary?event=${id}`);
+    if (!response.ok) return res.status(502).set('Cache-Control', 'no-store').json({ error: 'ESPN no está disponible.' });
+    res.setHeader('Cache-Control', 'public, max-age=15');
+    return res.json(await response.json());
+  } catch { return res.status(503).set('Cache-Control', 'no-store').json({ error: 'No se pudo consultar ESPN.' }); }
+});
+
 app.get(['/api/football-api/matches', '/football-api/matches'], async (req: Request, res: Response) => {
   const league = String(req.query.league || 'bol.1').trim();
   if (!Object.hasOwn(FOOTBALL_LEAGUES, league)) return res.status(400).json({ error: 'Liga no compatible.' });
@@ -1837,7 +1870,7 @@ if (!process.env.VERCEL) {
   setInterval(() => {
     let anyUpdated = false;
     for (const evt of state.liveEvents) {
-      if (!evt.espnLink?.enabled && evt.isLive && evt.isClockRunning && evt.period !== 'Descanso' && evt.period !== 'Finalizado' && evt.period !== 'Revisión VAR') {
+      if (!evt.sports && !evt.espnLink?.enabled && evt.isLive && evt.isClockRunning && evt.period !== 'Descanso' && evt.period !== 'Finalizado' && evt.period !== 'Revisión VAR') {
         const currentMin = typeof evt.matchMinute === 'number' ? evt.matchMinute : 0;
         if (currentMin < 130) {
           evt.matchMinute = currentMin + 1;

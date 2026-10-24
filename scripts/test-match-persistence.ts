@@ -1,3 +1,4 @@
+import { sanitizeSportsEvent } from '../src/utils/sportsEvents';
 import { FOOTBALL_LEAGUES } from '../src/data/footballLeagues';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -137,8 +138,8 @@ const eventRoute = server.slice(server.indexOf("app.post(\n  ['/api/live-events'
 const eventHandler = eventRoute.slice(eventRoute.indexOf('async (req:'), eventRoute.lastIndexOf('\n);')).trim();
 const eventCode = await transform(`export const handle = ${eventHandler};`, { loader: 'ts', format: 'cjs' });
 const eventModule = { exports: {} as any };
-new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', 'FOOTBALL_LEAGUES', eventCode.code)(eventModule, eventModule.exports,
-  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {}, FOOTBALL_LEAGUES);
+new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', 'FOOTBALL_LEAGUES', 'sanitizeSportsEvent', eventCode.code)(eventModule, eventModule.exports,
+  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {}, FOOTBALL_LEAGUES, sanitizeSportsEvent);
 const postEvent = async (body: LiveEvent) => {
   let status = 200; let response: any;
   const res: any = { status: (code: number) => { status = code; return res; }, json: (data: any) => { response = data; return res; } };
@@ -161,3 +162,15 @@ const obsPatch = buildMatchStreamPatch({ customVideoUrl: 'https://example.test/n
 assert.equal(obsPatch.cloudflare?.playbackUrl, 'https://example.test/new-obs.m3u8');
 assert.equal(obsPatch.cloudflare?.liveInputId, 'input-fixture');
 assert.equal(getStreamUrlForEvent({ ...base, ...obsPatch, primaryProvider: 'cloudflare' }), 'https://example.test/new-obs.m3u8', 'La URL OBS guardada también es la que consume el reproductor');
+
+const basketball = { ...hls, version: load().version, sports: { sport: 'basketball', competition: 'NBA', participants: [{ name: 'Local NBA', score: 142 }, { name: 'Visitante NBA', score: 135 }], state: 'final' } } as LiveEvent;
+assert.equal((await postEvent(basketball)).status, 200);
+assert.equal(load().sports.participants[0].score, 142, 'El resultado de básquet sobrevive sin el límite de goles de fútbol');
+assert.equal(load().isLive, false, 'Un evento finalizado no conserva el indicador en vivo del fútbol');
+assertConfirmedMatchSignal(hls, load());
+const invalidSports = { ...basketball, version: load().version, sports: { ...basketball.sports!, competitionLogo: 'javascript:alert(1)' } };
+assert.equal((await postEvent(invalidSports)).status, 400);
+assert.equal(load().sports.participants[0].score, 142, 'Un error no modifica el evento guardado');
+await saveLiveEventToFirebase({ ...load(), sports: null });
+assert.equal(load().sports, null, 'Cambiar a fútbol limpia los datos deportivos anteriores');
+console.log('Persistencia multideporte: guardar/recargar puntos, conservar IPTV/iframe, rechazar imágenes inseguras y volver a fútbol comprobados.');

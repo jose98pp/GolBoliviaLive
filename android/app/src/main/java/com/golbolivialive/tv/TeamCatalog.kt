@@ -37,11 +37,13 @@ object TeamCatalog {
     }
 
     fun load(events: JSONObject, allowNetwork: Boolean = true, fetch: (String) -> JSONObject = { Catalog.fetch(it, 8000) }): Map<String, TeamInfo> {
+        val rows = events.getJSONArray("events")
+        if ((0 until rows.length()).none { rows.getJSONObject(it).isNull("sports") }) return emptyMap()
         val now = System.currentTimeMillis()
         if (allowNetwork && now - clubsLoaded > 300000) runCatching { fetch("/api/clubs").getJSONObject("clubs") }
             .onSuccess { clubs = it; clubsLoaded = now }
-        val rows = events.getJSONArray("events")
-        val ids = (0 until rows.length()).flatMap { listOf(rows.getJSONObject(it).optString("homeTeam"), rows.getJSONObject(it).optString("awayTeam")) }.distinct()
+        val ids = (0 until rows.length()).map { rows.getJSONObject(it) }.filter { it.isNull("sports") }
+            .flatMap { listOf(it.optString("homeTeam"), it.optString("awayTeam")) }.filter { it.isNotBlank() }.distinct()
         return ids.associateWith { id ->
             val club = clubs.optJSONObject(id) ?: JSONObject()
             val name = club.optString("shortName").ifBlank { club.optString("name").ifBlank { id.replace('_', ' ') } }

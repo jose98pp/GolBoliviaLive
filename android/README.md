@@ -99,3 +99,13 @@ Las pruebas de regresión de `EmbedDocumentTest` analizan el HTML generado: un i
 - Los partidos se publican al llegar la respuesta principal, sin esperar a los canales ni a los escudos. ESPN y los equipos se actualizan en segundo plano de forma independiente. El estado ESPN anterior permanece entre consultas; la primera consulta muestra CONSULTANDO ESPN. Una falla conserva los datos anteriores.
 - Los partidos se consultan cada 30 segundos; los canales se reutilizan durante cinco minutos. Actualizar catálogo fuerza también los canales. Estas cargas no reinician el reproductor.
 - Probar en tablet y TV: pulsación de botones del iframe con cursor y toque, bloqueo de ventanas nuevas, retorno de controles ocultos y permanencia del video al actualizar datos. Las pruebas unitarias no sustituyen esta verificación física.
+
+## Catálogo multideporte (0.2.2, compilación 6)
+
+Adaptado a `main` 7eabc27: los eventos con `sports` muestran el logo de competición y los dos participantes con sus fotos/escudos HTTPS. MMA utiliza retratos más altos, VS, round/reloj, resultado y ganador explícito; básquet muestra puntos sin el límite de goles, cuartos y prórroga. Los estados deportivos prevalecen sobre los campos de fútbol del registro. Otros eventos conservan su control manual. Una imagen ausente o que falla conserva las iniciales, sin bloquear tarjetas ni video.
+
+La sección Eventos incluye filtros Todos, Fútbol, Básquet, MMA/UFC y Otros. El destacado, las tarjetas y la cabecera del reproductor muestran la competición. Las imágenes y el resultado deportivo se conservan en el estado de recuperación de la Activity. El catálogo de clubes solo se consulta para fútbol. El resumen ESPN de fútbol aporta logos de equipos y liga cuando están disponibles.
+
+La actualización multideporte usa `/api/sports-api/event` cada ciclo de 30 segundos, con competición, ID de evento y, en UFC, ID de pelea y fecha. Rechaza respuestas de otro evento o pelea y no elige una pelea alternativa. Conserva la última respuesta válida ante fallo y señala «ESPN sin actualizar». Las imágenes guardadas por el administrador tienen prioridad si corresponden al mismo participante; se completan con ESPN cuando faltan. No se infieren ganadores ni KO. Las señales de video siguen siendo independientes del deporte.
+
+Probar en hardware: portada y filtros con D-pad, nombres largos y retratos, imágenes ausentes, básquet >100 puntos, combate finalizado y actualización de datos mientras sigue el video. Los tests de contrato usan respuestas aisladas; no certifican cobertura ESPN ni reproducción real.
