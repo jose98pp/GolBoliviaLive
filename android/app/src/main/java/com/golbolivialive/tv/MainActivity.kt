@@ -41,6 +41,13 @@ class MainActivity : Activity() {
     private val backgroundColor = Color.rgb(8, 13, 22)
     private val green = Color.rgb(54, 220, 150)
     private val crestImages = CrestImages()
+    private val catalogState = CatalogState()
+    private val eventEnricher = EventEnricher()
+    private var enriching = false
+    private var teamsLoading = false
+    private var catalogUi: Triple<List<WatchItem>, List<WatchItem>, String>? = null
+    private var catalogScroll: ScrollView? = null
+    private val retryCatalog = Runnable { loadCatalog() }
     private var embedded: EmbeddedPlayer? = null
     private var videoHost: FrameLayout? = null
     private var watchHeader: TextView? = null
@@ -97,6 +104,7 @@ class MainActivity : Activity() {
                 insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
             insets
         }
+        restoreCatalog()
         render()
         PlaybackSnapshot.decode(savedInstanceState?.getString("playback"))?.let { open(it.item, it) }
     }
@@ -121,6 +129,7 @@ class MainActivity : Activity() {
     override fun onStop() {
         active = false
         handler.removeCallbacks(refresh)
+        handler.removeCallbacks(retryCatalog)
         handler.removeCallbacks(hideChrome)
         resumePlayback = player?.playWhenReady ?: resumePlayback
         releasePlayer()
@@ -128,6 +137,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        eventEnricher.close()
         crestImages.close()
         executor.shutdownNow()
         handler.removeCallbacksAndMessages(null)
@@ -226,8 +236,9 @@ class MainActivity : Activity() {
         Toast.makeText(this, if (item.id in updated) "Guardado en favoritos" else "Quitado de favoritos", Toast.LENGTH_SHORT).show()
     }
 
-    private fun render(focusTag: String? = null) {
+    private fun render(focusTag: String? = null, keepScroll: Boolean = false) {
         if (selected != null || isDestroyed) return
+        val savedScroll = if (keepScroll) catalogScroll?.scrollY ?: 0 else 0
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(backgroundColor)
@@ -250,7 +261,8 @@ class MainActivity : Activity() {
             isHorizontalScrollBarEnabled = false; addView(nav)
         })
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(4), dp(12), dp(4), dp(32)) }
-        root.addView(ScrollView(this).apply { isFillViewport = true; addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        catalogScroll = ScrollView(this).apply { isFillViewport = true; addView(body) }
+        root.addView(catalogScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         if (section == "Ajustes") settings() else {
             if (notice.isNotBlank()) body.addView(label(notice, 14f, true))
             if (query.isNotBlank()) {
@@ -286,7 +298,7 @@ class MainActivity : Activity() {
         }
         val target = focusTag?.let { root.findViewWithTag<View>(it) }
             ?: root.findViewWithTag("nav:$section")
-        target?.post { target.requestFocus() }
+        target?.post { target.requestFocus(); if (keepScroll) catalogScroll?.scrollTo(0, savedScroll) }
     }
 
     private fun shield(team: TeamInfo, size: Int, portrait: Boolean = false): View = FrameLayout(this).apply {
@@ -453,7 +465,8 @@ class MainActivity : Activity() {
         if (active && selected == null) {
             val count = when (section) { "Canales" -> channels.size; "Partidos" -> matches.size; else -> (matches + channels).size }
             if (page * 24 >= count) page = 0
-            render(currentFocus?.tag as? String)
+            val next = Triple(matches, channels, notice)
+            if (next != catalogUi) { catalogUi = next; render(currentFocus?.tag as? String, true) }
         }
     }
 
@@ -461,42 +474,39 @@ class MainActivity : Activity() {
         if (!active) return
         if (!matchesLoading) {
             matchesLoading = true
+            handler.removeCallbacks(retryCatalog)
             executor.execute {
-                val result = runCatching {
-                    val raw = Catalog.fetch("/api/live-events", 12000)
-                    SportsEvents.preview(EspnSync.preview(raw)) to TeamCatalog.load(raw, false)
-                }
+                val result = runCatching { Catalog.fetch("/api/live-events", 6000) }
                 handler.post {
                     if (isDestroyed) return@post
-                    result.onSuccess { (events, teams) ->
-                        latestEvents = events; latestTeams = teams; matchNotice = ""
+                    matchesLoading = false
+                    runCatching {
+                        val raw = result.getOrThrow()
+                        check(catalogState.accept(raw)) { "El servidor todavía no confirmó el catálogo" }
+                        latestEvents = SportsEvents.preview(EspnSync.preview(catalogState.events))
+                        catalogState.enrich(latestEvents, catalogState.revision)
+                        mergeTeams(TeamCatalog.load(latestEvents, false))
                         matches = Catalog.matches(latestEvents, latestTeams)
-                        var remaining = 2
-                        fun complete() {
-                            remaining--
-                            matchesLoading = remaining > 0
-                            matches = Catalog.matches(latestEvents, latestTeams)
-                            catalogChanged()
-                        }
-                        executor.execute {
-                            val enriched = runCatching { SportsEvents.refresh(EspnSync.refresh(events)) }
-                            handler.post {
-                                if (!isDestroyed) {
-                                    enriched.onSuccess { latestEvents = it }
-                                    enriched.onFailure { matchNotice = "No se pudo actualizar ESPN" }
-                                    complete()
+                        matchNotice = if (raw.optBoolean("stale")) "Datos guardados · El servidor sigue actualizando" else ""
+                        persistCatalog()
+                        startEnrichment()
+                        if (!teamsLoading) {
+                            teamsLoading = true
+                            val revision = catalogState.revision
+                            val input = JSONObject(latestEvents.toString())
+                            executor.execute {
+                                val teams = runCatching { TeamCatalog.load(input) }
+                                handler.post {
+                                    if (!isDestroyed) {
+                                        teamsLoading = false
+                                        if (revision == catalogState.revision) teams.onSuccess { mergeTeams(it); publishMatches() }
+                                    }
                                 }
                             }
                         }
-                        executor.execute {
-                            val enriched = runCatching { TeamCatalog.load(events) }
-                            handler.post {
-                                if (!isDestroyed) { enriched.onSuccess { latestTeams = it }; complete() }
-                            }
-                        }
                     }.onFailure {
-                        matchesLoading = false
-                        matchNotice = "No se pudieron actualizar los partidos. Se conserva el catálogo anterior"
+                        matchNotice = "Mostrando el último catálogo disponible · Reintentando conexión"
+                        if (active) handler.postDelayed(retryCatalog, 4000)
                     }
                     catalogChanged()
                 }
@@ -516,6 +526,61 @@ class MainActivity : Activity() {
             }
         }
         loading = matchesLoading || channelsLoading
+    }
+
+    private fun mergeTeams(incoming: Map<String, TeamInfo>) {
+        latestTeams = latestTeams + incoming.mapValues { (id, team) ->
+            val old = latestTeams[id]
+            if (old == null) team else team.copy(crest = team.crest.ifBlank { old.crest },
+                name = if (team.name == id.replace('_', ' ')) old.name else team.name)
+        }
+    }
+
+    private fun restoreCatalog() {
+        runCatching {
+            val stored = JSONObject(preferences.getString("catalogCache", null) ?: return)
+            val cached = stored.getJSONObject("catalog")
+            cached.put("catalogConfirmed", true).put("stale", false)
+            catalogState.accept(cached)
+            latestEvents = catalogState.events
+            val teams = stored.optJSONObject("teams") ?: JSONObject()
+            latestTeams = teams.keys().asSequence().associateWith { id ->
+                val team = teams.getJSONObject(id)
+                TeamInfo(id, team.getString("name"), TeamCatalog.crest(team.optString("crest")), team.optString("color", "#15314D"))
+            }
+            matches = Catalog.matches(latestEvents, latestTeams)
+            notice = "Catálogo guardado · Actualizando datos…"
+        }
+    }
+
+    private fun persistCatalog() {
+        val teams = JSONObject()
+        latestTeams.forEach { (id, team) -> teams.put(id, JSONObject().put("name", team.name).put("crest", team.crest).put("color", team.color)) }
+        val saved = JSONObject().put("catalog", latestEvents).put("teams", teams).toString()
+        if (saved.length <= 2 * 1024 * 1024) preferences.edit().putString("catalogCache", saved).apply()
+    }
+
+    private fun publishMatches() {
+        matches = Catalog.matches(latestEvents, latestTeams)
+        persistCatalog()
+        catalogChanged()
+    }
+
+    private fun startEnrichment() {
+        if (enriching || !active || latestEvents.getJSONArray("events").length() == 0) return
+        enriching = true
+        val revision = catalogState.revision
+        val input = JSONObject(latestEvents.toString())
+        executor.execute {
+            val enriched = runCatching { eventEnricher.refresh(input) }
+            handler.post {
+                if (!isDestroyed) {
+                    enriching = false
+                    enriched.onSuccess { if (catalogState.enrich(it, revision)) { latestEvents = catalogState.events; publishMatches() } }
+                    if (revision != catalogState.revision) startEnrichment()
+                }
+            }
+        }
     }
 
     private fun open(item: WatchItem, restored: PlaybackSnapshot? = null) {

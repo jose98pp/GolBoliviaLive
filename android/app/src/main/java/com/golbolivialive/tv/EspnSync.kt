@@ -18,7 +18,8 @@ object EspnSync {
             val key = "$league:$id"
             val update = updates[key]
             update?.keys()?.forEach { row.put(it, update.get(it)) }
-            row.put("espnSyncPending", update == null).put("espnSyncFailed", key in failedKeys)
+            row.put("espnSyncPending", update == null && !row.optBoolean("espnSnapshotValid")).put("espnSyncFailed", key in failedKeys)
+                .put("espnSnapshotValid", update != null || row.optBoolean("espnSnapshotValid"))
         }
         return result
     }
@@ -81,7 +82,7 @@ object EspnSync {
             if (current != null) { updates[key] = current; failedKeys.remove(key) } else failedKeys.add(key)
             val update = current ?: updates[key]
             update?.keys()?.forEach { field -> row.put(field, update.get(field)) }
-            row.put("espnSyncFailed", current == null).put("espnSyncPending", false)
+            row.put("espnSyncFailed", current == null).put("espnSyncPending", false).put("espnSnapshotValid", update != null || row.optBoolean("espnSnapshotValid"))
         }
         updates.keys.retainAll(activeKeys)
         failedKeys.retainAll(activeKeys)

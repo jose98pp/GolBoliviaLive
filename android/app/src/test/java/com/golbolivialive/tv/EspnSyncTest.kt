@@ -90,4 +90,11 @@ class EspnSyncTest {
         assertEquals("https://images.test/home.png", item.home!!.crest)
         assertEquals("Liga", item.competition)
     }
+    @Test fun savedOfficialStatusSurvivesProcessCacheLossAndFailedNetwork() {
+        val saved = EspnSync.refresh(events(id = "8808")) { summary(id = "8808", state = "post") }
+        EspnSync.refresh(events(enabled = false)) { error("Disabled") }
+        assertEquals("finished", Catalog.matches(EspnSync.preview(saved)).single().category)
+        val offline = EspnSync.refresh(saved) { throw java.io.IOException("offline") }
+        assertEquals("finished", Catalog.matches(EspnSync.preview(offline)).single().category)
+    }
 }

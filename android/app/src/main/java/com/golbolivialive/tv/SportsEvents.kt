@@ -54,6 +54,8 @@ object SportsEvents {
         return link
     }
 
+    fun requestPath(sports: JSONObject): String? = source(sports)?.let { path(it) }
+
     private fun key(link: JSONObject) = listOf("competition", "eventId", "boutId", "date").joinToString(":") { link.optString(it) }
 
     fun path(link: JSONObject): String = "/api/sports-api/event?competition=${link.getString("competition")}&eventId=${link.getString("eventId")}" +
