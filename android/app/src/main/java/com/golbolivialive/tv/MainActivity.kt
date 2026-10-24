@@ -358,7 +358,7 @@ class MainActivity : Activity() {
         }
         focusable(this, item.id)
         matchSurface(this, item)
-        contentDescription = "${item.title}. ${item.home?.name.orEmpty()} ${item.away?.name.orEmpty()}. ${item.status}. ${item.score}. ${item.subtitle}. Pulsa OK para abrir. Mantén OK para favoritos."
+        contentDescription = "${item.title}. ${item.home?.name.orEmpty()} ${item.away?.name.orEmpty()}. ${item.status}. ${item.score}. ${resultText(item)}. ${item.subtitle}. Pulsa OK para abrir. Mantén OK para favoritos."
         addView(label(item.status, 12f).apply {
             setTypeface(typeface, Typeface.BOLD)
             background = GradientDrawable().apply { setColor(Color.argb(190, 4, 10, 18)); cornerRadius = dp(6).toFloat() }
@@ -540,7 +540,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(72), dp(8))
             setBackgroundColor(Color.argb(185, 8, 13, 22))
         }
-        watchCompetition = LinearLayout(this).apply { addView(competitionBadge(item)) }
+        watchCompetition = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(competitionBadge(item)) }
         if (!item.channel) information.addView(watchCompetition)
         watchHeader = label(watchTitle(item), 18f)
         information.addView(watchHeader)
