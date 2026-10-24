@@ -1,0 +1,14 @@
+# Ejemplo para MediaMTX v1 actual. Revisa las claves con la versión instalada.
+rtmp: yes
+rtmpAddress: :1935
+hls: yes
+hlsAddress: :8888
+# Mantiene el muxer listo mientras OBS publica; no crea señal si OBS está apagado.
+hlsAlwaysRemux: yes
+hlsVariant: fmp4
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsAllowOrigins: ['https://golbolivialive-beta.vercel.app']
+paths:
+  live/partido:
+    source: publisher

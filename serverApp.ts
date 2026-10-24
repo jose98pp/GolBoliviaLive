@@ -1,3 +1,4 @@
+import { buildEventSourcesPatch } from './src/utils/eventSources';
 import { SPORTS_COMPETITIONS, sanitizeSportsEvent } from './src/utils/sportsEvents';
 import { fetchEspn } from './src/services/espnCache';
 import { FOOTBALL_LEAGUES } from './src/data/footballLeagues';
@@ -1073,7 +1074,11 @@ app.post(
   authenticate,
   requireRoles(['ADMIN', 'TRANSMISOR']),
   async (req: Request, res: Response) => {
-    const raw = req.body;
+    let raw = req.body;
+    if (raw?.sources !== undefined) {
+      try { raw = { ...raw, ...buildEventSourcesPatch(raw.sources, raw.defaultSourceId || '') }; }
+      catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : 'Fuentes no válidas.' }); }
+    }
     if (!raw || !raw.id || typeof raw.id !== 'string' || !raw.id.trim()) {
       res.status(400).json({ error: 'El identificador (id) del partido es obligatorio.' });
       return;
@@ -1150,6 +1155,8 @@ app.post(
     // Sanitize to NEVER store or accept stream keys in public event
     const safeEvent: LiveEvent = {
       id: cleanId,
+      sources: raw.sources === undefined ? existingEvent?.sources : raw.sources,
+      defaultSourceId: raw.defaultSourceId === undefined ? existingEvent?.defaultSourceId : raw.defaultSourceId,
       sports: eventSports,
       espnLink: raw.espnLink === null ? null : raw.espnLink && /^[0-9]{1,20}$/.test(String(raw.espnLink.eventId)) && Object.hasOwn(FOOTBALL_LEAGUES, raw.espnLink.league)
         ? { eventId: String(raw.espnLink.eventId), league: raw.espnLink.league, enabled: Boolean(raw.espnLink.enabled) } : existingEvent?.espnLink,

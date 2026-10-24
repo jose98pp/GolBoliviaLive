@@ -9,6 +9,7 @@ interface UseHlsOptions {
   backupSrc?: string;
   autoFailover?: boolean;
   autoplay?: boolean;
+  waitForBroadcast?: boolean;
   onError?: (err: string) => void;
   onSuccess?: () => void;
   onFailoverTriggered?: (source: 'backup' | 'primary') => void;
@@ -24,6 +25,7 @@ export function useHls({
   backupSrc,
   autoFailover = true,
   autoplay = true,
+  waitForBroadcast = false,
   onError,
   onSuccess,
   onFailoverTriggered,
@@ -65,6 +67,11 @@ export function useHls({
     let mediaRecoveries = 0;
     let lastFailure = '';
     let manifestLoaded = false;
+    let hasPlayed = false;
+    let broadcastRetries = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const startedAt = Date.now();
+    const ownBroadcast = waitForBroadcast || (() => { try { return new URL(rawTarget).hostname.endsWith('.trycloudflare.com'); } catch { return false; } })();
     let activeUrl = effectiveSrc;
     let startupTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -76,6 +83,8 @@ export function useHls({
     const stop = () => {
       stopped = true;
       clearTimeout(startupTimer);
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
       startupTimer = undefined;
       hls?.destroy();
       if (hlsRef.current === hls) hlsRef.current = null;
@@ -118,6 +127,9 @@ export function useHls({
       if (stopped) return;
       clearTimeout(startupTimer);
       startupTimer = undefined;
+      hasPlayed = true;
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
       setIsLoaded(true);
       callbacksRef.current.onSuccess?.();
     };
@@ -137,11 +149,25 @@ export function useHls({
       }
       return true;
     };
+    const retryBroadcast = () => {
+      if (!ownBroadcast || hasPlayed || stopped || Date.now() - startedAt >= STARTUP_TIMEOUT_MS) return false;
+      if (retryTimer !== undefined) return true;
+      if (broadcastRetries >= 4) return false;
+      const delay = [1500, 2500, 4000, 6000][broadcastRetries++];
+      lastFailure = 'MediaMTX todavía no publicó el manifiesto HLS. Revisa OBS, el path y el puerto del túnel si no arranca.';
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        if (stopped || hasPlayed) return;
+        if (hls) { hls.loadSource(activeUrl); hls.startLoad(); }
+        else { video.src = activeUrl; video.load(); }
+      }, delay);
+      return true;
+    };
     const onNativeMetadata = () => {
       if (!stopped) play();
     };
     const onNativeError = () => {
-      if (!stopped && !tryProxy()) fail('No se pudo cargar la señal. Pulsa Reintentar para volver a conectarte.');
+      if (!stopped && !retryBroadcast() && !tryProxy()) fail('No se pudo cargar la señal. Pulsa Reintentar para volver a conectarte.');
     };
 
     releaseVideo();
@@ -151,7 +177,8 @@ export function useHls({
     armDeadline();
 
     if (Hls.isSupported()) {
-      hls = new Hls(HLS_PLAYBACK_CONFIG);
+      const config = ownBroadcast ? { ...HLS_PLAYBACK_CONFIG, manifestLoadPolicy: { default: { ...HLS_PLAYBACK_CONFIG.manifestLoadPolicy!.default, maxTimeToFirstByteMs: 12000, maxLoadTimeMs: 15000 } } } : HLS_PLAYBACK_CONFIG;
+      hls = new Hls(config);
       const instance = hls;
       hlsRef.current = instance;
       setHlsInstance(instance);
@@ -178,8 +205,9 @@ export function useHls({
           fail(`HTTP ${statusCode} al solicitar ${requestKind} ${originLabel}. ${viaProxy ? 'Puede ser un rechazo del proxy o del servidor original; revisa X-GolBolivia-Proxy-Error en Red/Network para distinguirlos.' : 'El servidor rechazó la solicitud; puede requerir autorización.'}`);
           return;
         }
+        if ((statusCode === 404 || statusCode === 503) && (data.details.includes('manifest') || data.details.includes('level')) && retryBroadcast()) return;
         if (statusCode === 404 || statusCode === 410) {
-          fail(`HTTP ${statusCode} al solicitar ${requestKind} ${originLabel}. El enlace puede haber caducado; actualiza la lista M3U.`);
+          fail(`HTTP ${statusCode} al solicitar ${requestKind} ${originLabel}. Comprueba la URL y que la señal esté publicada; si usas MediaMTX revisa el path y el puerto HLS.`);
           return;
         }
         lastFailure = data.type === Hls.ErrorTypes.NETWORK_ERROR
@@ -226,7 +254,7 @@ export function useHls({
       video.removeEventListener('error', onNativeError);
       stop();
     };
-  }, [src, backupSrc, isUsingBackup, autoFailover, attempt, videoRef]);
+  }, [src, backupSrc, isUsingBackup, autoFailover, attempt, videoRef, waitForBroadcast]);
 
   return {
     isLoaded,

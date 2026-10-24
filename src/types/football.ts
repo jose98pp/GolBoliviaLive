@@ -144,6 +144,7 @@ export interface PrivateIngestCredentials {
 export type StreamProvider = 'cloudflare' | 'youtube' | 'kick' | 'iptv' | 'external';
 
 export interface StreamSettings {
+  waitForBroadcast?: boolean;
   eventSport?: SportsEvent['sport'];
   title: string;
   tournamentName: string;
@@ -216,7 +217,18 @@ export interface MatchIptvSource {
   category?: string;
 }
 
+export interface EventSource {
+  id: string;
+  name: string;
+  type: 'hls' | 'iframe' | 'youtube' | 'kick';
+  url: string;
+  channelId?: string;
+  waitForBroadcast?: boolean;
+}
+
 export interface LiveEvent {
+  sources?: EventSource[];
+  defaultSourceId?: string;
   sports?: SportsEvent | null;
   espnLink?: { eventId: string; league: string; enabled: boolean } | null;
   statusText?: string;
