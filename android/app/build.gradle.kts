@@ -9,7 +9,7 @@ android {
         applicationId = "com.golbolivialive.tv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 7
+        versionCode = 8
         versionName = "0.2.2"
         buildConfigField("String", "PUBLIC_BASE_URL", "\"https://golbolivialive-beta.vercel.app\"")
     }
@@ -24,6 +24,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
+    implementation("com.caverock:androidsvg-aar:1.4")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }

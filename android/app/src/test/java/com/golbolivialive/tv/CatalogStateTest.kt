@@ -63,4 +63,10 @@ class CatalogStateTest {
         assertEquals(listOf("a"), ids(restored))
         assertEquals("https://images.test/a.png", restored.events.getJSONArray("events").getJSONObject(0).getString("espnHomeLogo"))
     }
+    @Test fun newlyCreatedEventsAppearOnFirstResponseEvenDuringPartialSnapshot() {
+        val state = CatalogState(); state.accept(snapshot("existing", "other"))
+        state.accept(snapshot("existing", "new"))
+        assertTrue("new" in ids(state))
+        assertTrue("other" in ids(state))
+    }
 }

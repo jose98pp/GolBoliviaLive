@@ -29,6 +29,12 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import java.util.concurrent.Executors
@@ -37,13 +43,17 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private val executor = Executors.newFixedThreadPool(4)
+    private val catalogExecutor = Executors.newSingleThreadExecutor()
     private val preferences by lazy { getSharedPreferences("viewer", MODE_PRIVATE) }
     private val backgroundColor = Color.rgb(8, 13, 22)
     private val green = Color.rgb(54, 220, 150)
-    private val crestImages = CrestImages()
+    private val crestImages by lazy { CrestImages(this) }
     private val catalogState = CatalogState()
     private val eventEnricher = EventEnricher()
     private var enriching = false
+    private var lastEnrichmentAt = 0L
+    private var lastEnrichmentKey = ""
+    private var startupWatchdog: Runnable? = null
     private var teamsLoading = false
     private var catalogUi: Triple<List<WatchItem>, List<WatchItem>, String>? = null
     private var catalogScroll: ScrollView? = null
@@ -89,7 +99,7 @@ class MainActivity : Activity() {
     private val refresh = object : Runnable {
         override fun run() {
             loadCatalog()
-            handler.postDelayed(this, 30000)
+            handler.postDelayed(this, 10000)
         }
     }
 
@@ -122,7 +132,7 @@ class MainActivity : Activity() {
         active = true
         if (selected != null) startPlayer()
         loadCatalog()
-        handler.postDelayed(refresh, 30000)
+        handler.postDelayed(refresh, 10000)
         if (selected != null) { applyImmersive(); handler.postDelayed(hideChrome, 5000) }
     }
 
@@ -139,6 +149,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         eventEnricher.close()
         crestImages.close()
+        catalogExecutor.shutdownNow()
         executor.shutdownNow()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
@@ -459,7 +470,7 @@ class MainActivity : Activity() {
                     sport = updated.sport, competition = updated.competition, competitionLogo = updated.competitionLogo, result = updated.result, winner = updated.winner)
                 watchHeader?.text = watchTitle(updated)
                 watchCompetition?.removeAllViews()
-                watchCompetition?.addView(competitionBadge(updated))
+                watchCompetition?.addView(if (updated.channel) shield(TeamInfo(updated.id, updated.title, updated.logo), 48) else competitionBadge(updated))
             }
         }
         if (active && selected == null) {
@@ -475,7 +486,7 @@ class MainActivity : Activity() {
         if (!matchesLoading) {
             matchesLoading = true
             handler.removeCallbacks(retryCatalog)
-            executor.execute {
+            catalogExecutor.execute {
                 val result = runCatching { Catalog.fetch("/api/live-events", 6000) }
                 handler.post {
                     if (isDestroyed) return@post
@@ -489,7 +500,7 @@ class MainActivity : Activity() {
                         matches = Catalog.matches(latestEvents, latestTeams)
                         matchNotice = if (raw.optBoolean("stale")) "Datos guardados · El servidor sigue actualizando" else ""
                         persistCatalog()
-                        startEnrichment()
+                        startEnrichment(forceChannels)
                         if (!teamsLoading) {
                             teamsLoading = true
                             val revision = catalogState.revision
@@ -512,14 +523,24 @@ class MainActivity : Activity() {
                 }
             }
         }
-        if (!channelsLoading && (forceChannels || System.currentTimeMillis() - channelsLoadedAt > 300000)) {
+        if (!channelsLoading && (forceChannels || System.currentTimeMillis() - channelsLoadedAt > 60000)) {
             channelsLoading = true
             executor.execute {
-                val result = runCatching { Catalog.channels(Catalog.fetch("/api/iptv/sports", 12000)) }
+                val result = runCatching {
+                    val raw = Catalog.fetch("/api/iptv/sports", 12000)
+                    check(raw.opt("success") != false)
+                    Catalog.channels(raw) to raw
+                }
                 handler.post {
                     if (isDestroyed) return@post
                     channelsLoading = false
-                    result.onSuccess { channels = it; channelsLoadedAt = System.currentTimeMillis(); channelNotice = "" }
+                    result.onSuccess { (items, raw) ->
+                        if (items.isNotEmpty() || channels.isEmpty()) {
+                            channels = items
+                            if (raw.toString().length <= 2 * 1024 * 1024) preferences.edit().putString("channelsCache", raw.toString()).apply()
+                        }
+                        channelsLoadedAt = System.currentTimeMillis(); channelNotice = ""
+                    }
                         .onFailure { channelNotice = "No se pudieron actualizar los canales. Se conserva el catálogo anterior" }
                     catalogChanged()
                 }
@@ -537,6 +558,10 @@ class MainActivity : Activity() {
     }
 
     private fun restoreCatalog() {
+        runCatching {
+            val saved = preferences.getString("channelsCache", null)
+            if (saved != null) channels = Catalog.channels(JSONObject(saved))
+        }
         runCatching {
             val stored = JSONObject(preferences.getString("catalogCache", null) ?: return)
             val cached = stored.getJSONObject("catalog")
@@ -566,8 +591,16 @@ class MainActivity : Activity() {
         catalogChanged()
     }
 
-    private fun startEnrichment() {
+    private fun startEnrichment(force: Boolean = false) {
         if (enriching || !active || latestEvents.getJSONArray("events").length() == 0) return
+        val keyRows = latestEvents.getJSONArray("events")
+        val key = (0 until keyRows.length()).joinToString("|") {
+            val row = keyRows.getJSONObject(it)
+            listOf(row.optString("id"), row.optString("version"), row.optString("updatedAt"), row.optJSONObject("espnLink")?.toString().orEmpty(),
+                row.optJSONObject("sports")?.optJSONObject("source")?.toString().orEmpty()).joinToString(":")
+        }
+        if (!force && key == lastEnrichmentKey && System.currentTimeMillis() - lastEnrichmentAt < 30000) return
+        lastEnrichmentAt = System.currentTimeMillis(); lastEnrichmentKey = key
         enriching = true
         val revision = catalogState.revision
         val input = JSONObject(latestEvents.toString())
@@ -605,8 +638,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(72), dp(8))
             setBackgroundColor(Color.argb(185, 8, 13, 22))
         }
-        watchCompetition = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(competitionBadge(item)) }
-        if (!item.channel) information.addView(watchCompetition)
+        watchCompetition = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(if (item.channel) shield(TeamInfo(item.id, item.title, item.logo), 48) else competitionBadge(item)) }
+        information.addView(watchCompetition)
         watchHeader = label(watchTitle(item), 18f)
         information.addView(watchHeader)
         playerStatus = label("Preparando señal…", 13f, true)
@@ -676,15 +709,24 @@ class MainActivity : Activity() {
             setShowNextButton(false); setShowPreviousButton(false)
         }
         videoHost?.addView(playerView, FrameLayout.LayoutParams(-1, -1))
-        val instance = ExoPlayer.Builder(this).build()
+        val http = DefaultHttpDataSource.Factory().setUserAgent("GolBoliviaLive/${BuildConfig.VERSION_NAME}")
+            .setConnectTimeoutMs(6000).setReadTimeoutMs(8000).setAllowCrossProtocolRedirects(false)
+        val mediaFactory = DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http))
+            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(2))
+        val buffering = DefaultLoadControl.Builder().setBufferDurationsMs(8000, 25000, 1000, 2500)
+            .setPrioritizeTimeOverSizeThresholds(true).build()
+        val instance = ExoPlayer.Builder(this).setMediaSourceFactory(mediaFactory).setLoadControl(buffering)
+            .setBandwidthMeter(DefaultBandwidthMeter.Builder(this).setInitialBitrateEstimate(1500000L).build()).build()
         instance.setAudioAttributes(AudioAttributes.DEFAULT, true)
         player = instance
         playerView?.player = instance
         instance.trackSelectionParameters = instance.trackSelectionParameters.buildUpon()
-            .setMaxVideoSize(Int.MAX_VALUE, preferences.getInt("maxHeight", Int.MAX_VALUE)).build()
+            .setMaxVideoSize(Int.MAX_VALUE, preferences.getInt("maxHeight", Int.MAX_VALUE))
+            .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264).build()
         instance.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (player !== instance) return
+                if (state == Player.STATE_READY) { startupWatchdog?.let { handler.removeCallbacks(it) }; startupWatchdog = null }
                 playerStatus?.text = when (state) {
                     Player.STATE_BUFFERING -> "Cargando ${source.provider}…"
                     Player.STATE_READY -> "${source.provider} · OK: controles · Atrás: catálogo"
@@ -721,10 +763,23 @@ class MainActivity : Activity() {
         instance.setMediaItem(media.build())
         instance.prepare()
         instance.playWhenReady = resumePlayback
+        startupWatchdog = Runnable {
+            if (player === instance && instance.playWhenReady && instance.playbackState == Player.STATE_BUFFERING) {
+                if (sourceIndex + 1 < item.sources.size) {
+                    sourceIndex++; startPlayer()
+                } else {
+                    instance.stop()
+                    playerStatus?.text = "La señal no respondió a tiempo. Pulsa Reintentar o cambia de señal."
+                    showWatchChrome(true)
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }.also { handler.postDelayed(it, 18000) }
         playerView?.requestFocus()
     }
 
     private fun releasePlayer() {
+        startupWatchdog?.let { handler.removeCallbacks(it) }; startupWatchdog = null
         playerView?.player = null
         player?.release(); player = null; playerView = null
         embedded?.close(); embedded = null

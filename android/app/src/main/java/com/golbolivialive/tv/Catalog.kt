@@ -135,7 +135,7 @@ object Catalog {
                 else https(row.optString("streamUrl"))?.let { WatchSource("Canal", it) }
             WatchItem("channel:$id", row.optString("name"),
                 listOf(row.optString("countryName"), row.optString("group")).filter { it.isNotBlank() }.distinct().joinToString(" · "),
-                false, listOfNotNull(source), "/tv/${encode(id)}", true, logo = https(row.optString("logo")).orEmpty())
+                false, listOfNotNull(source), "/tv/${encode(id)}", true, logo = listOf("logo", "logoUrl", "imageUrl", "tvgLogo").firstNotNullOfOrNull { key -> ImageUrls.normalize(row.optString(key)).takeIf { it.isNotBlank() } }.orEmpty())
         }
     }
 
