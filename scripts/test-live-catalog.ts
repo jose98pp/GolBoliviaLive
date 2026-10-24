@@ -32,4 +32,6 @@ const server = await readFile(new URL('../serverApp.ts', import.meta.url), 'utf8
 const route = server.slice(server.indexOf("app.get(['/api/live-events',"), server.indexOf("app.get(['/api/live-events/:id',"));
 assert(!route.includes('ensureStateLoaded'), 'Public catalog must not wait for chat, settings, or clubs');
 assert(route.includes('status(503)') && route.includes('catalogConfirmed'), 'Unconfirmed empty catalogs must not be returned as success');
+const detail = server.slice(server.indexOf("app.get(['/api/live-events/:id',"), server.indexOf('\napp.post(', server.indexOf("app.get(['/api/live-events/:id',")));
+assert(detail.includes('status(503)') && detail.includes('!snapshot.catalogConfirmed'), 'Unconfirmed detail must not report a false deletion');
 console.log('Catalog: timeout, deduplication, stale retention, concurrent writes, confirmed deletion, strict Firebase errors, independent API route passed.');

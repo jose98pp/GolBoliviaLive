@@ -1054,8 +1054,13 @@ app.get(['/api/live-events', '/live-events'], async (_req: Request, res: Respons
 
 app.get(['/api/live-events/:id', '/live-events/:id'], async (req: Request, res: Response) => {
   const snapshot = await liveEventCatalog.load();
+  res.setHeader('Cache-Control', 'no-store');
   const event = snapshot.events.find((e) => e.id === req.params.id);
   if (!event) {
+    if (!snapshot.catalogConfirmed) {
+      res.status(503).json({ error: 'El catálogo aún no está confirmado. Reintenta en unos segundos.' });
+      return;
+    }
     res.status(404).json({ error: 'Partido no encontrado' });
     return;
   }
