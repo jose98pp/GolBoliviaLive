@@ -69,4 +69,36 @@ class CatalogStateTest {
         assertTrue("new" in ids(state))
         assertTrue("other" in ids(state))
     }
+    @Test fun equalVersionAndTimestampStillAcceptChangedTitleScoreAndStream() {
+        val state = CatalogState()
+        val first = snapshot("a"); first.getJSONArray("events").getJSONObject(0).put("title", "Antes").put("homeScore", 0).put("customVideoUrl", "https://old.test/live.m3u8")
+        state.accept(first)
+        val fresh = snapshot("a"); fresh.getJSONArray("events").getJSONObject(0).put("title", "Ahora").put("homeScore", 3).put("customVideoUrl", "https://new.test/live.m3u8")
+        state.accept(fresh)
+        val row = state.events.getJSONArray("events").getJSONObject(0)
+        assertEquals("Ahora", row.getString("title")); assertEquals(3, row.getInt("homeScore"))
+        assertEquals("https://new.test/live.m3u8", row.getString("customVideoUrl"))
+    }
+    @Test fun recreatedEventWithNewerTimestampCanResetItsVersion() {
+        val state = CatalogState()
+        val old = snapshot("a"); old.getJSONArray("events").getJSONObject(0).put("version", 10).put("updatedAt", 100)
+        state.accept(old)
+        val recreated = snapshot("a"); recreated.getJSONArray("events").getJSONObject(0).put("version", 1).put("updatedAt", 200).put("title", "Recreado")
+        state.accept(recreated)
+        assertEquals("Recreado", state.events.getJSONArray("events").getJSONObject(0).getString("title"))
+        state.accept(old)
+        assertEquals("Recreado", state.events.getJSONArray("events").getJSONObject(0).getString("title"))
+    }
+    @Test fun separateBaseSnapshotAllowsFreshChangesAfterProcessRestart() {
+        val state = CatalogState(); state.accept(snapshot("a"))
+        val decorated = JSONObject(state.events.toString()); decorated.getJSONArray("events").getJSONObject(0).put("homeScore", 5)
+        state.enrich(decorated, state.revision)
+        val recovered = CatalogState(); recovered.accept(JSONObject(state.baseEvents.toString()))
+        recovered.enrich(JSONObject(state.events.toString()), recovered.revision)
+        recovered.accept(snapshot("a"))
+        assertEquals(5, recovered.events.getJSONArray("events").getJSONObject(0).getInt("homeScore"))
+        val changed = snapshot("a"); changed.getJSONArray("events").getJSONObject(0).put("homeScore", 1)
+        recovered.accept(changed)
+        assertEquals(1, recovered.events.getJSONArray("events").getJSONObject(0).getInt("homeScore"))
+    }
 }

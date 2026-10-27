@@ -54,6 +54,12 @@ class MainActivity : Activity() {
     private var lastEnrichmentAt = 0L
     private var lastEnrichmentKey = ""
     private var startupWatchdog: Runnable? = null
+    private var forceEnrichment = false
+    private var lastCatalogAt = 0L
+    private var syncLabel: TextView? = null
+    private val remotePress = RemotePress()
+    private var pendingOk: KeyEvent? = null
+    private val heldOk = Runnable { if (remotePress.hold()) showRemoteOptions() }
     private var teamsLoading = false
     private var catalogUi: Triple<List<WatchItem>, List<WatchItem>, String>? = null
     private var catalogScroll: ScrollView? = null
@@ -138,6 +144,7 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         active = false
+        cancelRemotePress()
         handler.removeCallbacks(refresh)
         handler.removeCallbacks(retryCatalog)
         handler.removeCallbacks(hideChrome)
@@ -147,6 +154,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        cancelRemotePress()
         eventEnricher.close()
         crestImages.close()
         catalogExecutor.shutdownNow()
@@ -275,7 +283,9 @@ class MainActivity : Activity() {
         catalogScroll = ScrollView(this).apply { isFillViewport = true; addView(body) }
         root.addView(catalogScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         if (section == "Ajustes") settings() else {
-            if (notice.isNotBlank()) body.addView(label(notice, 14f, true))
+            if (notice.isNotBlank()) body.addView(label(notice, 13f, true))
+            syncLabel = label(syncText(), 12f, true)
+            body.addView(syncLabel)
             if (query.isNotBlank()) {
                 body.addView(label("Resultados para «$query»", 22f))
                 body.addView(button("Quitar búsqueda") { query = ""; page = 0; render() })
@@ -312,25 +322,27 @@ class MainActivity : Activity() {
         target?.post { target.requestFocus(); if (keepScroll) catalogScroll?.scrollTo(0, savedScroll) }
     }
 
-    private fun shield(team: TeamInfo, size: Int, portrait: Boolean = false): View = FrameLayout(this).apply {
+    private fun shield(team: TeamInfo, size: Int, portrait: Boolean = false, light: Boolean = false): View = FrameLayout(this).apply {
         layoutParams = LinearLayout.LayoutParams(dp(size), dp(if (portrait) size * 4 / 3 else size))
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         addView(label(team.name.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase(), size / 3f).apply {
             gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
+            if (light) setTextColor(Color.rgb(30, 40, 60))
         }, FrameLayout.LayoutParams(-1, -1))
         val image = ImageView(this@MainActivity).apply { scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = null }
         addView(image, FrameLayout.LayoutParams(-1, -1).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
         if (team.crest.isNotBlank()) crestImages.load(team.crest, image)
     }
 
-    private fun matchup(item: WatchItem, large: Boolean): LinearLayout = LinearLayout(this).apply {
+    private fun matchup(item: WatchItem, large: Boolean, light: Boolean = false): LinearLayout = LinearLayout(this).apply {
         gravity = Gravity.CENTER
-        val size = if (large) 90 else 58
-        item.home?.let { addView(shield(it, size, item.sport == "mma")) }
-        addView(label(item.score, if (large) 35f else 25f).apply {
+        val size = if (large) 90 else if (light) { if (item.sport == "mma") 60 else 42 } else 58
+        item.home?.let { addView(shield(it, size, item.sport == "mma", light)) }
+        addView(label(item.score, if (large) 35f else if (light) 18f else 25f).apply {
             gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
+            if (light) setTextColor(Color.rgb(18, 28, 44))
         }, LinearLayout.LayoutParams(0, -2, 1f))
-        item.away?.let { addView(shield(it, size, item.sport == "mma")) }
+        item.away?.let { addView(shield(it, size, item.sport == "mma", light)) }
     }
 
     private fun competitionBadge(item: WatchItem): LinearLayout = LinearLayout(this).apply {
@@ -353,60 +365,86 @@ class MainActivity : Activity() {
                 setColor(Color.TRANSPARENT); cornerRadius = dp(16).toFloat(); setStroke(dp(3), green)
             } else null
             target.elevation = dp(if (focused) 8 else 0).toFloat()
+            target.animate().scaleX(if (focused) 1.035f else 1f).scaleY(if (focused) 1.035f else 1f).setDuration(140).start()
         }
     }
 
-    private fun hero(item: WatchItem) {
-        val hero = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(20), dp(24), dp(20))
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(4), 0, dp(24)) }
-            background = MatchArt(item.home?.color ?: "#163A51", item.away?.color ?: "#14283E", true)
+    private fun primaryButton(title: String, tag: String, action: () -> Unit): Button = button(title, tag, action).apply {
+        fun style(focused: Boolean) {
+            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(28).toFloat(); setStroke(dp(if (focused) 4 else 1), if (focused) green else Color.LTGRAY) }
+            setTextColor(Color.rgb(10, 17, 28)); setTypeface(typeface, Typeface.BOLD)
         }
-        hero.addView(label("${if (item.sport == "football") "PARTIDO" else "EVENTO"} DESTACADO  ·  ${item.status}", 14f).apply { setTypeface(typeface, Typeface.BOLD) })
-        hero.addView(competitionBadge(item))
-        hero.addView(label(item.title, 32f).apply { setTypeface(typeface, Typeface.BOLD); maxLines = 2 })
-        hero.addView(matchup(item, true), LinearLayout.LayoutParams(-1, dp(if (item.sport == "mma") 128 else 96)))
-        hero.addView(label("${item.home?.name.orEmpty()}   /   ${item.away?.name.orEmpty()}", 18f).apply { gravity = Gravity.CENTER })
-        hero.addView(label(item.subtitle, 15f))
-        if (resultText(item).isNotBlank()) hero.addView(label(resultText(item), 17f))
-        hero.addView(button(if (item.sources.isEmpty()) "Ver detalle" else if (item.sport == "football") "▶ Ver partido" else "▶ Ver evento", "hero:${item.id}") { open(item) })
+        style(false)
+        setOnFocusChangeListener { view, focused -> style(focused); view.elevation = dp(if (focused) 10 else 0).toFloat() }
+    }
+
+    private fun hero(item: WatchItem) {
+        val wide = resources.configuration.screenWidthDp >= 700
+        val hero = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(-1, if (wide) dp(if (largeText()) 400 else 340) else -2).apply { setMargins(0, dp(8), 0, dp(24)) }
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.rgb(10, 18, 34), Color.rgb(26, 33, 107), Color.rgb(48, 27, 91))).apply { cornerRadius = dp(16).toFloat() }
+            clipToOutline = true
+        }
+        if (wide) {
+            val art = LinearLayout(this).apply {
+                gravity = Gravity.CENTER; setPadding(dp(8), dp(20), dp(20), dp(20))
+                item.home?.let { addView(shield(it, if (resources.configuration.screenWidthDp < 900) 90 else if (item.sport == "mma") 110 else 132, item.sport == "mma")) }
+                addView(label("VS", 20f).apply { gravity = Gravity.CENTER })
+                item.away?.let { addView(shield(it, if (resources.configuration.screenWidthDp < 900) 90 else if (item.sport == "mma") 110 else 132, item.sport == "mma")) }
+            }
+            hero.addView(art, FrameLayout.LayoutParams(dp(((resources.configuration.screenWidthDp - 64) * .43).toInt()), -1, Gravity.END))
+            hero.addView(View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(Color.rgb(7, 12, 23), Color.argb(205, 7, 12, 23), Color.TRANSPARENT)) }, FrameLayout.LayoutParams(-1, -1))
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(24), dp(16), dp(20), dp(16))
+            addView(label("${sportName(item.sport)}  ·  ${item.status}", 12f).apply { setTextColor(green); maxLines = 2 })
+            addView(label(item.title, if (wide) 30f else 26f).apply { setTypeface(typeface, Typeface.BOLD); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+            addView(competitionBadge(item))
+            addView(label("${item.home?.name.orEmpty()}  ·  ${item.score}  ·  ${item.away?.name.orEmpty()}", 18f).apply { maxLines = 2 })
+            if (!wide) addView(matchup(item, false), LinearLayout.LayoutParams(-1, dp(if (item.sport == "mma") 96 else 72)))
+            addView(label(listOf(resultText(item), item.subtitle).filter { it.isNotBlank() }.joinToString(" · "), 13f, true).apply { maxLines = 2 })
+            addView(HorizontalScrollView(this@MainActivity).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(LinearLayout(this@MainActivity).apply {
+                addView(primaryButton(if (item.sources.isEmpty()) "Ver detalle" else "▶ Ver evento", "hero:${item.id}") { open(item) })
+                addView(button(if (item.id in favorites()) "★ Guardado" else "☆ Favorito", "hero:favorite:${item.id}") { toggleFavorite(item); render("hero:favorite:${item.id}") })
+                })
+            })
+        }
+        hero.addView(content, FrameLayout.LayoutParams(if (wide) dp(((resources.configuration.screenWidthDp - 64) * .59).toInt()) else -1, if (wide) -1 else -2))
         body.addView(hero)
     }
 
     private fun card(item: WatchItem, width: Int): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(12), dp(16), dp(12))
-        layoutParams = LinearLayout.LayoutParams(dp(width), dp((if (largeText()) 264 else 240) + (if (item.channel) 0 else 36) + (if (item.sport == "mma") 40 else 0))).apply {
-            setMargins(dp(5), dp(8), dp(10), dp(8))
+        setPadding(dp(8), dp(8), dp(8), dp(10))
+        layoutParams = LinearLayout.LayoutParams(dp(width), dp(if (largeText()) 310 else 286)).apply { setMargins(dp(8), dp(8), dp(8), dp(12)) }
+        focusable(this, item.id); matchSurface(this, item)
+        contentDescription = "${item.title}. ${item.status}. ${item.score}. ${resultText(item)}. ${item.subtitle}. OK: abrir. Mantén OK: favorito."
+        val poster = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.WHITE, Color.rgb(214, 225, 236))).apply { cornerRadius = dp(10).toFloat() }
+            clipToOutline = true
+            addView(label(item.status, 11f).apply { setTextColor(Color.rgb(25, 45, 65)); maxLines = 2; setTypeface(typeface, Typeface.BOLD) })
+            if (item.channel) addView(shield(TeamInfo(item.id, item.title, item.logo), 92, light = true))
+            else {
+                if (item.competitionLogo.isNotBlank()) addView(shield(TeamInfo(item.id, item.competition, item.competitionLogo), 36, light = true))
+                addView(label(item.competition.ifBlank { sportName(item.sport) }, 11f).apply { setTextColor(Color.rgb(60, 70, 85)); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                addView(matchup(item, false, true), LinearLayout.LayoutParams(-1, 0, 1f))
+            }
         }
-        focusable(this, item.id)
-        matchSurface(this, item)
-        contentDescription = "${item.title}. ${item.home?.name.orEmpty()} ${item.away?.name.orEmpty()}. ${item.status}. ${item.score}. ${resultText(item)}. ${item.subtitle}. Pulsa OK para abrir. Mantén OK para favoritos."
-        addView(label(item.status, 12f).apply {
-            setTypeface(typeface, Typeface.BOLD)
-            background = GradientDrawable().apply { setColor(Color.argb(190, 4, 10, 18)); cornerRadius = dp(6).toFloat() }
-        })
-        if (!item.channel) {
-            addView(competitionBadge(item), LinearLayout.LayoutParams(-1, dp(40)))
-            addView(matchup(item, false), LinearLayout.LayoutParams(-1, dp(if (item.sport == "mma") 106 else 70)))
-        }
-        else if (item.logo.isNotBlank()) addView(shield(TeamInfo(item.id, item.title, item.logo), 62))
-        addView(label(if (item.channel) item.title else "${item.home?.name.orEmpty()} vs ${item.away?.name.orEmpty()}", 18f).apply {
-            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
-            setTypeface(typeface, Typeface.BOLD)
-        }, LinearLayout.LayoutParams(-1, 0, 1f))
-        addView(label((if (item.id in favorites()) "★ " else "") + listOf(resultText(item), item.subtitle).filter { it.isNotBlank() }.joinToString(" · "), 12f).apply {
-            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
-        })
+        addView(poster, LinearLayout.LayoutParams(-1, 0, 1f))
+        addView(label(item.title, 16f).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setTypeface(typeface, Typeface.BOLD) })
+        addView(label((if (item.id in favorites()) "★ " else "") + listOf(resultText(item), item.subtitle).filter { it.isNotBlank() }.joinToString(" · "), 11f, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
         setOnClickListener { open(item) }
-        setOnLongClickListener { toggleFavorite(item); render(item.id); true }
+        setOnLongClickListener { toggleFavorite(item); render(tag as? String ?: item.id); true }
     }
 
     private fun row(title: String, items: List<WatchItem>) {
         body.addView(label(title, 23f))
         if (items.isEmpty()) { body.addView(label("Sin contenido disponible en esta sección.", 15f, true)); return }
         val rail = LinearLayout(this)
-        items.forEach { rail.addView(card(it, 260)) }
+        items.forEach { item -> rail.addView(card(item, 206).apply { tag = "rail:$title:${item.id}" }) }
         body.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(rail) })
     }
 
@@ -459,13 +497,17 @@ class MainActivity : Activity() {
         body.addView(label("El volumen se controla con los botones del dispositivo o del televisor.\nYouTube, Kick y señales web se reproducen dentro de la app.\nGolBoliviaLive · Versión ${BuildConfig.VERSION_NAME}", 14f, true))
     }
 
+    private fun syncText(): String = if (lastCatalogAt == 0L) "Sin consulta reciente confirmada" else
+        "Última consulta: " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(lastCatalogAt))
+
     private fun catalogChanged() {
+        syncLabel?.text = syncText()
         loading = matchesLoading || channelsLoading
         notice = listOf(matchNotice, channelNotice).filter { it.isNotBlank() }.joinToString(" · ")
             .ifBlank { if (loading) "Actualizando datos…" else "Catálogo actualizado · Mantén OK para favoritos" }
         selected?.let { current ->
             (matches + channels).find { it.id == current.id }?.let { updated ->
-                selected = current.copy(title = updated.title, subtitle = updated.subtitle, home = updated.home, away = updated.away,
+                selected = current.copy(sources = updated.sources, title = updated.title, subtitle = updated.subtitle, home = updated.home, away = updated.away,
                     status = updated.status, score = updated.score, category = updated.category, live = updated.live,
                     sport = updated.sport, competition = updated.competition, competitionLogo = updated.competitionLogo, result = updated.result, winner = updated.winner)
                 watchHeader?.text = watchTitle(updated)
@@ -483,6 +525,7 @@ class MainActivity : Activity() {
 
     private fun loadCatalog(forceChannels: Boolean = false) {
         if (!active) return
+        if (forceChannels) forceEnrichment = true
         if (!matchesLoading) {
             matchesLoading = true
             handler.removeCallbacks(retryCatalog)
@@ -494,6 +537,7 @@ class MainActivity : Activity() {
                     runCatching {
                         val raw = result.getOrThrow()
                         check(catalogState.accept(raw)) { "El servidor todavía no confirmó el catálogo" }
+                        if (!raw.optBoolean("stale")) lastCatalogAt = System.currentTimeMillis()
                         latestEvents = SportsEvents.preview(EspnSync.preview(catalogState.events))
                         catalogState.enrich(latestEvents, catalogState.revision)
                         mergeTeams(TeamCatalog.load(latestEvents, false))
@@ -564,10 +608,12 @@ class MainActivity : Activity() {
         }
         runCatching {
             val stored = JSONObject(preferences.getString("catalogCache", null) ?: return)
-            val cached = stored.getJSONObject("catalog")
+            val cached = stored.optJSONObject("base") ?: stored.getJSONObject("catalog")
             cached.put("catalogConfirmed", true).put("stale", false)
             catalogState.accept(cached)
+            catalogState.enrich(stored.getJSONObject("catalog"), catalogState.revision)
             latestEvents = catalogState.events
+            lastCatalogAt = stored.optLong("savedAt")
             val teams = stored.optJSONObject("teams") ?: JSONObject()
             latestTeams = teams.keys().asSequence().associateWith { id ->
                 val team = teams.getJSONObject(id)
@@ -581,7 +627,7 @@ class MainActivity : Activity() {
     private fun persistCatalog() {
         val teams = JSONObject()
         latestTeams.forEach { (id, team) -> teams.put(id, JSONObject().put("name", team.name).put("crest", team.crest).put("color", team.color)) }
-        val saved = JSONObject().put("catalog", latestEvents).put("teams", teams).toString()
+        val saved = JSONObject().put("catalog", latestEvents).put("base", catalogState.baseEvents).put("savedAt", lastCatalogAt).put("teams", teams).toString()
         if (saved.length <= 2 * 1024 * 1024) preferences.edit().putString("catalogCache", saved).apply()
     }
 
@@ -592,6 +638,7 @@ class MainActivity : Activity() {
     }
 
     private fun startEnrichment(force: Boolean = false) {
+        if (force) forceEnrichment = true
         if (enriching || !active || latestEvents.getJSONArray("events").length() == 0) return
         val keyRows = latestEvents.getJSONArray("events")
         val key = (0 until keyRows.length()).joinToString("|") {
@@ -599,7 +646,8 @@ class MainActivity : Activity() {
             listOf(row.optString("id"), row.optString("version"), row.optString("updatedAt"), row.optJSONObject("espnLink")?.toString().orEmpty(),
                 row.optJSONObject("sports")?.optJSONObject("source")?.toString().orEmpty()).joinToString(":")
         }
-        if (!force && key == lastEnrichmentKey && System.currentTimeMillis() - lastEnrichmentAt < 30000) return
+        if (!forceEnrichment && key == lastEnrichmentKey && System.currentTimeMillis() - lastEnrichmentAt < 30000) return
+        forceEnrichment = false
         lastEnrichmentAt = System.currentTimeMillis(); lastEnrichmentKey = key
         enriching = true
         val revision = catalogState.revision
@@ -610,14 +658,14 @@ class MainActivity : Activity() {
                 if (!isDestroyed) {
                     enriching = false
                     enriched.onSuccess { if (catalogState.enrich(it, revision)) { latestEvents = catalogState.events; publishMatches() } }
-                    if (revision != catalogState.revision) startEnrichment()
+                    if (revision != catalogState.revision || forceEnrichment) startEnrichment()
                 }
             }
         }
     }
 
     private fun open(item: WatchItem, restored: PlaybackSnapshot? = null) {
-        returnFocus = item.id
+        returnFocus = if (selected == null) currentFocus?.tag as? String ?: item.id else item.id
         if (item.sources.isEmpty()) {
             AlertDialog.Builder(this).setTitle(item.title)
                 .setMessage("${item.status} · ${item.score}\n${item.subtitle}\nTodavía no hay una señal disponible para este partido.")
@@ -663,9 +711,16 @@ class MainActivity : Activity() {
                 })
                 addView(button("Cursor iframe") {
                     if (embedded != null) {
-                        embedded?.togglePointer()
+                        val enabled = embedded?.togglePointer() == true
+                        Toast.makeText(this@MainActivity, if (enabled) "Flechas: mover · OK: pulsar · Mantén OK: opciones" else "Cursor desactivado", Toast.LENGTH_LONG).show()
                         showWatchChrome(false)
                     } else playerStatus?.text = "El cursor se utiliza con señales web."
+                })
+                addView(button("Bloqueo anuncios", "watch:ads") {
+                    val enabled = !preferences.getBoolean("blockAds", true)
+                    preferences.edit().putBoolean("blockAds", enabled).apply()
+                    embedded?.setAdBlocking(enabled)
+                    playerStatus?.text = if (enabled) "Bloqueo de anuncios externos activado" else "Bloqueo desactivado para esta señal"
                 })
                 addView(button("Favorito ★") { toggleFavorite(item) })
             })
@@ -691,7 +746,7 @@ class MainActivity : Activity() {
         playerStatus?.text = "Cargando ${source.provider}…"
         if (source.embedded) {
             runCatching {
-                EmbeddedPlayer(this, source, resumePlayback) { message ->
+                EmbeddedPlayer(this, source, resumePlayback, preferences.getBoolean("blockAds", true)) { message ->
                     if (selected?.id == item.id && active) {
                         playerStatus?.text = message
                         if (message.contains("no pudo", true) || message.contains("no se pudo", true) || message.contains("HTTP") || message.contains("no permite", true)) showWatchChrome(true)
@@ -779,6 +834,7 @@ class MainActivity : Activity() {
     }
 
     private fun releasePlayer() {
+        cancelRemotePress()
         startupWatchdog?.let { handler.removeCallbacks(it) }; startupWatchdog = null
         playerView?.player = null
         player?.release(); player = null; playerView = null
@@ -806,13 +862,39 @@ class MainActivity : Activity() {
         return handled
     }
 
+    private fun cancelRemotePress() {
+        handler.removeCallbacks(heldOk); pendingOk = null; remotePress.cancel()
+    }
+
+    private fun showRemoteOptions() {
+        embedded?.exitFullscreen(); applyImmersive(); showWatchChrome(true)
+        window.decorView.findViewWithTag<View>("watch:back")?.requestFocus()
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER) &&
+            (pendingOk != null || (selected != null && !chromeVisible))) {
+            if (event.action == KeyEvent.ACTION_DOWN && remotePress.down()) {
+                pendingOk = KeyEvent(event); handler.postDelayed(heldOk, 650)
+            } else if (event.action == KeyEvent.ACTION_UP) {
+                handler.removeCallbacks(heldOk)
+                val down = pendingOk; pendingOk = null
+                if (remotePress.up() == RemotePress.Result.CLICK && down != null) {
+                    super.dispatchKeyEvent(down); super.dispatchKeyEvent(event)
+                }
+            }
+            return true
+        }
+        if (selected != null && !chromeVisible && embedded?.isPointerActive() != true &&
+            event.keyCode == KeyEvent.KEYCODE_DPAD_UP && event.action == KeyEvent.ACTION_DOWN) {
+            showRemoteOptions(); return true
+        }
         if (selected != null && chromeVisible && event.action == KeyEvent.ACTION_DOWN) {
             handler.removeCallbacks(hideChrome)
             handler.postDelayed(hideChrome, 5000)
         }
         if (selected != null && event.keyCode == KeyEvent.KEYCODE_MENU) {
-            if (event.action == KeyEvent.ACTION_DOWN) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 if (embedded?.exitFullscreen() == true) { applyImmersive(); showWatchChrome(true) }
                 else showWatchChrome(!chromeVisible)
                 if (chromeVisible) window.decorView.findViewWithTag<View>("watch:back")?.requestFocus()
@@ -856,7 +938,9 @@ class MainActivity : Activity() {
 
     @Deprecated("Compatible with Android TV remotes on API 23+")
     override fun onBackPressed() {
+        cancelRemotePress()
         if (embedded?.exitFullscreen() == true) { applyImmersive(); return }
+        if (selected != null && chromeVisible) { showWatchChrome(false); return }
         if (selected != null) { closePlayer(); return }
         if (section != "Inicio" || query.isNotBlank()) { section = "Inicio"; query = ""; page = 0; render(); return }
         AlertDialog.Builder(this).setTitle("¿Salir de GolBoliviaLive?")

@@ -19,9 +19,10 @@ import android.webkit.*
 import android.widget.FrameLayout
 import org.json.JSONObject
 import java.net.URI
+import java.io.ByteArrayInputStream
 
 @SuppressLint("SetJavaScriptEnabled")
-class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay: Boolean,
+class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay: Boolean, adBlockEnabled: Boolean = true,
     private val status: (String) -> Unit) : FrameLayout(context) {
     private val web = WebView(context)
     private val handler = Handler(Looper.getMainLooper())
@@ -31,6 +32,7 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
     private var failed = false
     private var originalUi = 0
     private var pointerMode = false
+    @Volatile private var adBlocking = adBlockEnabled
     private var cursorX = 0f
     private var cursorY = 0f
     private val pointer = object : View(context) {
@@ -59,6 +61,11 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
             setSupportMultipleWindows(true)
         }
         web.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (adBlocking && !request.isForMainFrame && EmbedAdBlock.blocked(source, request.url.toString()))
+                    return WebResourceResponse("text/plain", "UTF-8", 204, "No Content", mapOf("Cache-Control" to "no-store"), ByteArrayInputStream(byteArrayOf()))
+                return null
+            }
             @Deprecated("Used on Android 6")
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = !EmbedNavigation.allowed(source, url, true)
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -193,6 +200,9 @@ class EmbeddedPlayer(context: Context, private val source: WatchSource, autoplay
         val callback = fullCallback; fullCallback = null; callback?.onCustomViewHidden(); web.requestFocus()
         return true
     }
+
+    fun setAdBlocking(enabled: Boolean) { adBlocking = enabled }
+    fun isPointerActive() = pointerMode
 
     fun focusVideo() { web.requestFocus() }
 
