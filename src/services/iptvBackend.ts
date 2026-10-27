@@ -286,6 +286,19 @@ iptvRouter.get('/sports', async (req: Request, res: Response) => {
   }
 });
 
+// Resolve one public channel at playback time, without transferring the entire catalog.
+iptvRouter.get('/sports/:id', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const channels = await getOrRefreshSportsChannels(false);
+    const channel = channels.find((entry) => entry.id === req.params.id);
+    if (!channel) return res.status(404).json({ success: false, code: 'CHANNEL_NOT_FOUND', error: 'Canal no encontrado.' });
+    return res.json({ success: true, channel, cachedAt: lastFetchTime });
+  } catch {
+    return res.status(503).json({ success: false, code: 'CATALOG_UNAVAILABLE', error: 'No se pudo verificar el canal.' });
+  }
+});
+
 // GET /api/iptv/status
 iptvRouter.get('/status', (_req: Request, res: Response) => {
   res.json({

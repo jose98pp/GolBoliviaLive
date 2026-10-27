@@ -19,6 +19,8 @@ data class WatchItem(
     val streams: List<String> get() = sources.filter { !it.embedded }.map { it.url }
 }
 
+class CatalogHttpException(val status: Int, val code: String = "") : java.io.IOException("HTTP $status")
+
 object Catalog {
     fun https(value: String): String? = runCatching {
         URI(value).takeIf { it.scheme == "https" && !it.host.isNullOrBlank() && it.userInfo == null }?.toString()
@@ -65,7 +67,7 @@ object Catalog {
             val value = entries.optJSONObject(index) ?: return@mapNotNull null
             val url = value.optString("url")
             val source = when (value.optString("type")) {
-                "hls" -> https(url)?.let { WatchSource("HLS", it) }
+                "hls", "dash" -> https(url)?.let { WatchSource(if (value.optString("type") == "dash") "DASH" else "HLS", it) }
                 "iframe" -> embeddedSource(url, "Web")
                 "youtube" -> embeddedSource(if (url.matches(Regex("[A-Za-z0-9_-]{11}"))) "https://www.youtube.com/embed/$url" else url, "YouTube")
                 "kick" -> embeddedSource(if (url.matches(Regex("[A-Za-z0-9_-]{1,80}"))) "https://kick.com/$url" else url, "Kick")
@@ -169,7 +171,10 @@ object Catalog {
         connection.setRequestProperty("Accept", "application/json")
         connection.setRequestProperty("Cache-Control", "no-cache")
         try {
-            check(connection.responseCode in 200..299) { "El servidor respondió HTTP ${connection.responseCode}" }
+            if (connection.responseCode !in 200..299) {
+                val code = runCatching { JSONObject(connection.errorStream?.bufferedReader()?.use { it.readText().take(65536) }.orEmpty()).optString("code") }.getOrDefault("")
+                throw CatalogHttpException(connection.responseCode, code)
+            }
             return connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
         } finally { connection.disconnect() }
     }

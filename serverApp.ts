@@ -1065,7 +1065,7 @@ app.get(['/api/live-events/:id', '/live-events/:id'], async (req: Request, res: 
     res.status(404).json({ error: 'Partido no encontrado' });
     return;
   }
-  res.json({ success: true, event });
+  res.json({ success: true, event, stale: snapshot.stale, catalogConfirmed: snapshot.catalogConfirmed });
 });
 
 app.post(

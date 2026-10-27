@@ -1,10 +1,10 @@
 name: Android TV and tablet APK
 on:
   pull_request:
-    paths: ['android/**', '.github/workflows/android.yml', 'serverApp.ts', 'src/services/firebase.ts', 'src/services/liveEventCatalog.ts', 'scripts/test-live-catalog.ts']
+    paths: ['android/**', '.github/workflows/android.yml', 'serverApp.ts', 'src/services/firebase.ts', 'src/services/liveEventCatalog.ts', 'scripts/test-live-catalog.ts', 'src/services/iptvBackend.ts', 'scripts/test-playback-resolution.ts']
   push:
     branches: [main]
-    paths: ['android/**', '.github/workflows/android.yml', 'serverApp.ts', 'src/services/firebase.ts', 'src/services/liveEventCatalog.ts', 'scripts/test-live-catalog.ts']
+    paths: ['android/**', '.github/workflows/android.yml', 'serverApp.ts', 'src/services/firebase.ts', 'src/services/liveEventCatalog.ts', 'scripts/test-live-catalog.ts', 'src/services/iptvBackend.ts', 'scripts/test-playback-resolution.ts']
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,4 +45,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - name: Catalog regression without production access
-        run: bun scripts/test-live-catalog.ts
+        run: |
+          bun scripts/test-live-catalog.ts
+          bun scripts/test-playback-resolution.ts
