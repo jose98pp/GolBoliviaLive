@@ -165,7 +165,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
     }
     const normalizedSource = normalizeChannelSource(streamUrl, sourceType);
     if (!normalizedSource) {
-      setFormError('Introduce una URL HLS válida o un iframe de los dominios admitidos según el tipo seleccionado.');
+      setFormError('Introduce una URL HLS válida o un enlace HTTPS de reproductor externo según el tipo seleccionado.');
       return;
     }
 
@@ -254,10 +254,10 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
     <div className="space-y-6">
       {previewUrl && <section className="rounded-xl border border-cyan-700 bg-slate-950 p-3 space-y-2"><p className="text-xs text-amber-300">Prueba externa: verifica vídeo y audio. La carga del marco no confirma reproducción.</p><div className="aspect-video"><ExternalPlayer url={previewUrl} /></div><button type="button" onClick={() => setPreviewUrl('')} className="text-xs text-slate-300 underline">Cerrar prueba</button></section>}
       <section className="rounded-2xl border border-slate-800 bg-[#0a0f1d] p-5 space-y-3">
-        <h3 className="text-sm font-bold text-white">Importar lista M3U — Administración</h3>
-        <p className="text-xs text-slate-400">Vista previa de listas públicas de IPTV-org. La publicación permanente requiere seleccionar y guardar canales en el administrador.</p>
+        <h3 className="text-sm font-bold text-white">Importar lista M3U / M3U8 — Administración</h3>
+        <p className="text-xs text-slate-400">Importa listas M3U/M3U8 desde una URL HTTP/HTTPS o un archivo. La publicación permanente requiere seleccionar y guardar canales en el administrador.</p>
         <div className="flex flex-col sm:flex-row gap-2">
-          <input type="url" value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} aria-label="URL de lista M3U" placeholder="https://iptv-org.github.io/iptv/categories/sports.m3u" className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs" />
+          <input type="url" value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} aria-label="URL de lista M3U" placeholder="https://tu-proveedor.com/lista.m3u" className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs" />
           <button type="button" onClick={() => { void previewPlaylist(); }} disabled={playlistLoading || !playlistUrl.trim()} className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg disabled:opacity-50">{playlistLoading ? 'Cargando...' : 'Previsualizar'}</button>
         </div>
         <label className="block text-xs text-slate-300">O cargar archivo de canales M3U / M3U8 (máximo 1 MB, 500 canales)

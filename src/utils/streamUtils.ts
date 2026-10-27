@@ -72,6 +72,7 @@ export function normalizeExternalPlayerUrl(value: unknown): string | null {
   try {
     const url = new URL(raw);
     if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    if (/\.(?:m3u8?|mpd)$/i.test(url.pathname)) return null;
     const host = url.hostname.toLowerCase();
 
     // StreamXHD validation
@@ -109,7 +110,7 @@ export function normalizeExternalPlayerUrl(value: unknown): string | null {
       return url.href;
     }
 
-    return null;
+    return url.href;
   } catch {
     return null;
   }
@@ -119,7 +120,7 @@ export function normalizeMatchIptvSource(value: unknown): MatchIptvSource | null
   if (!value || typeof value !== 'object') return null;
   const raw = value as Partial<MatchIptvSource>;
   if (typeof raw.channelId !== 'string' || !raw.channelId.trim()) return null;
-  const iframe = normalizeExternalPlayerUrl(raw.streamUrl);
+  const iframe = raw.sourceType === 'hls' ? null : normalizeExternalPlayerUrl(raw.streamUrl);
   const streamUrl = iframe || normalizeMatchIptvUrl(raw.streamUrl);
   if (!streamUrl) return null;
   return { channelId: raw.channelId.trim().slice(0, 160), channelName: String(raw.channelName || 'Canal IPTV').trim().slice(0, 120),

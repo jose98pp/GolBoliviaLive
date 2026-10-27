@@ -11,7 +11,7 @@ for (const domain of ['streamxhd.st', 'streamxhd.com', 'streamxhd.click']) {
   assert.equal(normalizeExternalPlayerUrl(` https://${domain}/live1.php?stream=espnar `), `https://${domain}/live1.php?stream=espnar`);
 }
 for (const value of [null, '', 'javascript:alert(1)', 'http://streamxhd.st/live1.php?stream=dsports',
-  'https://streamxhd.st.evil.test/live1.php?stream=dsports', 'https://streamxhd.st@evil.test/live1.php?stream=dsports',
+  'https://streamxhd.st@evil.test/live1.php?stream=dsports',
   'https://user:password@streamxhd.st/live1.php?stream=dsports', 'https://streamxhd.st:8000/live1.php?stream=dsports',
   'https://streamxhd.st/', 'https://streamxhd.st/live1.php?stream=dsports&redirect=https://evil.test',
   'https://streamxhd.st/live1.php?stream=dsports&stream=espnar']) {
@@ -53,3 +53,13 @@ assert.throws(() => parseChannelPlaylist('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT
 assert.throws(() => parseChannelPlaylist('not a playlist'), /válida/);
 assert.throws(() => parseChannelPlaylist('x'.repeat(1024 * 1024 + 1)), /1 MB/);
 console.log('Catálogo: HLS/M3U, iframe sin HTML ejecutable, importación de listas, deduplicación y rechazo de segmentos comprobados.');
+
+for (const source of ['https://tvf90.com/online.php?stream=espnmx', 'https://tvf90.com/online.php?stream=espn2mx', 'https://tvf90.com/online.php?stream=espn3mx', 'https://tvf90.com/online.php?stream=espn4mx', 'https://otro-proveedor.example/player?id=1', 'https://otro-proveedor.example/', 'https://streamxhd.st.evil.test/player']) {
+  assert.equal(normalizeExternalPlayerUrl(source), source, 'Se permiten dominios HTTPS sin una lista cerrada');
+  assert.equal(normalizeChannelSource(source, 'iframe'), source);
+}
+assert.equal(normalizeExternalPlayerUrl('https://otro-proveedor.example/live.m3u8'), null, 'Una señal HLS sigue usando el reproductor HLS');
+const relative = parseChannelPlaylist('#EXTM3U\n#EXTINF:-1,Relativo\n../live.m3u8', 'https://proveedor.example/catalogos/lista.m3u');
+assert.equal(relative[0].streamUrl, 'https://proveedor.example/live.m3u8');
+assert.equal(relative[0].sourceType, 'hls');
+console.log('Dominios externos HTTPS, canales TVF90 y listas con rutas relativas comprobados.');

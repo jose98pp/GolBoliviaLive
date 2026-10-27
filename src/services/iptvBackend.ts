@@ -1,3 +1,4 @@
+import { normalizePlaylistUrl, fetchPlaylistPreview } from './playlistImport';
 import express, { Request, Response } from 'express';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
@@ -218,26 +219,20 @@ export function getOrRefreshSportsChannels(force = false): Promise<IptvChannel[]
   return activeFetchPromise;
 }
 
-// Importación de catálogos públicos aprobados. Nunca descargar URLs arbitrarias del usuario:
-// evita SSRF, accesos a redes privadas y listas de procedencia desconocida.
-export function getApprovedPlaylistUrl(value: unknown): string | null {
-  if (typeof value !== 'string' || value.length > 500) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.hostname !== 'iptv-org.github.io' || url.port || url.username || url.password || url.search || url.hash) return null;
-    const parts = url.pathname.split('/');
-    if (parts.length !== 4 || parts[0] !== '' || parts[1] !== 'iptv' || !['categories', 'countries'].includes(parts[2]) || !parts[3].endsWith('.m3u') || !/^[a-z0-9-]+$/.test(parts[3].slice(0, -4))) return null;
-    return url.href;
-  } catch { return null; }
-}
+export const getApprovedPlaylistUrl = normalizePlaylistUrl;
 
-// GET /api/iptv/import-preview?lista=<URL> - Vista previa sin persistencia ni reproducción automática.
+// La autenticación administrativa se aplica al montar el router en serverApp.
 iptvRouter.get('/import-preview', async (req: Request, res: Response) => {
-  const source = getApprovedPlaylistUrl(req.query.lista);
-  if (!source) return res.status(400).json({ success: false, error: 'Solo se admiten listas públicas HTTPS de iptv-org (categorías o países).' });
-  const channels = await fetchM3uList(source);
-  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300');
-  return res.json({ success: true, source, total: channels.length, channels, persisted: false });
+  res.setHeader('Cache-Control', 'no-store');
+  const source = normalizePlaylistUrl(req.query.lista);
+  if (!source) return res.status(400).json({ success: false, error: 'Introduce una URL HTTP o HTTPS de lista M3U/M3U8.' });
+  try {
+    const channels = await fetchPlaylistPreview(source);
+    return res.json({ success: true, total: channels.length, channels, persisted: false });
+  } catch (error) {
+    const status = (error as any)?.status === 403 ? 403 : 400;
+    return res.status(status).json({ success: false, error: error instanceof Error ? error.message : 'No se pudo descargar la lista.' });
+  }
 });
 
 // ── Endpoints ──
@@ -317,7 +312,7 @@ iptvRouter.post('/custom', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'El nombre del canal es requerido.' });
     }
     const normalizedSource = normalizeChannelSource(streamUrl, sourceType);
-    if (!normalizedSource) return res.status(400).json({ success: false, error: 'Fuente no compatible. Usa una URL HLS HTTP/HTTPS o un iframe HTTPS de los dominios admitidos.' });
+    if (!normalizedSource) return res.status(400).json({ success: false, error: 'Fuente no compatible. Usa una URL HLS HTTP/HTTPS o un reproductor externo HTTPS.' });
 
     await refreshCustomChannels();
     const existing = editingId ? [...customChannels, ...cachedChannels, ...CURATED_FALLBACK_CHANNELS]

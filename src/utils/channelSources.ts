@@ -16,13 +16,12 @@ export function normalizeChannelSource(value: unknown, type: unknown = 'hls'): s
   try {
     const url = new URL(source);
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
-    if (normalizeExternalPlayerUrl(source)) return null;
     if (/\.(?:html?|php|mpd)$/i.test(url.pathname)) return null;
     return url.href;
   } catch { return null; }
 }
 
-export function parseChannelPlaylist(text: string): IptvChannel[] {
+export function parseChannelPlaylist(text: string, baseUrl?: string): IptvChannel[] {
   if (text.length > 1024 * 1024) throw new Error('La lista supera el límite de 1 MB.');
   if (!text.trimStart().startsWith('#EXTM3U')) throw new Error('El archivo no es una lista M3U válida.');
   if (/^#EXT-X-TARGETDURATION/m.test(text) || (/^#EXT-X-/m.test(text) && !/#EXTINF:/m.test(text))) {
@@ -38,8 +37,10 @@ export function parseChannelPlaylist(text: string): IptvChannel[] {
     const metadata = info;
     info = '';
     if (!metadata) continue;
-    const sourceType = normalizeExternalPlayerUrl(line) ? 'iframe' : 'hls';
-    const streamUrl = normalizeChannelSource(line, sourceType);
+    let resolved = line;
+    try { if (baseUrl) resolved = new URL(line, baseUrl).href; } catch { continue; }
+    const sourceType = normalizeChannelSource(resolved, 'hls') ? 'hls' : 'iframe';
+    const streamUrl = normalizeChannelSource(resolved, sourceType);
     if (!streamUrl || seen.has(streamUrl)) continue;
     seen.add(streamUrl);
     const attribute = (key: string) => metadata.match(new RegExp(key + '="([^"\\n]*)"', 'i'))?.[1] || '';
