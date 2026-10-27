@@ -324,7 +324,7 @@ class MainActivity : Activity() {
         }
         val target = focusTag?.let { root.findViewWithTag<View>(it) }
             ?: root.findViewWithTag("nav:$section")
-        target?.post { target.requestFocus(); if (keepScroll) catalogScroll?.scrollTo(0, savedScroll) }
+        target?.post { if (keepScroll) catalogScroll?.scrollTo(0, savedScroll); target.requestFocus() }
     }
 
     private fun shield(team: TeamInfo, size: Int, portrait: Boolean = false, light: Boolean = false): View = FrameLayout(this).apply {
@@ -710,15 +710,18 @@ class MainActivity : Activity() {
             addView(LinearLayout(this@MainActivity).apply {
                 addView(button("Volver", "watch:back") { closePlayer() })
                 addView(button("Reintentar") { startPlayer() })
-                if (item.sources.size > 1) addView(button("Señales") {
+                addView(button("Señales") {
                     val current = selected ?: return@button
+                    if (current.sources.isEmpty()) { playerStatus?.text = "Este evento ya no tiene señales publicadas"; return@button }
                     AlertDialog.Builder(this@MainActivity).setTitle("Elegir señal")
                         .setSingleChoiceItems(current.sources.map { it.label }.toTypedArray(), sourceIndex) { dialog, which ->
                             sourceIndex = which; dialog.dismiss(); startPlayer()
                         }.setNegativeButton("Cancelar", null).show()
                 })
-                if (item.sources.size > 1) addView(button("Siguiente señal") {
-                    sourceIndex = (sourceIndex + 1) % (selected?.sources?.size ?: item.sources.size); startPlayer()
+                addView(button("Siguiente señal") {
+                    val options = selected?.sources.orEmpty()
+                    if (options.size > 1) { sourceIndex = (sourceIndex + 1) % options.size; startPlayer() }
+                    else playerStatus?.text = if (options.isEmpty()) "Este evento ya no tiene señales publicadas" else "Señal disponible: ${options[0].label}"
                 })
                 addView(button("Encajar / Llenar") {
                     val zoom = !preferences.getBoolean("zoomVideo", false)
@@ -759,7 +762,9 @@ class MainActivity : Activity() {
     private fun startPlayer(waitRetry: Boolean = false) {
         val item = selected ?: return
         if (!active) return
-        val source = item.sources.getOrNull(sourceIndex) ?: return
+        val source = item.sources.getOrNull(sourceIndex) ?: run {
+            releasePlayer(); playerStatus?.text = "Este evento ya no tiene señales publicadas"; showWatchChrome(true); return
+        }
         releasePlayer()
         if (!waitRetry) { broadcastAttempts = 0; broadcastStartedAt = System.currentTimeMillis(); broadcastHasPlayed = false }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
