@@ -1,6 +1,6 @@
 import { buildEventSourcesPatch } from '../src/utils/eventSources';
 import { sanitizeSportsEvent } from '../src/utils/sportsEvents';
-import { FOOTBALL_LEAGUES } from '../src/data/footballLeagues';
+import { FOOTBALL_COMPETITIONS } from '../src/data/footballLeagues';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { transform } from 'esbuild';
@@ -139,8 +139,8 @@ const eventRoute = server.slice(server.indexOf("app.post(\n  ['/api/live-events'
 const eventHandler = eventRoute.slice(eventRoute.indexOf('async (req:'), eventRoute.lastIndexOf('\n);')).trim();
 const eventCode = await transform(`export const handle = ${eventHandler};`, { loader: 'ts', format: 'cjs' });
 const eventModule = { exports: {} as any };
-new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', 'FOOTBALL_LEAGUES', 'sanitizeSportsEvent', 'buildEventSourcesPatch', eventCode.code)(eventModule, eventModule.exports,
-  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {}, FOOTBALL_LEAGUES, sanitizeSportsEvent, buildEventSourcesPatch);
+new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', 'FOOTBALL_COMPETITIONS', 'sanitizeSportsEvent', 'buildEventSourcesPatch', eventCode.code)(eventModule, eventModule.exports,
+  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {}, FOOTBALL_COMPETITIONS, sanitizeSportsEvent, buildEventSourcesPatch);
 const postEvent = async (body: LiveEvent) => {
   let status = 200; let response: any;
   const res: any = { status: (code: number) => { status = code; return res; }, json: (data: any) => { response = data; return res; } };
@@ -195,3 +195,10 @@ assert.equal((await postEvent(emptyPayload)).status, 200);
 assert.equal(load().sources.length, 0);
 assertConfirmedMatchSignal(emptyPayload, load());
 console.log('Fuentes por evento: guardar/recargar tres opciones, fuente inicial, orden de claves Firestore, validación y eliminación completa comprobados.');
+
+for (const league of ['arg.copa_arg', 'bra.copa_do_brazil', 'esp.copa_del_rey', 'eng.fa']) {
+  const payload = { ...load(), version: load().version, espnLink: { eventId: '123456', league, enabled: true } } as LiveEvent;
+  assert.equal((await postEvent(payload)).status, 200, `El servidor acepta la copa ${league}`);
+  assert.deepEqual(load().espnLink, payload.espnLink, 'El vínculo de la copa sobrevive al guardado y recarga');
+}
+assert.equal((await postEvent({ ...load(), version: load().version, espnLink: { eventId: '123456', league: 'unknown.cup', enabled: true } })).status, 400);

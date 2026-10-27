@@ -1,7 +1,7 @@
 import { buildEventSourcesPatch } from './src/utils/eventSources';
 import { SPORTS_COMPETITIONS, sanitizeSportsEvent } from './src/utils/sportsEvents';
 import { fetchEspn } from './src/services/espnCache';
-import { FOOTBALL_LEAGUES } from './src/data/footballLeagues';
+import { FOOTBALL_COMPETITIONS } from './src/data/footballLeagues';
 import 'dotenv/config';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
@@ -1125,7 +1125,7 @@ app.post(
       }
     }
 
-    if (raw.espnLink != null && (!/^[0-9]{1,20}$/.test(String(raw.espnLink.eventId)) || !Object.hasOwn(FOOTBALL_LEAGUES, raw.espnLink.league) || typeof raw.espnLink.enabled !== 'boolean')) {
+    if (raw.espnLink != null && (!/^[0-9]{1,20}$/.test(String(raw.espnLink.eventId)) || !Object.hasOwn(FOOTBALL_COMPETITIONS, raw.espnLink.league) || typeof raw.espnLink.enabled !== 'boolean')) {
       return res.status(400).json({ error: 'El vínculo ESPN no es válido.' });
     }
 
@@ -1158,7 +1158,7 @@ app.post(
       sources: raw.sources === undefined ? existingEvent?.sources : raw.sources,
       defaultSourceId: raw.defaultSourceId === undefined ? existingEvent?.defaultSourceId : raw.defaultSourceId,
       sports: eventSports,
-      espnLink: raw.espnLink === null ? null : raw.espnLink && /^[0-9]{1,20}$/.test(String(raw.espnLink.eventId)) && Object.hasOwn(FOOTBALL_LEAGUES, raw.espnLink.league)
+      espnLink: raw.espnLink === null ? null : raw.espnLink && /^[0-9]{1,20}$/.test(String(raw.espnLink.eventId)) && Object.hasOwn(FOOTBALL_COMPETITIONS, raw.espnLink.league)
         ? { eventId: String(raw.espnLink.eventId), league: raw.espnLink.league, enabled: Boolean(raw.espnLink.enabled) } : existingEvent?.espnLink,
       title: cleanTitle,
       homeTeam: cleanHome,
@@ -1783,7 +1783,7 @@ app.delete(
 const clubCrestCache = new Map<string, { expires: number; teams: { id?: string; names: string[]; logoUrl: string }[] }>();
 app.get(['/api/football-api/teams', '/football-api/teams'], async (req: Request, res: Response) => {
   const league = String(req.query.league || 'bol.1');
-  if (!Object.hasOwn(FOOTBALL_LEAGUES, league)) return res.status(400).json({ error: 'Liga no compatible.' });
+  if (!Object.hasOwn(FOOTBALL_COMPETITIONS, league)) return res.status(400).json({ error: 'Liga no compatible.' });
   const cacheKey = league + (req.query.current === '1' ? ':current' : '');
   const cached = clubCrestCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return res.json({ teams: cached.teams });
@@ -1834,7 +1834,7 @@ app.get(['/api/sports-api/events', '/api/sports-api/event'], async (req: Request
 
 app.get(['/api/football-api/matches', '/football-api/matches'], async (req: Request, res: Response) => {
   const league = String(req.query.league || 'bol.1').trim();
-  if (!Object.hasOwn(FOOTBALL_LEAGUES, league)) return res.status(400).json({ error: 'Liga no compatible.' });
+  if (!Object.hasOwn(FOOTBALL_COMPETITIONS, league)) return res.status(400).json({ error: 'Liga no compatible.' });
   res.setHeader('Cache-Control', 'public, max-age=15');
   const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/scoreboard`;
   try {
@@ -1854,7 +1854,7 @@ app.get(['/api/football-api/match/:id', '/football-api/match/:id'], async (req: 
   const eventId = String(req.params.id).trim();
   if (!/^[0-9]{1,20}$/.test(eventId)) return res.status(400).json({ error: 'ID ESPN no válido.' });
   const league = String(req.query.league || 'bol.1').trim();
-  if (!Object.hasOwn(FOOTBALL_LEAGUES, league)) return res.status(400).json({ error: 'Liga no compatible.' });
+  if (!Object.hasOwn(FOOTBALL_COMPETITIONS, league)) return res.status(400).json({ error: 'Liga no compatible.' });
   res.setHeader('Cache-Control', 'public, max-age=15');
   const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/summary?event=${encodeURIComponent(eventId)}`;
   try {

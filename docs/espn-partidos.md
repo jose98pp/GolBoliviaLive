@@ -27,3 +27,24 @@ Los datos dependen de la cobertura y demora de ESPN. Ante un error se conserva e
 ## Verificación
 
 `bun run test` incluye casos de estados, segundos → minutos, añadido, prórroga, marcador, selección por ID, fallo del origen, caché, clasificación por ligas y guardado/restauración del vínculo ESPN. No escribe en Firebase de producción.
+
+## Copas nacionales
+
+En el formulario, el selector **Liga / Copa / Torneo oficial** separa las copas
+nacionales de las ligas y torneos internacionales. Incluye Copa Argentina,
+Copa de la Liga Profesional argentina, Copa do Brasil, Copa del Rey, FA Cup,
+EFL Cup, Coppa Italia, DFB-Pokal, Copa de Francia, Taça de Portugal, KNVB Beker,
+Copa Colombia y Copa Chile. Consulta los partidos de hoy, selecciona el encuentro,
+impórtalo y guarda el formulario. El vínculo ESPN conserva el código de la copa
+para actualizar el marcador y los estados por ID exacto.
+
+No todas las copas tienen partidos hoy ni cobertura en todas las temporadas.
+La disponibilidad depende de ESPN; añadir un código no certifica datos en vivo.
+No se añadieron códigos especulativos para copas de los demás países del catálogo.
+El código de Copa Argentina es `arg.copa_arg`, no `arg.copa`.
+Los clubes existentes mantienen su liga; los nuevos importados desde una copa
+se agrupan en «Otros equipos» del país hasta asignarles su liga real.
+
+Este cambio corresponde al proyecto React/Express. Un despliegue cPanel requiere
+recompilar el frontend y disponer de las rutas ESPN equivalentes en su API PHP;
+subir solo los archivos TypeScript no actualiza una web ya compilada.
