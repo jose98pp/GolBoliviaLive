@@ -48,3 +48,36 @@ jobs:
         run: |
           bun scripts/test-live-catalog.ts
           bun scripts/test-playback-resolution.ts
+
+  interface-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: GolBoliviaLive-TV-tablet-debug
+          path: /tmp/golbolivia-apk
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 android/scripts/smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-interface-smoke
+          path: android-smoke/

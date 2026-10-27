@@ -1,6 +1,6 @@
 # GolBoliviaLive · Android TV y tablet
 
-Cliente público para TV y tablet, independiente del frontend web. Portada con partido destacado y tarjetas de colores inspiradas en la referencia Apple TV: escudos, equipos, marcador y estado (en vivo, entretiempo, VAR, programado o finalizado). Incluye búsqueda, foco visible y favoritos locales. Compatible con Android 6+ en tablet, Android TV y Google TV. No es una app de tvOS ni incorpora administración, credenciales de emisión o escritura en el servidor.
+Cliente público para TV y tablet, independiente del frontend web. Interfaz oscura con portada destacada, guía de canales, recientes y personalización: escudos, equipos, marcador y estado (en vivo, entretiempo, VAR, programado o finalizado). Incluye búsqueda, foco visible y favoritos locales. Compatible con Android 6+ en tablet, Android TV y Google TV. No es una app de tvOS ni incorpora administración, credenciales de emisión o escritura en el servidor.
 
 ## Abrir y compilar
 
@@ -136,3 +136,19 @@ Probar en hardware: portada y filtros con D-pad, nombres largos y retratos, imá
 - Las pruebas de regresión cubren snapshots, mando y dominios bloqueados; la portada, los focos y los iframe reales deben validarse en TV/tablet. La corrección del backend del PR sigue requiriendo publicación para modificar la API de producción.
 
 La compilación 9 incorpora además `main` 5c5d31b: la app lee `sources[]` y `defaultSourceId` como lista autorizada, con nombres y selector Señales compatible con D-pad. Una lista explícita vacía no recupera enlaces antiguos. Respeta `autoFailoverEnabled`: las nuevas opciones manuales no cambian automáticamente a otro canal. Las fuentes HLS marcadas `waitForBroadcast` admiten hasta tres reintentos de 404 inicial y un plazo global de treinta segundos; no se reintentan 401/403 ni segmentos faltantes después de comenzar. Las señales, nombres y política se conservan al recuperar la Activity.
+
+## Guía y personalización (0.3.0, compilación 10)
+
+La interfaz adopta una organización de TV con superficies azul oscuro, selección destacada y tarjetas de contenido, manteniendo la identidad **GolBoliviaLive**, las secciones existentes y las imágenes del catálogo propio. No incorpora marcas, recursos gráficos, cuentas, señales ni código de Tigo/TiVo.
+
+- **Guía TV**: listado paginado con número de posición, nombre, logo y disponibilidad de la señal. El número es la posición en el catálogo filtrado, no una numeración del operador. No se inventan horarios, títulos de programas ni progreso de una EPG ausente.
+- **Recientes**: hasta doce contenidos abiertos, deduplicados y resueltos contra el catálogo actual. Se guardan solo sus identificadores locales, sin URL de video. Los contenidos retirados no reaparecen desde el historial. En Ajustes se pueden ocultar o borrar.
+- **Personalización**: verde GolBolivia, azul TV o dorado; tarjetas compactas; texto grande y preferencias existentes. Los ajustes permanecen en el dispositivo.
+- **Reproducción**: Media3 nativo con HLS, DASH y archivos compatibles; el MIME se reconoce sin confundir `.mpd` con HLS. Las integraciones oficiales de YouTube/Kick y las señales web se conservan. No se agregan credenciales ni licencias DRM de terceros.
+- **Resolución al abrir/reintentar**: consulta `/api/live-events/:id` o el nuevo `/api/iptv/sports/:id` en un ejecutor separado. La espera visible está limitada a 2,5 segundos; ante timeout, API antigua o fallo conserva la fuente conocida y avisa en Diagnóstico. Una baja confirmada impide reproducir su URL anterior. Respuestas tardías no reinician el reproductor ni cambian una selección posterior. Una respuesta de fuentes no modifica el marcador enriquecido por ESPN. Pausar antes de reintentar conserva la pausa.
+- **Errores**: los HTTP 401/403 y errores de DRM/decodificación muestran el problema sin saltar automáticamente a otro contenido. Los fallos de red/servidor conservan el respaldo configurado. Esto no evita bloqueos del proveedor ni obtiene permisos nuevos.
+- **Diagnóstico**, desde las opciones del reproductor: servidor sin ruta/tokens, formato, etapa del fallo, último HTTP, error Media3, tiempo de consulta, primera imagen, búfer y resolución. Las métricas nativas no están disponibles dentro de un iframe y no equivalen a latencia de emisión extremo a extremo.
+
+El nuevo detalle de canales requiere publicar el backend del PR. Con el backend anterior el APK conserva las fuentes del catálogo y muestra que no pudo verificarlas; no requiere desplegar el frontend para usar guía/personalización. El detalle de eventos incluye `stale` para no sustituir una señal reciente por datos anteriores del servidor.
+
+Pruebas: resolver con URL cambiada, bajas confirmadas, API antigua, offline, respuesta de otro contenido, score ESPN conservado; formatos DASH/HLS/MP4 y URLs con parámetros; políticas 401/403/DRM, selección por ID y recientes. La compilación no certifica disponibilidad de señales ni reemplaza pruebas de control remoto y video en TV/tablet físicos.

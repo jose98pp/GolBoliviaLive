@@ -56,6 +56,7 @@ class MainActivity : Activity() {
     private var resolveDeadline: Runnable? = null
     private var resolving = false
     private var playbackStartedAt = 0L
+    private var resolveTimeMs: Long? = null
     private var firstFrameMs: Long? = null
     private var playbackStage = "Preparación"
     private var playbackHttp: Int? = null
@@ -857,6 +858,9 @@ class MainActivity : Activity() {
         cancelResolution()
         val request = playbackRequest
         val previous = original.sources.getOrNull(sourceIndex)
+        resumePlayback = player?.playWhenReady ?: resumePlayback
+        val requestedAt = SystemClock.elapsedRealtime()
+        resolveTimeMs = null
         releasePlayer()
         resolving = true
         playbackWarning = ""
@@ -865,6 +869,7 @@ class MainActivity : Activity() {
         fun complete(resolution: PlaybackResolution) {
             if (request != playbackRequest || selected?.id != original.id || !active || !resolving) return
             resolving = false
+            resolveTimeMs = SystemClock.elapsedRealtime() - requestedAt
             resolveDeadline?.let { handler.removeCallbacks(it) }; resolveDeadline = null
             // A newer catalog update wins over a response requested from an older snapshot.
             val current = selected ?: return
@@ -890,6 +895,7 @@ class MainActivity : Activity() {
             "Señal: ${source?.label.orEmpty()}", "Servidor: $host", "Formato: $format",
             "Etapa: $playbackStage", "HTTP: ${playbackHttp?.toString() ?: "sin error registrado"}",
             "Error: ${playbackError.ifBlank { "ninguno registrado" }}",
+            "Consulta de señal: ${resolveTimeMs?.let { "$it ms" } ?: "sin medir"}",
             "Primera imagen: ${firstFrameMs?.let { "$it ms" } ?: "sin medir"}",
             "Búfer actual: ${player?.totalBufferedDuration?.let { "${it / 1000} s" } ?: "gestionado por el proveedor"}",
             "Video: ${video?.let { "${it.width} × ${it.height}" } ?: "sin datos"}",
