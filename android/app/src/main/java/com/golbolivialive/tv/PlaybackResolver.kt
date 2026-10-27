@@ -7,6 +7,12 @@ import java.net.URLEncoder
 data class PlaybackResolution(val item: WatchItem, val warning: String = "", val confirmed: Boolean = false)
 
 object PlaybackResolver {
+    fun apply(current: WatchItem, requested: WatchItem, resolution: PlaybackResolution): WatchItem {
+        require(current.id == requested.id && resolution.item.id == current.id)
+        if (current.sources != requested.sources || current.autoFailover != requested.autoFailover) return current
+        return current.copy(sources = resolution.item.sources, autoFailover = resolution.item.autoFailover)
+    }
+
     fun refresh(current: WatchItem, fetch: (String) -> JSONObject): PlaybackResolution = try {
         val id = current.id.substringAfter(':')
         val encoded = URLEncoder.encode(id, "UTF-8").replace("+", "%20")

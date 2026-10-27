@@ -873,7 +873,7 @@ class MainActivity : Activity() {
             resolveDeadline?.let { handler.removeCallbacks(it) }; resolveDeadline = null
             // A newer catalog update wins over a response requested from an older snapshot.
             val current = selected ?: return
-            selected = if (current.sources != original.sources) current else resolution.item
+            selected = PlaybackResolver.apply(current, original, resolution)
             sourceIndex = PlaybackPolicy.sourceIndex(selected!!.sources, previous)
             playbackWarning = resolution.warning
             startPlayer()

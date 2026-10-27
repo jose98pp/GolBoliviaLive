@@ -65,4 +65,19 @@ class PlaybackResolverTest {
         assertTrue(result.confirmed)
         assertEquals("https://new.test/live.mpd", result.item.sources.single().url)
     }
+    @Test fun lateResolutionKeepsNewScoresAndTitlesFromTheCatalog() {
+        val current = original.copy(title = "Título actualizado", score = "3 – 1")
+        val refreshed = original.copy(sources = listOf(WatchSource("HLS", "https://new.test/live.m3u8")))
+        val applied = PlaybackResolver.apply(current, original, PlaybackResolution(refreshed, confirmed = true))
+        assertEquals(current.title, applied.title)
+        assertEquals(current.score, applied.score)
+        assertEquals(refreshed.sources, applied.sources)
+    }
+    @Test fun aNewerCatalogSourceOrPolicyWinsOverLatePlaybackResponses() {
+        val changedSource = original.copy(sources = listOf(WatchSource("HLS", "https://newest.test/live.m3u8")))
+        val changedPolicy = original.copy(autoFailover = false)
+        val staleResult = PlaybackResolution(original.copy(sources = emptyList()), confirmed = true)
+        assertEquals(changedSource, PlaybackResolver.apply(changedSource, original, staleResult))
+        assertEquals(changedPolicy, PlaybackResolver.apply(changedPolicy, original, staleResult))
+    }
 }
