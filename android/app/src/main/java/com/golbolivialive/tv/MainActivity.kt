@@ -367,7 +367,7 @@ class MainActivity : Activity() {
         }
         val target = focusTag?.let { root.findViewWithTag<View>(it) }
             ?: root.findViewWithTag("nav:$section")
-        target?.post { if (keepScroll) catalogScroll?.scrollTo(0, savedScroll); target.requestFocus() }
+        target?.post { if (keepScroll) catalogScroll?.scrollTo(0, savedScroll); target.requestFocusFromTouch() }
     }
 
     private fun shield(team: TeamInfo, size: Int, portrait: Boolean = false, light: Boolean = false): View = FrameLayout(this).apply {
