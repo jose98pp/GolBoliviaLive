@@ -410,7 +410,7 @@ async function runTests() {
   );
   assert(loginPageSource.includes("<MatchDetailsEditor"), 'Pestañas: Pestaña 2 integra MatchDetailsEditor centralizado');
   // Confirm tab 1 focuses on stream providers & connections without overlapping live events manager
-  assert(loginPageSource.includes('Proveedor Principal y Canales de Transmisión'), 'Pestañas: Pestaña 1 dedicada a Proveedor Principal y Canales');
+  assert(loginPageSource.includes('<EventSourcesManager'), 'Pestañas: Señal usa el administrador de múltiples fuentes');
 
   // 29. LIMPIEZA DE EVENTOS Y CHAT
   assert(typeof apiClient.clearAllMatchEvents === 'function', 'Limpieza: apiClient.clearAllMatchEvents disponible');
@@ -505,9 +505,10 @@ async function runTests() {
   assert(safeProvider === 'CLOUDFLARE', 'Resiliencia: fallback produce CLOUDFLARE en mayúsculas sin errores');
 
   // 35. MEJORA 1: SELECTOR RÁPIDO DE SEÑALES Y RECARGA
-  assert(appSource.includes("id: 'cloudflare',"), 'Señales: Opción 1 Cloudflare configurada');
-  assert(appSource.includes("id: 'youtube',"), 'Señales: Opción 2 YouTube configurada');
-  assert(appSource.includes("id: 'kick',"), 'Señales: Opción 3 Kick configurada');
+  const unifiedPlayerSource = await fs.promises.readFile(path.join(__dirname, '../src/features/player/UniversalStreamPlayer.tsx'), 'utf-8');
+  assert(unifiedPlayerSource.includes('getEventSources(event)'), 'Señales: el reproductor consume las fuentes guardadas del evento');
+  assert(unifiedPlayerSource.includes('sources.map(item'), 'Señales: el selector admite varias fuentes del mismo tipo');
+  assert(unifiedPlayerSource.includes('sessionStorage.setItem'), 'Señales: cada espectador conserva su propia selección');
   assert(appSource.includes('handleReloadCurrentSignal'), 'Señales: Función handleReloadCurrentSignal activa');
   assert(appSource.includes('Recargar Señal'), 'Señales: Botón Recargar Señal presente en el reproductor');
   assert(appSource.includes('signalReloadKey'), 'Señales: Clave dinámica signalReloadKey para reinicio limpio de stream');

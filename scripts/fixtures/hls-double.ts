@@ -13,6 +13,7 @@ export default class HlsDouble {
   currentLevel = -1;
   constructor(public config: any) { HlsDouble.instances.push(this); }
   on(event: string, handler: (...args: any[]) => void) { this.handlers.set(event, handler); }
+  off(event: string, handler?: (...args: any[]) => void) { if (!handler || this.handlers.get(event) === handler) this.handlers.delete(event); }
   emit(event: string, data: unknown) { this.handlers.get(event)?.(event, data); }
   attachMedia(_video: unknown) {}
   loadSource(src: string) { this.sources.push(src); }

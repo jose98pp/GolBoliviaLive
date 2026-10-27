@@ -25,11 +25,13 @@ import { iptvService } from '../services/iptvService';
 interface IptvChannelsManagerProps {
   onSetMatchStreamUrl?: (streamUrl: string, channelName: string, sourceType?: 'hls' | 'iframe', channel?: IptvChannel) => void | Promise<void>;
   activeMatchStreamUrl?: string;
+  assignedSourceUrls?: string[];
 }
 
 export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
   onSetMatchStreamUrl,
   activeMatchStreamUrl,
+  assignedSourceUrls = [],
 }) => {
   const [channels, setChannels] = useState<IptvChannel[]>([]);
   const [customChannels, setCustomChannels] = useState<IptvChannel[]>([]);
@@ -215,7 +217,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
     try {
       if (!onSetMatchStreamUrl) throw new Error('No hay un partido seleccionado.');
       await onSetMatchStreamUrl(channel.streamUrl, channel.name, channel.sourceType, channel);
-      setAssignedMessage(`Señal «${channel.name}» guardada en el partido.`);
+      setAssignedMessage(`Canal «${channel.name}» añadido a las fuentes del evento. Puedes elegir la fuente inicial en Señal.`);
       setTimeout(() => setAssignedMessage(null), 4000);
     } catch (error) {
       setAssignmentError(error instanceof Error ? error.message : 'No se pudo guardar la señal del partido.');
@@ -296,7 +298,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Configura señales personalizadas para el fútbol boliviano y enlaza transmisiones al partido actual con 1 clic.
+                Guarda canales y añade varias señales al evento seleccionado.
               </p>
             </div>
           </div>
@@ -589,6 +591,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {displayedChannels.map((channel) => {
             const isMatchActive = activeMatchStreamUrl === channel.streamUrl;
+            const isAssigned = isMatchActive || assignedSourceUrls.includes(channel.streamUrl);
             return (
               <div
                 key={channel.id}
@@ -694,7 +697,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                   <button
                     type="button"
                     onClick={() => { void handleSetMatchStream(channel); }}
-                    disabled={assigningChannelId !== null}
+                    disabled={assigningChannelId !== null || isAssigned}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer ${
                       isMatchActive
                         ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
@@ -702,7 +705,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                     }`}
                   >
                     <Zap className="w-3 h-3" />
-                    <span>{assigningChannelId === channel.id ? 'Guardando señal…' : isMatchActive ? 'Señal en Vivo' : 'Transmitir en Partido'}</span>
+                    <span>{assigningChannelId === channel.id ? 'Guardando señal…' : isMatchActive ? 'Fuente inicial' : isAssigned ? 'Añadido al evento' : 'Añadir a fuentes'}</span>
                   </button>
                 </div>
               </div>

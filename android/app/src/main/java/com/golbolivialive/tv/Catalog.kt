@@ -6,7 +6,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class TeamInfo(val id: String, val name: String, val crest: String = "", val color: String = "#15314D")
-data class WatchSource(val provider: String, val url: String, val embedded: Boolean = false)
+data class WatchSource(val provider: String, val url: String, val embedded: Boolean = false, val label: String = provider, val waitForBroadcast: Boolean = false, val id: String = "")
 data class MatchStatus(val label: String, val category: String)
 data class WatchItem(
     val id: String, val title: String, val subtitle: String, val live: Boolean,
@@ -14,7 +14,7 @@ data class WatchItem(
     val home: TeamInfo? = null, val away: TeamInfo? = null,
     val status: String = "TV · CANAL", val category: String = "channel", val score: String = "VS",
     val logo: String = "", val sport: String = "football", val competition: String = "",
-    val competitionLogo: String = "", val result: String = "", val winner: String = "",
+    val competitionLogo: String = "", val result: String = "", val winner: String = "", val autoFailover: Boolean = true,
 ) {
     val streams: List<String> get() = sources.filter { !it.embedded }.map { it.url }
 }
@@ -59,6 +59,25 @@ object Catalog {
         return MatchStatus(listOf("EN VIVO", period, clock).filter { it.isNotBlank() }.joinToString(" · "), "live")
     }
 
+    private fun eventSources(row: JSONObject): List<WatchSource>? {
+        val entries = row.optJSONArray("sources") ?: return null
+        val sources = (0 until minOf(entries.length(), 20)).mapNotNull { index ->
+            val value = entries.optJSONObject(index) ?: return@mapNotNull null
+            val url = value.optString("url")
+            val source = when (value.optString("type")) {
+                "hls" -> https(url)?.let { WatchSource("HLS", it) }
+                "iframe" -> embeddedSource(url, "Web")
+                "youtube" -> embeddedSource(if (url.matches(Regex("[A-Za-z0-9_-]{11}"))) "https://www.youtube.com/embed/$url" else url, "YouTube")
+                "kick" -> embeddedSource(if (url.matches(Regex("[A-Za-z0-9_-]{1,80}"))) "https://kick.com/$url" else url, "Kick")
+                else -> null
+            } ?: return@mapNotNull null
+            source.copy(id = value.optString("id"), label = value.optString("name").take(80).ifBlank { source.provider },
+                waitForBroadcast = value.optString("type") == "hls" && value.optBoolean("waitForBroadcast"))
+        }.distinctBy { it.url to it.embedded }
+        val initial = row.optString("defaultSourceId")
+        return sources.sortedBy { if (it.id == initial) 0 else 1 }
+    }
+
     fun matches(json: JSONObject, teams: Map<String, TeamInfo> = emptyMap()): List<WatchItem> {
         val rows = json.getJSONArray("events")
         return (0 until rows.length()).mapNotNull { index ->
@@ -66,7 +85,8 @@ object Catalog {
             val sports = SportsEvents.data(row)
             if (!row.isNull("sports") && sports == null) return@mapNotNull null
             val primary = row.optString("primaryProvider", "cloudflare")
-            val failover = row.optBoolean("autoFailoverEnabled", true)
+            val explicitSources = eventSources(row)
+            val failover = row.optBoolean("autoFailoverEnabled", explicitSources == null)
             val providers = if (failover) listOf(primary) + row.optJSONArray("fallbackOrder").let { a ->
                 if (a == null) emptyList() else (0 until a.length()).map { a.optString(it) }
             } else listOf(primary)
@@ -94,6 +114,7 @@ object Catalog {
                 }
                 if (failover) add("Respaldo", row.optString("backupVideoUrl"))
             }
+            if (explicitSources != null) { sources.clear(); sources.addAll(explicitSources) }
             val id = row.getString("id")
             fun team(field: String, side: Int): TeamInfo {
                 if (sports != null) {
@@ -121,7 +142,7 @@ object Catalog {
                 status = state.label + if (row.optBoolean(if (sports != null) "sportsSyncFailed" else "espnSyncFailed")) " · ESPN sin actualizar" else "",
                 category = state.category, score = score, sport = sport, competition = competition,
                 competitionLogo = SportsEvents.image(sports?.optString("competitionLogo") ?: row.optString("espnCompetitionLogo")),
-                result = sports?.optString("result").orEmpty(), winner = winner)
+                result = sports?.optString("result").orEmpty(), winner = winner, autoFailover = failover)
 
         }
     }

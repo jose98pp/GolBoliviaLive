@@ -1,3 +1,4 @@
+import { buildEventSourcesPatch } from '../src/utils/eventSources';
 import { sanitizeSportsEvent } from '../src/utils/sportsEvents';
 import { FOOTBALL_LEAGUES } from '../src/data/footballLeagues';
 import assert from 'node:assert/strict';
@@ -138,8 +139,8 @@ const eventRoute = server.slice(server.indexOf("app.post(\n  ['/api/live-events'
 const eventHandler = eventRoute.slice(eventRoute.indexOf('async (req:'), eventRoute.lastIndexOf('\n);')).trim();
 const eventCode = await transform(`export const handle = ${eventHandler};`, { loader: 'ts', format: 'cjs' });
 const eventModule = { exports: {} as any };
-new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', 'FOOTBALL_LEAGUES', 'sanitizeSportsEvent', eventCode.code)(eventModule, eventModule.exports,
-  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {}, FOOTBALL_LEAGUES, sanitizeSportsEvent);
+new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', 'FOOTBALL_LEAGUES', 'sanitizeSportsEvent', 'buildEventSourcesPatch', eventCode.code)(eventModule, eventModule.exports,
+  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {}, FOOTBALL_LEAGUES, sanitizeSportsEvent, buildEventSourcesPatch);
 const postEvent = async (body: LiveEvent) => {
   let status = 200; let response: any;
   const res: any = { status: (code: number) => { status = code; return res; }, json: (data: any) => { response = data; return res; } };
@@ -174,3 +175,23 @@ assert.equal(load().sports.participants[0].score, 142, 'Un error no modifica el 
 await saveLiveEventToFirebase({ ...load(), sports: null });
 assert.equal(load().sports, null, 'Cambiar a fútbol limpia los datos deportivos anteriores');
 console.log('Persistencia multideporte: guardar/recargar puntos, conservar IPTV/iframe, rechazar imágenes inseguras y volver a fútbol comprobados.');
+
+const multipleSources = buildEventSourcesPatch([
+  { id: 'source-one', name: 'Canal uno', type: 'hls', url: 'https://example.test/one.m3u8', channelId: 'one' },
+  { id: 'source-two', name: 'Canal dos', type: 'iframe', url: 'https://streamxhd.st/live1.php?stream=dsports', channelId: 'two' },
+  { id: 'source-three', name: 'Mi transmisión', type: 'hls', url: 'https://example.test/live/partido/index.m3u8', waitForBroadcast: true },
+], 'source-two');
+const multiplePayload = { ...load(), ...multipleSources, version: load().version } as LiveEvent;
+assert.equal((await postEvent(multiplePayload)).status, 200);
+assert.equal(load().sources.length, 3);
+assert.equal(load().defaultSourceId, 'source-two');
+assertConfirmedMatchSignal(multiplePayload, load());
+const reorderedKeys = { ...load(), sources: load().sources.map((source: any) => Object.fromEntries(Object.entries(source).reverse())) };
+assertConfirmedMatchSignal(multiplePayload, reorderedKeys);
+assert.equal((await postEvent({ ...multiplePayload, version: load().version, defaultSourceId: 'missing' })).status, 400);
+assert.equal(load().sources.length, 3);
+const emptyPayload = { ...load(), ...buildEventSourcesPatch([], ''), version: load().version } as LiveEvent;
+assert.equal((await postEvent(emptyPayload)).status, 200);
+assert.equal(load().sources.length, 0);
+assertConfirmedMatchSignal(emptyPayload, load());
+console.log('Fuentes por evento: guardar/recargar tres opciones, fuente inicial, orden de claves Firestore, validación y eliminación completa comprobados.');

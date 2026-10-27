@@ -1320,61 +1320,6 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">
                           Señal:
                         </span>
-                        {[
-                          {
-                            id: 'cloudflare',
-                            name: 'Opción 1 (Principal)',
-                            shortName: 'Opción 1',
-                            badge: 'HD',
-                            emoji: '⚡',
-                            isConfigured: Boolean(currentLiveEvent.cloudflare?.playbackUrl?.trim()),
-                          },
-                          {
-                            id: 'youtube',
-                            name: 'Opción 2 (Alternativa)',
-                            shortName: 'Opción 2',
-                            badge: 'HD',
-                            emoji: '▶',
-                            isConfigured: Boolean(currentLiveEvent.youtube?.videoId?.trim()),
-                          },
-                          {
-                            id: 'kick',
-                            name: 'Opción 3 (Respaldo)',
-                            shortName: 'Opción 3',
-                            badge: 'HD',
-                            emoji: '🟢',
-                            isConfigured: Boolean(currentLiveEvent.kick?.channel?.trim()),
-                          },
-                          { id: 'external', name: 'Reproductor externo', shortName: 'Externo', badge: '', emoji: '▶', isConfigured: Boolean(currentLiveEvent.externalSource?.url) },
-                        ].map((prov) => {
-                          const isCurrent = (currentLiveEvent.primaryProvider || 'cloudflare') === prov.id && !activeIptvChannel;
-                          return (
-                            <button
-                              key={prov.id}
-                              type="button"
-                              onClick={() => {
-                                setActiveIptvChannel(null);
-                                const updated: LiveEvent = { ...currentLiveEvent, primaryProvider: prov.id as StreamProvider };
-                                handleSelectMatchEvent(updated);
-                              }}
-                              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                                isCurrent
-                                  ? 'bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-black ring-1 ring-emerald-300'
-                                  : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
-                              }`}
-                            >
-                              <span>{prov.emoji}</span>
-                              <span className="hidden md:inline">{prov.name}</span>
-                              <span className="md:hidden">{prov.shortName}</span>
-                              {prov.isConfigured && !isCurrent && (
-                                <span className="text-[9px] px-1 py-0.2 rounded font-bold uppercase bg-slate-800 text-emerald-400 border border-slate-700">
-                                  {prov.badge}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-
                         {/* Botón de Recargar Señal rápida */}
                         <button
                           type="button"

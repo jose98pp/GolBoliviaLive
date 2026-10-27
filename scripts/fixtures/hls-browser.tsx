@@ -7,13 +7,16 @@ import HlsDouble from './hls-double';
 const nativeSetTimeout = window.setTimeout.bind(window);
 const nativeClearTimeout = window.clearTimeout.bind(window);
 const startupTimers = new Map<number, () => void>();
+const broadcastTimers = new Map<number, () => void>();
 let timerId = -1;
 window.setTimeout = ((callback: () => void, delay?: number, ...args: unknown[]) => {
   if (delay === 30000) { const id = timerId--; startupTimers.set(id, () => { startupTimers.delete(id); callback(); }); return id; }
+  if ([1500, 2500, 4000, 6000].includes(delay || 0)) { const id = timerId--; broadcastTimers.set(id, () => { broadcastTimers.delete(id); callback(); }); return id; }
   return nativeSetTimeout(callback, delay, ...args);
 }) as typeof window.setTimeout;
 window.clearTimeout = ((id: number) => {
   startupTimers.delete(id);
+  broadcastTimers.delete(id);
   nativeClearTimeout(id);
 }) as typeof window.clearTimeout;
 
@@ -141,6 +144,33 @@ async function run() {
   check(missing.destroyed && missing.sources.length === 1, 'HTTP 404 terminates without retrying a missing source');
   check(errors.length === previousErrors + 1 && errors.at(-1)!.includes('HTTP 404'), 'HTTP 404 is preserved in the terminal diagnosis');
   await act(async () => root.unmount());
+  options = { ...options, src: 'https://own-test.trycloudflare.com/live/partido/index.m3u8', backupSrc: undefined, autoFailover: false };
+  root = createRoot(host);
+  await render();
+  const own = current();
+  const beforeBroadcast = errors.length;
+  const missingManifest = () => act(async () => own.emit('error', { type: 'networkError', details: 'manifestLoadError', fatal: true, response: { code: 404 } }));
+  await missingManifest();
+  check(!own.destroyed && broadcastTimers.size === 1 && errors.length === beforeBroadcast, 'MediaMTX 404 before playback waits for the first manifest');
+  await missingManifest();
+  check(broadcastTimers.size === 1, 'Duplicate errors share a single broadcast retry timer');
+  check(own.config.manifestLoadPolicy.default.maxTimeToFirstByteMs === 12000, 'Own broadcast allows the initial MediaMTX muxer to start');
+  for (let i = 0; i < 4; i++) {
+    await act(async () => { for (const callback of [...broadcastTimers.values()]) callback(); });
+    await missingManifest();
+  }
+  check(own.destroyed && broadcastTimers.size === 0 && errors.length === beforeBroadcast + 1, 'Missing MediaMTX path terminates after bounded retries');
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await render();
+  const ready = current();
+  await act(async () => ready.emit('error', { type: 'networkError', details: 'manifestLoadError', fatal: true, response: { code: 404 } }));
+  await act(async () => video.dispatchEvent(new Event('playing')));
+  check(broadcastTimers.size === 0 && hook.isLoaded, 'Successful broadcast cancels pending startup retries');
+  await act(async () => ready.emit('error', { type: 'networkError', details: 'fragLoadError', fatal: true, response: { code: 404 } }));
+  check(ready.destroyed && broadcastTimers.size === 0, 'Missing segments after playback do not restart the startup loop');
+  await act(async () => root.unmount());
+  check(startupTimers.size === 0 && broadcastTimers.size === 0, 'Unmount clears both broadcast and startup timers');
   host.remove();
   return checks;
 }

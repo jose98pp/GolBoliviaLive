@@ -13,6 +13,8 @@ interface VideoSurfaceProps {
   isMuted: boolean;
   onTogglePlay: (e?: React.MouseEvent) => void;
   isReconnecting: boolean;
+  isStarting?: boolean;
+  waitingForBroadcast?: boolean;
   streamError: string | null;
   onReloadStream: () => void;
   homeScore: number;
@@ -30,6 +32,8 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   isMuted,
   onTogglePlay,
   isReconnecting,
+  isStarting = false,
+  waitingForBroadcast = false,
   streamError,
   onReloadStream,
   homeScore,
@@ -356,13 +360,13 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       )}
 
       {/* Reconnecting / Buffering Spinner */}
-      {sourceInfo.type !== 'external' && isReconnecting && (
+      {sourceInfo.type !== 'external' && (isReconnecting || (sourceInfo.type === 'hls' && isStarting)) && (
         <div className="absolute inset-0 z-25 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-center p-4">
           <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-2" />
           <span className="text-xs font-bold text-white uppercase tracking-wider">
-            Reconectando con la transmisión...
+            {isStarting ? 'Preparando señal HLS…' : 'Reconectando con la transmisión…'}
           </span>
-          <span className="text-[10px] text-slate-400 mt-1">Sincronizando señal en vivo</span>
+          <span className="text-[10px] text-slate-400 mt-1">{waitingForBroadcast ? 'Esperando OBS / MediaMTX, hasta 30 segundos' : 'Sincronizando señal en vivo'}</span>
         </div>
       )}
 

@@ -127,7 +127,7 @@ export function normalizeMatchIptvSource(value: unknown): MatchIptvSource | null
 }
 
 export function assertConfirmedMatchSignal(expected: LiveEvent, confirmed: LiveEvent): void {
-  const signal = (event: LiveEvent) => JSON.stringify({ primaryProvider: event.primaryProvider,
+  const signal = (event: LiveEvent) => JSON.stringify({ primaryProvider: event.primaryProvider, sources: (event.sources || []).map(source => ({ id: source.id, name: source.name, type: source.type, url: source.url, channelId: source.channelId || '', waitForBroadcast: Boolean(source.waitForBroadcast) })), defaultSourceId: event.defaultSourceId || '',
     iptvSource: normalizeMatchIptvSource(event.iptvSource), externalSource: normalizeExternalPlayerUrl(event.externalSource?.url),
     fallbackOrder: event.fallbackOrder, activeStreamSource: event.activeStreamSource || 'obs', broadcastMode: event.broadcastMode || 'obs_custom' });
   if (signal(expected) !== signal(confirmed)) throw new Error('El servidor no confirmó la señal seleccionada. Recarga el partido y vuelve a guardar.');

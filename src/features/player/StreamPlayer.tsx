@@ -137,6 +137,7 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
     backupSrc: streamSettings?.backupVideoUrl,
     autoFailover: streamSettings?.autoFailoverEnabled !== false,
     autoplay: isPlaying,
+    waitForBroadcast: streamSettings?.waitForBroadcast,
     onError: handleHlsError,
     onSuccess: handleHlsSuccess,
     onFailoverTriggered: handleHlsFailover,
@@ -240,6 +241,8 @@ export const StreamPlayer: React.FC<StreamPlayerProps> = ({
         isMuted={isMuted}
         onTogglePlay={handleTogglePlay}
         isReconnecting={isReconnecting}
+        isStarting={Boolean(effectiveSrc && isPlaying && !isLoaded && !streamError)}
+        waitingForBroadcast={Boolean(streamSettings?.waitForBroadcast)}
         streamError={streamError}
         onReloadStream={handleReloadStream}
         homeScore={homeScore}

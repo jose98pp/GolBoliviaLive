@@ -54,6 +54,10 @@ class MainActivity : Activity() {
     private var lastEnrichmentAt = 0L
     private var lastEnrichmentKey = ""
     private var startupWatchdog: Runnable? = null
+    private var broadcastRetry: Runnable? = null
+    private var broadcastAttempts = 0
+    private var broadcastStartedAt = 0L
+    private var broadcastHasPlayed = false
     private var forceEnrichment = false
     private var lastCatalogAt = 0L
     private var syncLabel: TextView? = null
@@ -507,7 +511,10 @@ class MainActivity : Activity() {
             .ifBlank { if (loading) "Actualizando datos…" else "Catálogo actualizado · Mantén OK para favoritos" }
         selected?.let { current ->
             (matches + channels).find { it.id == current.id }?.let { updated ->
-                selected = current.copy(sources = updated.sources, title = updated.title, subtitle = updated.subtitle, home = updated.home, away = updated.away,
+                val playing = current.sources.getOrNull(sourceIndex)
+                val found = updated.sources.indexOfFirst { if (!playing?.id.isNullOrBlank()) it.id == playing?.id else it.url == playing?.url }
+                sourceIndex = found.coerceAtLeast(0)
+                selected = current.copy(autoFailover = updated.autoFailover, sources = updated.sources, title = updated.title, subtitle = updated.subtitle, home = updated.home, away = updated.away,
                     status = updated.status, score = updated.score, category = updated.category, live = updated.live,
                     sport = updated.sport, competition = updated.competition, competitionLogo = updated.competitionLogo, result = updated.result, winner = updated.winner)
                 watchHeader?.text = watchTitle(updated)
@@ -698,8 +705,15 @@ class MainActivity : Activity() {
             addView(LinearLayout(this@MainActivity).apply {
                 addView(button("Volver", "watch:back") { closePlayer() })
                 addView(button("Reintentar") { startPlayer() })
+                if (item.sources.size > 1) addView(button("Señales") {
+                    val current = selected ?: return@button
+                    AlertDialog.Builder(this@MainActivity).setTitle("Elegir señal")
+                        .setSingleChoiceItems(current.sources.map { it.label }.toTypedArray(), sourceIndex) { dialog, which ->
+                            sourceIndex = which; dialog.dismiss(); startPlayer()
+                        }.setNegativeButton("Cancelar", null).show()
+                })
                 if (item.sources.size > 1) addView(button("Siguiente señal") {
-                    sourceIndex = (sourceIndex + 1) % item.sources.size; startPlayer()
+                    sourceIndex = (sourceIndex + 1) % (selected?.sources?.size ?: item.sources.size); startPlayer()
                 })
                 addView(button("Encajar / Llenar") {
                     val zoom = !preferences.getBoolean("zoomVideo", false)
@@ -737,13 +751,14 @@ class MainActivity : Activity() {
         startPlayer()
     }
 
-    private fun startPlayer() {
+    private fun startPlayer(waitRetry: Boolean = false) {
         val item = selected ?: return
         if (!active) return
         val source = item.sources.getOrNull(sourceIndex) ?: return
         releasePlayer()
+        if (!waitRetry) { broadcastAttempts = 0; broadcastStartedAt = System.currentTimeMillis(); broadcastHasPlayed = false }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        playerStatus?.text = "Cargando ${source.provider}…"
+        playerStatus?.text = "Cargando ${source.label}…"
         if (source.embedded) {
             runCatching {
                 EmbeddedPlayer(this, source, resumePlayback, preferences.getBoolean("blockAds", true)) { message ->
@@ -781,9 +796,9 @@ class MainActivity : Activity() {
         instance.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (player !== instance) return
-                if (state == Player.STATE_READY) { startupWatchdog?.let { handler.removeCallbacks(it) }; startupWatchdog = null }
+                if (state == Player.STATE_READY) { broadcastHasPlayed = true; startupWatchdog?.let { handler.removeCallbacks(it) }; startupWatchdog = null }
                 playerStatus?.text = when (state) {
-                    Player.STATE_BUFFERING -> "Cargando ${source.provider}…"
+                    Player.STATE_BUFFERING -> "Cargando ${source.label}…"
                     Player.STATE_READY -> "${source.provider} · OK: controles · Atrás: catálogo"
                     Player.STATE_ENDED -> "La transmisión ha terminado."
                     else -> "Preparando señal…"
@@ -798,7 +813,13 @@ class MainActivity : Activity() {
                     if (cause is HttpDataSource.InvalidResponseCodeException) status = cause.responseCode
                     cause = cause.cause
                 }
-                if (sourceIndex + 1 < item.sources.size) {
+                if (BroadcastStartup.canRetry(source.waitForBroadcast, status, broadcastHasPlayed, broadcastAttempts, System.currentTimeMillis() - broadcastStartedAt) && instance.playWhenReady) {
+                    broadcastAttempts++
+                    resumePlayback = instance.playWhenReady
+                    playerStatus?.text = "Esperando transmisión OBS / MediaMTX · Intento $broadcastAttempts de 3"
+                    broadcastRetry = Runnable { if (active && selected?.id == item.id && player === instance) startPlayer(true) }
+                        .also { handler.postDelayed(it, 2000) }
+                } else if (selected?.autoFailover == true && sourceIndex + 1 < (selected?.sources?.size ?: item.sources.size)) {
                     resumePlayback = instance.playWhenReady
                     sourceIndex++
                     handler.post { if (active && selected?.id == item.id && player === instance) startPlayer() }
@@ -820,7 +841,7 @@ class MainActivity : Activity() {
         instance.playWhenReady = resumePlayback
         startupWatchdog = Runnable {
             if (player === instance && instance.playWhenReady && instance.playbackState == Player.STATE_BUFFERING) {
-                if (sourceIndex + 1 < item.sources.size) {
+                if (selected?.autoFailover == true && sourceIndex + 1 < (selected?.sources?.size ?: item.sources.size)) {
                     sourceIndex++; startPlayer()
                 } else {
                     instance.stop()
@@ -829,12 +850,13 @@ class MainActivity : Activity() {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
             }
-        }.also { handler.postDelayed(it, 18000) }
+        }.also { handler.postDelayed(it, if (source.waitForBroadcast) (30000L - (System.currentTimeMillis() - broadcastStartedAt)).coerceAtLeast(1L) else 18000L) }
         playerView?.requestFocus()
     }
 
     private fun releasePlayer() {
         cancelRemotePress()
+        broadcastRetry?.let { handler.removeCallbacks(it) }; broadcastRetry = null
         startupWatchdog?.let { handler.removeCallbacks(it) }; startupWatchdog = null
         playerView?.player = null
         player?.release(); player = null; playerView = null

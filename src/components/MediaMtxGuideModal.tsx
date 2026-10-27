@@ -25,9 +25,13 @@ hls: yes
 hlsAddress: :8888
 hlsAlwaysRemux: yes
 hlsVariant: fmp4
-hlsSegmentCount: 5
+hlsSegmentCount: 7
 hlsSegmentDuration: 1s
-hlsAllowOrigin: '*'
+hlsAllowOrigins: ['https://golbolivialive-beta.vercel.app']
+
+paths:
+  live/partido:
+    source: publisher
 `;
 
   return (
@@ -154,8 +158,8 @@ hlsAllowOrigin: '*'
               <div>
                 <span className="text-slate-400 text-[10px] block">Clave de retransmisión:</span>
                 <div className="flex items-center justify-between font-mono text-amber-400">
-                  <span>bolivia</span>
-                  <button onClick={() => copyToClipboard('bolivia', 'key')} className="hover:text-white">
+                  <span>partido</span>
+                  <button onClick={() => copyToClipboard('partido', 'key')} className="hover:text-white">
                     {copiedKey === 'key' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                   </button>
                 </div>
@@ -166,7 +170,7 @@ hlsAllowOrigin: '*'
               </div>
             </div>
             <p className="text-slate-400 text-[11px]">
-              Pulsa <strong>&quot;Iniciar transmisión&quot;</strong> en OBS. MediaMTX mostrará en su consola: <code className="text-emerald-400 font-mono">[RTMP] [conn] is publishing to &apos;live/bolivia&apos;</code>.
+              Pulsa <strong>&quot;Iniciar transmisión&quot;</strong> en OBS. MediaMTX mostrará en su consola: <code className="text-emerald-400 font-mono">[RTMP] [conn] is publishing to &apos;live/partido&apos;</code>.
             </p>
           </div>
 
@@ -180,8 +184,8 @@ hlsAllowOrigin: '*'
               La URL local directa de MediaMTX es:
             </p>
             <div className="p-2.5 bg-[#050811] rounded-xl border border-slate-800 font-mono text-slate-300 flex items-center justify-between">
-              <span className="text-emerald-400">http://localhost:8888/live/bolivia/index.m3u8</span>
-              <button onClick={() => copyToClipboard('http://localhost:8888/live/bolivia/index.m3u8', 'hls_local')} className="hover:text-white">
+              <span className="text-emerald-400">http://localhost:8888/live/partido/index.m3u8</span>
+              <button onClick={() => copyToClipboard('http://localhost:8888/live/partido/index.m3u8', 'hls_local')} className="hover:text-white">
                 {copiedKey === 'hls_local' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
               </button>
             </div>
@@ -199,7 +203,7 @@ hlsAllowOrigin: '*'
                 </button>
               </div>
               <p className="text-slate-400 text-[11px]">
-                Copia la URL segura que te dé Cloudflare (ej. <code className="text-slate-200">https://xyz.trycloudflare.com/live/bolivia/index.m3u8</code>) y pégala en el campo <strong>URL de Video (HLS/MP4)</strong> de tu consola.
+                Copia la URL segura que te dé Cloudflare (ej. <code className="text-slate-200">https://xyz.trycloudflare.com/live/partido/index.m3u8</code>) y pégala en el campo <strong>Fuentes del evento → Añadir enlace → HLS</strong> de tu consola.
               </p>
             </div>
           </div>
