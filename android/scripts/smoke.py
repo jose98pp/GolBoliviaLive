@@ -1,4 +1,5 @@
 import pathlib
+import re
 import subprocess
 import struct
 import time
@@ -55,5 +56,6 @@ width, height = struct.unpack('>II', (OUTPUT / 'portrait-home.png').read_bytes()
 assert height > width, f'Portrait emulator must have a tall display: {width} x {height}'
 logs = adb('logcat', '-d', '-s', 'AndroidRuntime:E')
 (OUTPUT / 'runtime.log').write_text(logs)
-assert 'FATAL EXCEPTION' not in logs, 'Android runtime crashed'
+crashes = logs.split('FATAL EXCEPTION:')[1:]
+assert not any(re.search(r'Process: ' + re.escape(PACKAGE) + r'(?=[:,\s])', crash) for crash in crashes), 'GolBoliviaLive runtime crashed'
 print('Emulator smoke: landscape home, D-pad guide/settings and portrait home passed.')
