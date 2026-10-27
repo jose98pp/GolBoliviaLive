@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { transpileTypeScriptFixture } from './fixtures/bun-transpiler';
 import { createLiveEventCatalog } from '../src/services/liveEventCatalog';
 
 let current = [{ id: 'kept' }];
@@ -21,7 +22,7 @@ const confirmed = await empty.load(); assert.equal(confirmed.catalogConfirmed, t
 const source = await readFile(new URL('../src/services/firebase.ts', import.meta.url), 'utf8');
 const start = source.indexOf('export async function getLiveEventsFromFirebase(');
 const code = source.slice(start, source.indexOf('export function subscribeLiveEventsFirebase', start));
-const compiled = new Bun.Transpiler({ loader: 'ts', target: 'browser' }).transformSync(code).replace('export async function', 'async function');
+const compiled = transpileTypeScriptFixture(code).replace('export async function', 'async function');
 let reject = true;
 const reader = new Function('collection', 'db', 'getDocs', 'getDocsFromServer', 'hydrateLiveEventDoc', 'console', `${compiled}; return getLiveEventsFromFirebase;`)(
   () => ({}), {}, async () => { throw new Error('SDK fallback'); }, async () => { if (reject) throw new Error('offline'); return { empty: true }; }, () => null, { warn() {} });

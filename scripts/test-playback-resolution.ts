@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { transpileTypeScriptFixture } from './fixtures/bun-transpiler';
 
 const source = await readFile(new URL('../src/services/iptvBackend.ts', import.meta.url), 'utf8');
 const start = source.indexOf("iptvRouter.get('/sports/:id'");
 const code = source.slice(start, source.indexOf('// GET /api/iptv/status', start));
-const compiled = new Bun.Transpiler({ loader: 'ts', target: 'browser' }).transformSync(code);
+const compiled = transpileTypeScriptFixture(code);
 let route: (req: any, res: any) => Promise<void>;
 let channels = [{ id: 'custom-iptv-a', name: 'Mi canal', streamUrl: 'https://example.com/current.m3u8' }];
 let fail = false;
