@@ -280,15 +280,16 @@ class MainActivity : Activity() {
                 section = tab; page = 0; render("nav:$tab")
             })
         }
-        root.addView(HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false; addView(nav)
-        })
+        val navScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(nav) }
+        if (resources.configuration.screenWidthDp >= 700) {
+            val searchButton = header.getChildAt(1); header.removeView(searchButton)
+            header.addView(navScroll, LinearLayout.LayoutParams(0, -2, 3f)); header.addView(searchButton)
+        } else root.addView(navScroll)
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(4), dp(12), dp(4), dp(32)) }
         catalogScroll = ScrollView(this).apply { isFillViewport = true; addView(body) }
         root.addView(catalogScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         if (section == "Ajustes") settings() else {
-            if (notice.isNotBlank()) body.addView(label(notice, 13f, true))
-            syncLabel = label(syncText(), 12f, true)
+            syncLabel = label(listOf(notice, syncText()).filter { it.isNotBlank() }.joinToString(" · "), 12f, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
             body.addView(syncLabel)
             if (query.isNotBlank()) {
                 body.addView(label("Resultados para «$query»", 22f))
@@ -297,7 +298,7 @@ class MainActivity : Activity() {
             if (section != "Canales") {
                 val filters = LinearLayout(this)
                 listOf("all" to "Todos", "football" to "Fútbol", "basketball" to "Básquet", "mma" to "MMA / UFC", "other" to "Otros").forEach { (key, name) ->
-                    filters.addView(button((if (sportFilter == key) "• " else "") + name, "sport:$key") { sportFilter = key; page = 0; render("sport:$key") })
+                    filters.addView(button((if (sportFilter == key) "• " else "") + name, "sport:$key") { sportFilter = key; page = 0; render("sport:$key") }.apply { minimumHeight = dp(36); setPadding(dp(12), dp(4), dp(12), dp(4)); textSize = 13f })
                 }
                 body.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(filters) })
             }
@@ -385,7 +386,7 @@ class MainActivity : Activity() {
     private fun hero(item: WatchItem) {
         val wide = resources.configuration.screenWidthDp >= 700
         val hero = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(-1, if (wide) dp(if (largeText()) 400 else 340) else -2).apply { setMargins(0, dp(8), 0, dp(24)) }
+            layoutParams = LinearLayout.LayoutParams(-1, if (wide) dp(if (largeText()) 310 else (resources.configuration.screenHeightDp * .43).toInt().coerceIn(220, 300)) else -2).apply { setMargins(0, dp(8), 0, dp(24)) }
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.rgb(10, 18, 34), Color.rgb(26, 33, 107), Color.rgb(48, 27, 91))).apply { cornerRadius = dp(16).toFloat() }
             clipToOutline = true
         }
@@ -393,25 +394,29 @@ class MainActivity : Activity() {
             val art = LinearLayout(this).apply {
                 gravity = Gravity.CENTER; setPadding(dp(8), dp(20), dp(20), dp(20))
                 item.home?.let { addView(shield(it, if (resources.configuration.screenWidthDp < 900) 90 else if (item.sport == "mma") 110 else 132, item.sport == "mma")) }
-                addView(label("VS", 20f).apply { gravity = Gravity.CENTER })
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                    if (item.competitionLogo.isNotBlank()) addView(shield(TeamInfo(item.id, item.competition, item.competitionLogo), 32))
+                    addView(label("VS", 18f).apply { gravity = Gravity.CENTER })
+                })
                 item.away?.let { addView(shield(it, if (resources.configuration.screenWidthDp < 900) 90 else if (item.sport == "mma") 110 else 132, item.sport == "mma")) }
             }
             hero.addView(art, FrameLayout.LayoutParams(dp(((resources.configuration.screenWidthDp - 64) * .43).toInt()), -1, Gravity.END))
             hero.addView(View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(Color.rgb(7, 12, 23), Color.argb(205, 7, 12, 23), Color.TRANSPARENT)) }, FrameLayout.LayoutParams(-1, -1))
         }
         val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(24), dp(16), dp(20), dp(16))
-            addView(label("${sportName(item.sport)}  ·  ${item.status}", 12f).apply { setTextColor(green); maxLines = 2 })
-            addView(label(item.title, if (wide) 30f else 26f).apply { setTypeface(typeface, Typeface.BOLD); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
-            addView(competitionBadge(item))
-            addView(label("${item.home?.name.orEmpty()}  ·  ${item.score}  ·  ${item.away?.name.orEmpty()}", 18f).apply { maxLines = 2 })
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(24), dp(if (wide) 8 else 16), dp(20), dp(if (wide) 8 else 16))
+            addView(label("${item.competition.ifBlank { sportName(item.sport) }}  ·  ${item.status}", 12f).apply { setTextColor(green); maxLines = 2 })
+            addView(label(item.title, 26f).apply { setTypeface(typeface, Typeface.BOLD); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+            if (!wide) addView(competitionBadge(item))
+            addView(label("${item.home?.name.orEmpty()}  ·  ${item.score}  ·  ${item.away?.name.orEmpty()}", 16f).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
             if (!wide) addView(matchup(item, false), LinearLayout.LayoutParams(-1, dp(if (item.sport == "mma") 96 else 72)))
-            addView(label(listOf(resultText(item), item.subtitle).filter { it.isNotBlank() }.joinToString(" · "), 13f, true).apply { maxLines = 2 })
+            addView(label(listOf(resultText(item), item.subtitle).filter { it.isNotBlank() }.joinToString(" · "), 12f, true).apply { maxLines = 1 })
             addView(HorizontalScrollView(this@MainActivity).apply {
                 isHorizontalScrollBarEnabled = false
                 addView(LinearLayout(this@MainActivity).apply {
-                addView(primaryButton(if (item.sources.isEmpty()) "Ver detalle" else "▶ Ver evento", "hero:${item.id}") { open(item) })
-                addView(button(if (item.id in favorites()) "★ Guardado" else "☆ Favorito", "hero:favorite:${item.id}") { toggleFavorite(item); render("hero:favorite:${item.id}") })
+                addView(primaryButton(if (item.sources.isEmpty()) "Ver detalle" else "▶ Ver evento", "hero:${item.id}") { open(item) }.apply { minimumHeight = dp(44); setPadding(dp(14), dp(4), dp(14), dp(4)); contentDescription = "Ver ${item.title}" })
+                addView(button(if (item.id in favorites()) "★ Guardado" else "☆ Favorito", "hero:favorite:${item.id}") { toggleFavorite(item); render("hero:favorite:${item.id}") }.apply { minimumHeight = dp(44); setPadding(dp(14), dp(4), dp(14), dp(4)) })
                 })
             })
         }
@@ -422,7 +427,7 @@ class MainActivity : Activity() {
     private fun card(item: WatchItem, width: Int): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(8), dp(8), dp(8), dp(10))
-        layoutParams = LinearLayout.LayoutParams(dp(width), dp(if (largeText()) 310 else 286)).apply { setMargins(dp(8), dp(8), dp(8), dp(12)) }
+        layoutParams = LinearLayout.LayoutParams(dp(width), dp(if (largeText()) 310 else if (resources.configuration.screenWidthDp >= 700) 244 else 286)).apply { setMargins(dp(8), dp(8), dp(8), dp(12)) }
         focusable(this, item.id); matchSurface(this, item)
         contentDescription = "${item.title}. ${item.status}. ${item.score}. ${resultText(item)}. ${item.subtitle}. OK: abrir. Mantén OK: favorito."
         val poster = LinearLayout(this@MainActivity).apply {
@@ -505,7 +510,7 @@ class MainActivity : Activity() {
         "Última consulta: " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(lastCatalogAt))
 
     private fun catalogChanged() {
-        syncLabel?.text = syncText()
+        syncLabel?.text = listOf(notice, syncText()).filter { it.isNotBlank() }.joinToString(" · ")
         loading = matchesLoading || channelsLoading
         notice = listOf(matchNotice, channelNotice).filter { it.isNotBlank() }.joinToString(" · ")
             .ifBlank { if (loading) "Actualizando datos…" else "Catálogo actualizado · Mantén OK para favoritos" }
