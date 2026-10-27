@@ -11,7 +11,7 @@ data class PlaybackSnapshot(val item: WatchItem, val sourceIndex: Int, val playW
             .put("home", team(item.home)).put("away", team(item.away)).put("status", item.status)
             .put("category", item.category).put("score", item.score).put("logo", item.logo)
             .put("sport", item.sport).put("competition", item.competition).put("competitionLogo", item.competitionLogo)
-            .put("result", item.result).put("winner", item.winner).put("autoFailover", item.autoFailover)
+            .put("scheduledAt", item.scheduledAt).put("result", item.result).put("winner", item.winner).put("autoFailover", item.autoFailover)
             .put("sources", JSONArray(item.sources.map { JSONObject().put("provider", it.provider).put("url", it.url).put("embedded", it.embedded).put("label", it.label).put("waitForBroadcast", it.waitForBroadcast).put("sourceId", it.id) }))
             .put("sourceIndex", sourceIndex).put("playWhenReady", playWhenReady).toString()
     }
@@ -32,7 +32,7 @@ data class PlaybackSnapshot(val item: WatchItem, val sourceIndex: Int, val playW
             val item = WatchItem(row.getString("id"), row.getString("title"), row.optString("subtitle"), row.optBoolean("live"),
                 sources, row.optString("webPath"), row.optBoolean("channel"), team("home"), team("away"),
                 row.optString("status"), row.optString("category"), row.optString("score"), ImageUrls.normalize(row.optString("logo")),
-                row.optString("sport", "football"), row.optString("competition"), SportsEvents.image(row.optString("competitionLogo")), row.optString("result"), row.optString("winner"), row.optBoolean("autoFailover", true))
+                row.optString("sport", "football"), row.optString("competition"), SportsEvents.image(row.optString("competitionLogo")), row.optString("result"), row.optString("winner"), row.optBoolean("autoFailover", true), row.optString("scheduledAt"))
             PlaybackSnapshot(item, row.optInt("sourceIndex").coerceIn(sources.indices), row.optBoolean("playWhenReady"))
         }.getOrNull()
     }

@@ -622,7 +622,7 @@ async function runTests() {
   };
   const previaStatus = getMatchStatusInfo(previaEvt);
   assert(previaStatus.category === 'today', 'Previa: Categorizado como hoy');
-  assert(previaStatus.label === 'PREVIA / HOY', 'Previa: Etiqueta oficial PREVIA / HOY');
+  assert(previaStatus.label === 'PREVIA', 'Previa: no presenta como hoy los eventos de otras fechas');
 
   // Test de Filtros por Categoría y Conteos
   const sampleEvents: LiveEvent[] = [varEvt, descansoEvt, finalEvt, enVivoEvt, previaEvt];

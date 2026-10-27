@@ -1,3 +1,4 @@
+import { normalizeScheduledAt, scheduledAtOrNull } from './eventSchedule';
 import type { SportsEvent, EventParticipant, EventSport, EventState } from '../types/sports';
 import type { Club, LiveEvent } from '../types/football';
 
@@ -30,7 +31,7 @@ export function sanitizeSportsEvent(value: any): SportsEvent | null {
     if (!Object.hasOwn(SPORTS_COMPETITIONS, value.source.competition) || entry.sport !== value.sport || !/^\d{1,20}$/.test(value.source.eventId) || (value.source.boutId && !/^\d{1,20}$/.test(value.source.boutId)) || typeof value.source.enabled !== 'boolean') throw new Error('El vínculo deportivo con ESPN no es válido.');
     source = { competition: value.source.competition, eventId: String(value.source.eventId), ...(value.source.boutId ? { boutId: String(value.source.boutId) } : {}), ...(typeof value.source.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.source.date) ? { date: value.source.date } : {}), enabled: value.source.enabled };
   }
-  return { sport: value.sport, competition: text(value.competition), competitionLogo: sportsImage(value.competitionLogo), participants, state: value.state, phase: text(value.phase, 80), clock: text(value.clock, 40), result: text(value.result, 240), ...(source ? { source } : {}) };
+  return { scheduledAt: normalizeScheduledAt(value.scheduledAt), sport: value.sport, competition: text(value.competition), competitionLogo: sportsImage(value.competitionLogo), participants, state: value.state, phase: text(value.phase, 80), clock: text(value.clock, 40), result: text(value.result, 240), ...(source ? { source } : {}) };
 }
 export function sportsParticipantClub(event: LiveEvent | null | undefined, side: number): Club | null {
   const participant = event?.sports?.participants[side];
@@ -57,7 +58,7 @@ export function parseSportsEspn(raw: any, competitionKey: string, eventId?: stri
     }) as SportsEvent['participants'];
     const round = Number(status.period) || 0;
     const phase = round ? definition.sport === 'mma' ? `Round ${round}` : round <= (competitionKey.includes('college') && competitionKey.startsWith('mens') ? 2 : 4) ? `${round}${competitionKey === 'mens-college-basketball' ? 'ª mitad' : 'º cuarto'}` : 'Prórroga' : '';
-    const data: SportsEvent = { sport: definition.sport, competition: definition.sport === 'mma' ? String(event.name || definition.name).slice(0, 120) : definition.name, competitionLogo: sportsImage(raw.leagues?.[0]?.logos?.[0]?.href || raw.header?.league?.logos?.[0]?.href), participants, state, phase, clock: String(status.displayClock || ''), result: state === 'final' ? String(c.details?.text || status.type.shortDetail || status.type.detail || status.type.description || '') : '', source: { competition: competitionKey, eventId: String(event.id), ...(event.date ? { date: String(event.date).slice(0, 10) } : {}), ...(definition.sport === 'mma' ? { boutId: String(c.id) } : {}), enabled: true }, syncedAt: Date.now() };
+    const data: SportsEvent = { scheduledAt: scheduledAtOrNull(c.date || event.date), sport: definition.sport, competition: definition.sport === 'mma' ? String(event.name || definition.name).slice(0, 120) : definition.name, competitionLogo: sportsImage(raw.leagues?.[0]?.logos?.[0]?.href || raw.header?.league?.logos?.[0]?.href), participants, state, phase, clock: String(status.displayClock || ''), result: state === 'final' ? String(c.details?.text || status.type.shortDetail || status.type.detail || status.type.description || '') : '', source: { competition: competitionKey, eventId: String(event.id), ...(event.date ? { date: String(event.date).slice(0, 10) } : {}), ...(definition.sport === 'mma' ? { boutId: String(c.id) } : {}), enabled: true }, syncedAt: Date.now() };
     return [{ id: `${event.id}:${c.id}`, title: `${participants[0].name} vs ${participants[1].name}`, date: c.date || event.date || '', data }];
   }));
 }

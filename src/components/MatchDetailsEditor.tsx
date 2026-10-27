@@ -1,9 +1,10 @@
+import { fromBoliviaDateTimeInput, toBoliviaDateTimeInput } from '../utils/eventSchedule';
 import { EventSourcesEditor } from './EventSourcesEditor';
 import { buildEventSourcesPatch, getEventSources, getDefaultSourceId } from '../utils/eventSources';
 import { SportsEventEditor } from './SportsEventEditor';
 import { sanitizeSportsEvent } from '../utils/sportsEvents';
 import type { SportsEvent } from '../types/sports';
-import { FOOTBALL_LEAGUES, clubNameKey } from '../data/footballLeagues';
+import { FOOTBALL_COMPETITIONS, FOOTBALL_LEAGUES, FOOTBALL_CUPS, clubNameKey } from '../data/footballLeagues';
 import { ClubCrest } from './ClubCrest';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -100,6 +101,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const defaultAwayClubId = activeEvent?.awayTeam || streamSettings?.awayClubId || clubKeys[1] || 'strongest';
 
   // Internal form fields
+  const [scheduledAt, setScheduledAt] = useState(toBoliviaDateTimeInput(activeEvent?.scheduledAt));
   const [title, setTitle] = useState(activeEvent?.title || streamSettings?.title || '');
   const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName || streamSettings?.tournamentName || '');
   const [homeClubId, setHomeClubId] = useState(defaultHomeClubId);
@@ -215,6 +217,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setSportsEvent(activeEvent?.sports || null);
       setEspnLink(activeEvent?.espnLink);
       setTitle(srcTitle);
+      setScheduledAt(toBoliviaDateTimeInput(activeEvent?.scheduledAt));
       setTournamentName(srcTourn);
       setHomeClubId(srcHome);
       setAwayClubId(srcAway);
@@ -259,7 +262,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         setSelectedApiMatchId(matches[0].id);
         setApiFeedback(`¡Se encontraron ${matches.length} partidos oficiales en la API de ESPN!`);
       } else {
-        setApiFeedback('No hay partidos programados en este momento para la liga seleccionada.');
+        setApiFeedback('No hay partidos disponibles hoy para esta competición. Algunas copas solo tienen encuentros en fechas concretas.');
       }
     } catch {
       if (requestId === apiRequestRef.current) setApiFeedback('No se pudo conectar con la API deportiva.');
@@ -279,10 +282,10 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         const existing = Object.values(clubs).find(c => clubNameKey(c.name) === clubNameKey(team.displayName) || clubNameKey(c.shortName) === clubNameKey(team.displayName));
         if (existing) return existing.id;
         if (!team.id) throw new Error('ESPN no devolvió un identificador de equipo.');
-        const league = FOOTBALL_LEAGUES[apiLeague];
+        const league = FOOTBALL_COMPETITIONS[apiLeague];
         const domestic = league.includes(' (');
         const id = `espn_${team.id}`;
-        await saveClub({ id, name: team.displayName, shortName: team.name, logoUrl: team.logo || '', league: domestic ? league : `Internacionales · ${league}`, country: domestic ? league.split(' (')[0] : '', city: '', stadium: '', altitudeMeters: 0, primaryColor: '#334155', secondaryColor: '#ffffff', textColor: '#ffffff', badgeEmoji: '' });
+        await saveClub({ id, name: team.displayName, shortName: team.name, logoUrl: team.logo || '', league: FOOTBALL_CUPS[apiLeague] ? `${league.split(' (')[0]} (Otros equipos)` : domestic ? league : `Internacionales · ${league}`, country: domestic ? league.split(' (')[0] : '', city: '', stadium: '', altitudeMeters: 0, primaryColor: '#334155', secondaryColor: '#ffffff', textColor: '#ffffff', badgeEmoji: '' });
         return id;
       };
       const homeId = await resolveTeam(match.homeTeam);
@@ -290,7 +293,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       if (prevEventIdRef.current !== targetEvent) return;
       setHomeClubId(homeId); setAwayClubId(awayId);
       setTitle(`${match.homeTeam.displayName} vs ${match.awayTeam.displayName}`);
-      setTournamentName(FOOTBALL_LEAGUES[apiLeague]);
+      setTournamentName(FOOTBALL_COMPETITIONS[apiLeague]);
+      setScheduledAt(toBoliviaDateTimeInput(match.date));
       if (match.venue) setStadiumName(match.venue);
       setLocalHomeScore(match.homeTeam.score); setLocalAwayScore(match.awayTeam.score);
       setLocalMinute(match.minute || 0);
@@ -394,6 +398,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         onSelectEvent?.(remaining[0].id);
       } else {
         setTitle('');
+        setScheduledAt('');
         setTournamentName('');
         setStadiumName('');
         setPeriod('1T');
@@ -423,7 +428,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   };
 
   const formKey = JSON.stringify([
-    sourceList, initialSourceId, sportsEvent, title, tournamentName, homeClubId, awayClubId, stadiumName, altitudeMeters, officialAnnouncement,
+    sourceList, initialSourceId, sportsEvent, scheduledAt, title, tournamentName, homeClubId, awayClubId, stadiumName, altitudeMeters, officialAnnouncement,
     isLiveMatch, period, localHomeScore, localAwayScore, localMinute, externalUrl, matchPrimaryProvider, matchFallbackOrder, iptvSource, broadcastMode, matchActiveSource,
   ]);
   const formKeyRef = useRef(formKey);
@@ -441,6 +446,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     const cleanTitle = title.trim();
     const cleanTournament = tournamentName.trim();
     const cleanStadium = stadiumName.trim();
+    let normalizedStart: string | null;
+    try { normalizedStart = fromBoliviaDateTimeInput(scheduledAt); } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Revisa la fecha.'); return false; }
     let sports: SportsEvent | null;
     try { sports = sanitizeSportsEvent(sportsEvent); } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Revisa los participantes.'); return false; }
     const effectiveHomeId = sports ? 'participant_a' : (homeClubId || defaultHomeClubId).trim().toLowerCase();
@@ -477,6 +484,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       id: activeId,
       sports,
       espnLink: espnLink || null,
+      scheduledAt: normalizedStart,
       title: cleanTitle,
       homeTeam: effectiveHomeId,
       awayTeam: effectiveAwayId,
@@ -630,8 +638,13 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         </div>
       </div>
 
-      <SportsEventEditor key={activeEventId || 'new-event'} value={sportsEvent} onChange={(data, importedTitle) => {
+      <label className="block my-4 text-sm text-slate-300">Fecha y hora de inicio (Bolivia, UTC−4)
+        <input type="datetime-local" value={scheduledAt} onChange={e => { setScheduledAt(e.target.value); setIsDirty(true); }} className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white" />
+        <span className="text-xs text-slate-400">Se muestra al público durante la previa. Deja vacío si aún no se confirmó.</span>
+      </label>
+      <SportsEventEditor key={activeEventId || 'new-event'} value={sportsEvent} onChange={(data, importedTitle, importedStart) => {
         setSportsEvent(data); setIsDirty(true);
+        if (importedStart !== undefined) setScheduledAt(toBoliviaDateTimeInput(importedStart));
         if (data) { setEspnLink(null); setTournamentName(data.competition); if (importedTitle) setTitle(importedTitle); }
         else if (sportsEvent) {
           setEspnLink(null);
@@ -1285,7 +1298,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                   API Gratuita de Partidos, Alineaciones & Estadísticas
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Conexión directa con la API gratuita y abierta de ESPN para partidos del fútbol boliviano y torneos internacionales.
+                  Importa partidos de ligas, copas nacionales y torneos internacionales desde ESPN.
                 </p>
               </div>
             </div>
@@ -1298,14 +1311,19 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Torneo / Liga Oficial:
+                Liga / Copa / Torneo oficial:
               </label>
               <select
                 value={apiLeague}
                 onChange={(e) => { apiRequestRef.current++; setIsLoadingApiMatches(false); setApiLeague(e.target.value); setApiMatches([]); setSelectedApiMatchId(''); }}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
               >
-                {Object.entries(FOOTBALL_LEAGUES).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                <optgroup label="Ligas y torneos internacionales">
+                  {Object.entries(FOOTBALL_LEAGUES).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                </optgroup>
+                <optgroup label="Copas nacionales">
+                  {Object.entries(FOOTBALL_CUPS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                </optgroup>
               </select>
             </div>
 
@@ -1336,7 +1354,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
             )}
           </div>
 
-          {espnLink && <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={espnLink.enabled} onChange={e => { setEspnLink({ ...espnLink, enabled: e.target.checked }); setIsDirty(true); }} /> Actualizar automáticamente con ESPN · {FOOTBALL_LEAGUES[espnLink.league]} · ID {espnLink.eventId}. Guarda para aplicar. Desactiva para editar el marcador manualmente.</label>}
+          {espnLink && <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={espnLink.enabled} onChange={e => { setEspnLink({ ...espnLink, enabled: e.target.checked }); setIsDirty(true); }} /> Actualizar automáticamente con ESPN · {FOOTBALL_COMPETITIONS[espnLink.league]} · ID {espnLink.eventId}. Guarda para aplicar. Desactiva para editar el marcador manualmente.</label>}
           {apiMatches.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-slate-800/80">
               <label className="block text-xs font-semibold text-slate-300">

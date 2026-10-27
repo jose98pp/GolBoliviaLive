@@ -7,6 +7,7 @@ export interface EventParticipant {
   winner?: boolean;
 }
 export interface SportsEvent {
+  scheduledAt?: string | null;
   sport: EventSport;
   competition: string;
   competitionLogo?: string;

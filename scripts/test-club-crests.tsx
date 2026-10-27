@@ -1,4 +1,4 @@
-import { FOOTBALL_LEAGUES } from '../src/data/footballLeagues';
+import { FOOTBALL_COMPETITIONS } from '../src/data/footballLeagues';
 import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 import React from 'react';
@@ -74,11 +74,11 @@ const catalogHandler = catalogRoute.slice(catalogRoute.indexOf('async (req:'), c
 const catalogCode = await transform(`export const handler = ${catalogHandler};`, { loader: 'ts', format: 'cjs' });
 const catalogModule = { exports: {} as any };
 let upstreamCalls = 0;
-new Function('module', 'exports', 'clubCrestCache', 'normalizeCrestUrl', 'fetch', 'FOOTBALL_LEAGUES', catalogCode.code)(catalogModule, catalogModule.exports, new Map(), normalizeCrestUrl,
+new Function('module', 'exports', 'clubCrestCache', 'normalizeCrestUrl', 'fetch', 'FOOTBALL_COMPETITIONS', catalogCode.code)(catalogModule, catalogModule.exports, new Map(), normalizeCrestUrl,
   async () => { upstreamCalls++; return { ok: true, json: async () => ({ sports: [{ leagues: [{ teams: [
     { team: { displayName: 'Bolívar', logos: [{ href: 'https://example.test/bolivar.png' }] } },
     { team: { displayName: 'Inválido', logos: [{ href: 'javascript:alert(1)' }] } },
-  ] }] }] }) }; }, FOOTBALL_LEAGUES);
+  ] }] }] }) }; }, FOOTBALL_COMPETITIONS);
 const requestCatalog = async (league: string) => {
   let status = 200; let body: any;
   const res: any = { status: (value: number) => { status = value; return res; }, json: (value: any) => { body = value; return res; }, setHeader: () => {} };

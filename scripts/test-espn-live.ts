@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { parseEspnMatch } from '../src/utils/espnMatch';
 import { groupClubsByLeague, BOLIVIAN_CLUBS } from '../src/data/bolivianFootballData';
-import { FOOTBALL_LEAGUES, clubLeague } from '../src/data/footballLeagues';
+import { FOOTBALL_LEAGUES, FOOTBALL_CUPS, FOOTBALL_COMPETITIONS, clubLeague } from '../src/data/footballLeagues';
 import { getMatchStatusInfo } from '../src/utils/matchStatus';
 import { espnFootballApi } from '../src/services/espnFootballApi';
 import { fetchEspn } from '../src/services/espnCache';
@@ -28,10 +28,19 @@ assert.equal(clubLeague({ ...BOLIVIAN_CLUBS.real_madrid, country: 'Bolivia', lea
 assert.equal(clubLeague({ ...BOLIVIAN_CLUBS.bolivar, id: 'unknown', name: 'Club externo', country: 'Ecuador', league: '' }), FOOTBALL_LEAGUES['ecu.1']);
 assert(!Object.values(groups).flat().some((c, i, list) => list.findIndex(t => t.id === c.id) !== i));
 assert(Object.values(groups).every(teams => teams.every((team, i) => !i || teams[i - 1].name.localeCompare(team.name, 'es') <= 0)));
+assert.equal(Object.keys(FOOTBALL_CUPS).length, 13);
+assert.equal(FOOTBALL_COMPETITIONS['arg.copa_arg'], 'Argentina (Copa Argentina)');
+assert.equal(FOOTBALL_COMPETITIONS['eng.fa'], 'Inglaterra (FA Cup)');
+assert.deepEqual(Object.fromEntries(Object.keys(FOOTBALL_LEAGUES).map(id => [id, FOOTBALL_COMPETITIONS[id]])), FOOTBALL_LEAGUES);
+assert.equal(clubLeague({ ...BOLIVIAN_CLUBS.bolivar, id: 'cup-team', name: 'Equipo de copa', country: 'Argentina', league: 'Argentina (Otros equipos)' }), 'Argentina (Otros equipos)');
 const original = globalThis.fetch;
 try {
   globalThis.fetch = (async () => new Response(JSON.stringify({ events: [event()] }))) as typeof fetch;
   assert.equal(await espnFootballApi.findMatchByTeams('Barcelona', 'PSG', 'uefa.champions'), null, 'Nunca devuelve el primer partido sin coincidencia');
+  let cupRequest = '';
+  globalThis.fetch = (async (url) => { cupRequest = String(url); return new Response(JSON.stringify({ events: [event()] })); }) as typeof fetch;
+  assert.equal((await espnFootballApi.getMatches('arg.copa_arg'))[0].homeTeam.score, 2);
+  assert.equal(cupRequest, '/api/football-api/matches?league=arg.copa_arg');
   const matches = await espnFootballApi.getMatches('arg.1'); assert.equal(matches[0].minute, 47);
   globalThis.fetch = (async () => new Response(JSON.stringify({ header: event() }))) as typeof fetch;
   assert.equal((await espnFootballApi.getLiveMatch('123', 'arg.1'))!.homeScore, 2);

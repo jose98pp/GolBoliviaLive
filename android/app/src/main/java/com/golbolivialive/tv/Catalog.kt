@@ -14,7 +14,7 @@ data class WatchItem(
     val home: TeamInfo? = null, val away: TeamInfo? = null,
     val status: String = "TV · CANAL", val category: String = "channel", val score: String = "VS",
     val logo: String = "", val sport: String = "football", val competition: String = "",
-    val competitionLogo: String = "", val result: String = "", val winner: String = "", val autoFailover: Boolean = true,
+    val competitionLogo: String = "", val result: String = "", val winner: String = "", val autoFailover: Boolean = true, val scheduledAt: String = "",
 ) {
     val streams: List<String> get() = sources.filter { !it.embedded }.map { it.url }
 }
@@ -144,9 +144,11 @@ object Catalog {
                 status = state.label + if (row.optBoolean(if (sports != null) "sportsSyncFailed" else "espnSyncFailed")) " · ESPN sin actualizar" else "",
                 category = state.category, score = score, sport = sport, competition = competition,
                 competitionLogo = SportsEvents.image(sports?.optString("competitionLogo") ?: row.optString("espnCompetitionLogo")),
-                result = sports?.optString("result").orEmpty(), winner = winner, autoFailover = failover)
+                result = sports?.optString("result").orEmpty(), winner = winner, autoFailover = failover,
+                scheduledAt = row.optString("scheduledAt").takeIf { EventSchedule.timestamp(it) != null }
+                    ?: sports?.optString("scheduledAt").orEmpty())
 
-        }
+        }.sortedBy { EventSchedule.timestamp(it.scheduledAt) ?: Long.MAX_VALUE }
     }
 
     fun channels(json: JSONObject): List<WatchItem> {

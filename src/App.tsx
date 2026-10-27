@@ -1,3 +1,4 @@
+import { EventStartTime } from './components/EventStartTime';
 import { SportsScoreboard } from './components/SportsScoreboard';
 import { sportsParticipantClub } from './utils/sportsEvents';
 import { useEspnLiveEvents } from './hooks/useEspnLiveEvents';
@@ -1342,6 +1343,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
 
                 {currentLiveEvent?.espnLink?.enabled && <p role="status" className="text-xs text-slate-400 px-1">ESPN · {currentLiveEvent.espnUpdatedAt ? `Última actualización: ${new Date(currentLiveEvent.espnUpdatedAt).toLocaleTimeString()}` : 'Esperando datos oficiales…'} · consulta cada 30 segundos</p>}
+                <EventStartTime event={currentLiveEvent} />
                 {currentLiveEvent ? (
                   <UniversalStreamPlayer
                     key={`${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${currentLiveEvent.iptvSource?.channelId || 'no-iptv'}-${signalReloadKey}`}

@@ -27,7 +27,7 @@ export function getMatchStatusInfo(event?: LiveEvent | null): MatchStatusInfo {
     return {
       category: 'today',
       label: 'PROGRAMADO',
-      shortLabel: 'HOY',
+      shortLabel: 'PREVIA',
       badgeClass: 'bg-slate-800/90 text-slate-300 border-slate-700',
       dotClass: 'bg-slate-400',
       isPulsing: false,
@@ -111,8 +111,8 @@ export function getMatchStatusInfo(event?: LiveEvent | null): MatchStatusInfo {
   ) {
     return {
       category: 'today',
-      label: 'PREVIA / HOY',
-      shortLabel: 'HOY',
+      label: 'PREVIA',
+      shortLabel: 'PREVIA',
       badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
       dotClass: 'bg-sky-400',
       isPulsing: true,

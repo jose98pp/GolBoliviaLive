@@ -7,6 +7,23 @@ export const FOOTBALL_LEAGUES: Record<string, string> = {
   'por.1': 'Portugal (Primeira Liga)', 'ned.1': 'Países Bajos (Eredivisie)', 'col.1': 'Colombia (Primera A)', 'chi.1': 'Chile (Primera División)', 'per.1': 'Perú (Liga 1)', 'uru.1': 'Uruguay (Primera División)', 'par.1': 'Paraguay (Primera División)', 'ecu.1': 'Ecuador (LigaPro)',
   'uefa.champions': 'UEFA Champions League', 'uefa.europa': 'UEFA Europa League', 'conmebol.libertadores': 'Copa CONMEBOL Libertadores', 'conmebol.sudamericana': 'Copa CONMEBOL Sudamericana',
 };
+export const FOOTBALL_CUPS: Record<string, string> = {
+  'arg.copa_arg': 'Argentina (Copa Argentina)',
+  'arg.copa_lpf': 'Argentina (Copa de la Liga Profesional)',
+  'bra.copa_do_brazil': 'Brasil (Copa do Brasil)',
+  'esp.copa_del_rey': 'España (Copa del Rey)',
+  'eng.fa': 'Inglaterra (FA Cup)',
+  'eng.league_cup': 'Inglaterra (Copa de la Liga / EFL Cup)',
+  'ita.coppa_italia': 'Italia (Coppa Italia)',
+  'ger.dfb_pokal': 'Alemania (DFB-Pokal)',
+  'fra.coupe_de_france': 'Francia (Copa de Francia)',
+  'por.taca.portugal': 'Portugal (Taça de Portugal)',
+  'ned.cup': 'Países Bajos (KNVB Beker)',
+  'col.copa': 'Colombia (Copa Colombia)',
+  'chi.copa_chi': 'Chile (Copa Chile)',
+};
+export const FOOTBALL_COMPETITIONS: Record<string, string> = { ...FOOTBALL_LEAGUES, ...FOOTBALL_CUPS };
+
 const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 export const clubNameKey = normalize;
 const definitions: [string, string][] = [
@@ -37,6 +54,7 @@ export function clubLeague(club: Club): string {
   if (club.league && Object.values(FOOTBALL_LEAGUES).includes(club.league) && club.league.split(' (')[0] === known?.country) return club.league;
   if (known) return known.league!;
   if (club.league && Object.values(FOOTBALL_LEAGUES).includes(club.league)) return club.league;
+  if (club.league?.endsWith(' (Otros equipos)')) return club.league;
   const country = normalize(club.country || '');
   const match = Object.entries(FOOTBALL_LEAGUES).find(([id, label]) => id.endsWith('.1') && normalize(label.split(' (')[0]) === country)?.[1];
   if (match) return match;

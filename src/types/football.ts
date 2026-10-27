@@ -227,6 +227,7 @@ export interface EventSource {
 }
 
 export interface LiveEvent {
+  scheduledAt?: string | null;
   sources?: EventSource[];
   defaultSourceId?: string;
   sports?: SportsEvent | null;

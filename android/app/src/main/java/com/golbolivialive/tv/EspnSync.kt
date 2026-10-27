@@ -53,7 +53,10 @@ object EspnSync {
             return SportsEvents.image(identity.optString("logo").ifBlank { identity.optJSONArray("logos")?.optJSONObject(0)?.optString("href").orEmpty() })
         }
         val league = header.optJSONObject("league")
-        return JSONObject().put("espnHomeLogo", logo(home)).put("espnAwayLogo", logo(away))
+        return JSONObject().apply {
+            val date = competition.optString("date").ifBlank { header.optString("date") }
+            if (EventSchedule.timestamp(date) != null) put("scheduledAt", date)
+        }.put("espnHomeLogo", logo(home)).put("espnAwayLogo", logo(away))
             .put("espnCompetitionName", league?.optString("name").orEmpty())
             .put("espnCompetitionLogo", SportsEvents.image(league?.optJSONArray("logos")?.optJSONObject(0)?.optString("href")
                 ?: league?.optString("logo").orEmpty()))

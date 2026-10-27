@@ -119,7 +119,10 @@ object SportsEvents {
             else if (period > if (halves) 2 else 4) "Prórroga" else if (halves) "${period}ª mitad" else "${period}º cuarto"
         val logo = raw.optJSONArray("leagues")?.optJSONObject(0)?.optJSONArray("logos")?.optJSONObject(0)?.optString("href")
             ?: header?.optJSONObject("league")?.optJSONArray("logos")?.optJSONObject(0)?.optString("href").orEmpty()
-        return JSONObject().put("sport", sport).put("competition", saved.optString("competition"))
+        return JSONObject().apply {
+            val date = bout.optString("date").ifBlank { event.optString("date") }
+            if (EventSchedule.timestamp(date) != null) put("scheduledAt", date)
+        }.put("sport", sport).put("competition", saved.optString("competition"))
             .put("competitionLogo", image(logo)).put("participants", participants).put("state", state)
             .put("phase", phase).put("clock", status.optString("displayClock"))
             .put("result", if (state == "final") bout.optJSONObject("details")?.optString("text").orEmpty()
@@ -129,6 +132,7 @@ object SportsEvents {
 
     private fun overlay(saved: JSONObject, update: JSONObject): JSONObject {
         val result = JSONObject(update.toString())
+        if (!result.has("scheduledAt")) saved.optString("scheduledAt").takeIf { EventSchedule.timestamp(it) != null }?.let { result.put("scheduledAt", it) }
         result.put("competition", saved.optString("competition"))
         result.put("competitionLogo", image(saved.optString("competitionLogo")).ifBlank { image(update.optString("competitionLogo")) })
         result.put("source", saved.optJSONObject("source"))

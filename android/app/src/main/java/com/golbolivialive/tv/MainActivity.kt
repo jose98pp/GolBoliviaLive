@@ -402,9 +402,10 @@ class MainActivity : Activity() {
     }
 
     private fun sportName(sport: String) = when (sport) { "basketball" -> "Básquet"; "mma" -> "MMA / UFC"; "other" -> "Evento"; else -> "Fútbol" }
+    private fun itemDetails(item: WatchItem) = listOf(EventSchedule.label(item.scheduledAt).orEmpty(), item.subtitle).filter { it.isNotBlank() }.joinToString(" · ")
     private fun resultText(item: WatchItem) = listOf(item.result, item.winner.takeIf { it.isNotBlank() }?.let { "Ganador/a: $it" }.orEmpty())
         .filter { it.isNotBlank() }.joinToString(" · ")
-    private fun watchTitle(item: WatchItem) = listOf(item.title, item.score, item.status, resultText(item)).filter { it.isNotBlank() }.joinToString(" · ")
+    private fun watchTitle(item: WatchItem) = listOf(item.title, item.score, item.status, EventSchedule.label(item.scheduledAt).orEmpty(), resultText(item)).filter { it.isNotBlank() }.joinToString(" · ")
 
     private fun matchSurface(view: View, item: WatchItem, featured: Boolean = false) {
         view.background = MatchArt(item.home?.color ?: "#193D57", item.away?.color ?: "#122438", featured)
@@ -454,7 +455,7 @@ class MainActivity : Activity() {
             if (!wide) addView(competitionBadge(item))
             addView(label("${item.home?.name.orEmpty()}  ·  ${item.score}  ·  ${item.away?.name.orEmpty()}", 16f).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
             if (!wide) addView(matchup(item, false), LinearLayout.LayoutParams(-1, dp(if (item.sport == "mma") 96 else 72)))
-            addView(label(listOf(resultText(item), item.subtitle).filter { it.isNotBlank() }.joinToString(" · "), 12f, true).apply { maxLines = 1 })
+            addView(label(listOf(resultText(item), itemDetails(item)).filter { it.isNotBlank() }.joinToString(" · "), 12f, true).apply { maxLines = 1 })
             addView(HorizontalScrollView(this@MainActivity).apply {
                 isHorizontalScrollBarEnabled = false
                 addView(LinearLayout(this@MainActivity).apply {
@@ -472,7 +473,7 @@ class MainActivity : Activity() {
         setPadding(dp(8), dp(8), dp(8), dp(10))
         layoutParams = LinearLayout.LayoutParams(dp(width), dp(if (largeText()) 310 else if (preferences.getBoolean("compactCards", false)) 224 else if (resources.configuration.screenWidthDp >= 700) 244 else 286)).apply { setMargins(dp(8), dp(8), dp(8), dp(12)) }
         focusable(this, item.id); matchSurface(this, item)
-        contentDescription = "${item.title}. ${item.status}. ${item.score}. ${resultText(item)}. ${item.subtitle}. OK: abrir. Mantén OK: favorito."
+        contentDescription = "${item.title}. ${item.status}. ${item.score}. ${resultText(item)}. ${itemDetails(item)}. OK: abrir. Mantén OK: favorito."
         val poster = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(10), dp(10), dp(10), dp(10))
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.rgb(23, 43, 72), Color.rgb(11, 23, 43))).apply { cornerRadius = dp(10).toFloat() }
@@ -487,7 +488,7 @@ class MainActivity : Activity() {
         }
         addView(poster, LinearLayout.LayoutParams(-1, 0, 1f))
         addView(label(item.title, 16f).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setTypeface(typeface, Typeface.BOLD) })
-        addView(label((if (item.id in favorites()) "★ " else "") + listOf(resultText(item), item.subtitle).filter { it.isNotBlank() }.joinToString(" · "), 11f, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        addView(label((if (item.id in favorites()) "★ " else "") + listOf(resultText(item), itemDetails(item)).filter { it.isNotBlank() }.joinToString(" · "), 11f, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
         setOnClickListener { open(item) }
         setOnLongClickListener { toggleFavorite(item); render(tag as? String ?: item.id); true }
     }
@@ -524,13 +525,13 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(12), dp(8), dp(12), dp(8))
                 focusable(this, "guide:${item.id}")
-                contentDescription = "${item.title}. ${item.subtitle}. OK: ver canal. Mantén OK: favorito."
+                contentDescription = "${item.title}. ${itemDetails(item)}. OK: ver canal. Mantén OK: favorito."
                 addView(label("%02d".format(page * 24 + index + 1), 16f, true), LinearLayout.LayoutParams(dp(42), -2))
                 addView(shield(TeamInfo(item.id, item.title, item.logo), 56))
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
                     addView(label((if (item.id in favorites()) "★ " else "") + item.title, 18f).apply { maxLines = 2; setTypeface(typeface, Typeface.BOLD) })
-                    addView(label(item.subtitle, 12f, true).apply { maxLines = 2 })
+                    addView(label(itemDetails(item), 12f, true).apply { maxLines = 2 })
                     addView(label(if (item.sources.isEmpty()) "Sin señal publicada" else "${item.sources.size} señal disponible · Ver canal", 12f).apply { setTextColor(green) })
                 }, LinearLayout.LayoutParams(0, -2, 1f))
                 setOnClickListener { open(item) }
@@ -606,7 +607,7 @@ class MainActivity : Activity() {
                 sourceIndex = found.coerceAtLeast(0)
                 selected = current.copy(autoFailover = updated.autoFailover, sources = updated.sources, title = updated.title, subtitle = updated.subtitle, home = updated.home, away = updated.away,
                     status = updated.status, score = updated.score, category = updated.category, live = updated.live,
-                    sport = updated.sport, competition = updated.competition, competitionLogo = updated.competitionLogo, result = updated.result, winner = updated.winner)
+                    sport = updated.sport, competition = updated.competition, competitionLogo = updated.competitionLogo, result = updated.result, winner = updated.winner, scheduledAt = updated.scheduledAt)
                 watchHeader?.text = watchTitle(updated)
                 watchCompetition?.removeAllViews()
                 watchCompetition?.addView(if (updated.channel) shield(TeamInfo(updated.id, updated.title, updated.logo), 48) else competitionBadge(updated))
@@ -615,7 +616,7 @@ class MainActivity : Activity() {
         if (active && selected == null) {
             val count = when (section) { "Canales", "Guía TV" -> channels.size; "Partidos" -> matches.size; else -> (matches + channels).size }
             if (page * 24 >= count) page = 0
-            val next = Triple(matches, channels, notice)
+            val next = Triple(matches, channels, notice + matches.joinToString { EventSchedule.label(it.scheduledAt).orEmpty() })
             if (next != catalogUi) { catalogUi = next; render(currentFocus?.tag as? String, true) }
         }
     }
@@ -765,7 +766,7 @@ class MainActivity : Activity() {
         returnFocus = if (selected == null) currentFocus?.tag as? String ?: item.id else item.id
         if (item.sources.isEmpty()) {
             AlertDialog.Builder(this).setTitle(item.title)
-                .setMessage("${item.status} · ${item.score}\n${item.subtitle}\nTodavía no hay una señal disponible para este partido.")
+                .setMessage("${item.status} · ${item.score}\n${itemDetails(item)}\nTodavía no hay una señal disponible para este partido.")
                 .setPositiveButton("Aceptar", null)
                 .setNeutralButton(if (item.id in favorites()) "Quitar favorito" else "Guardar favorito") { _, _ -> toggleFavorite(item) }.show()
             return
