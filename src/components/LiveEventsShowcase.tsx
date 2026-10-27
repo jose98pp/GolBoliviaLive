@@ -1,3 +1,5 @@
+import { EventStartTime } from './EventStartTime';
+import { sortEventsByStart } from '../utils/eventSchedule';
 import { SportsScoreboard } from './SportsScoreboard';
 import { ClubCrest } from './ClubCrest';
 import React, { useState } from 'react';
@@ -32,14 +34,13 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
   const validEvents = events.filter((e) => e && (e.id || e.title) && (sportFilter === 'all' || (e.sports?.sport || 'football') === sportFilter));
   const counts = getMatchCategoryCounts(validEvents);
 
-  // En vivo primero, luego el resto
-  const sorted = [...validEvents].sort((a, b) => Number(Boolean(b.isLive)) - Number(Boolean(a.isLive)));
+  const sorted = sortEventsByStart(validEvents);
   const matches = filterMatchesByCategory(sorted, filter);
 
   const tabs: { id: MatchFilterCategory; label: string; count: number }[] = [
     { id: 'all', label: 'Todos', count: counts.all },
     { id: 'live', label: 'En vivo', count: counts.live },
-    { id: 'today', label: 'Hoy', count: counts.today },
+    { id: 'today', label: 'Próximos', count: counts.today },
     { id: 'finished', label: 'Finalizados', count: counts.finished },
   ];
 
@@ -104,6 +105,7 @@ export const LiveEventsShowcase: React.FC<LiveEventsShowcaseProps> = ({
                   )}
                 </div>
 
+                <EventStartTime event={event} />
                 {event.sports ? <SportsScoreboard data={event.sports} /> : <div className="flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0 flex items-center gap-2">
                     <span className="text-xl"><ClubCrest club={home} /></span>

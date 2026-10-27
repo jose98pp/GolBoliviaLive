@@ -1,3 +1,4 @@
+import { normalizeScheduledAt } from './src/utils/eventSchedule';
 import { buildEventSourcesPatch } from './src/utils/eventSources';
 import { SPORTS_COMPETITIONS, sanitizeSportsEvent } from './src/utils/sportsEvents';
 import { fetchEspn } from './src/services/espnCache';
@@ -1129,6 +1130,9 @@ app.post(
       return res.status(400).json({ error: 'El vínculo ESPN no es válido.' });
     }
 
+    let scheduledAt: string | null | undefined;
+    try { scheduledAt = raw.scheduledAt === undefined ? undefined : normalizeScheduledAt(raw.scheduledAt); }
+    catch { return res.status(400).json({ error: 'Fecha y hora de inicio no válidas.' }); }
     let sports;
     try { sports = raw.sports === undefined ? undefined : sanitizeSportsEvent(raw.sports); }
     catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : 'Evento deportivo no válido.' }); }
@@ -1158,6 +1162,7 @@ app.post(
       sources: raw.sources === undefined ? existingEvent?.sources : raw.sources,
       defaultSourceId: raw.defaultSourceId === undefined ? existingEvent?.defaultSourceId : raw.defaultSourceId,
       sports: eventSports,
+      scheduledAt: scheduledAt === undefined ? existingEvent?.scheduledAt : scheduledAt,
       espnLink: raw.espnLink === null ? null : raw.espnLink && /^[0-9]{1,20}$/.test(String(raw.espnLink.eventId)) && Object.hasOwn(FOOTBALL_COMPETITIONS, raw.espnLink.league)
         ? { eventId: String(raw.espnLink.eventId), league: raw.espnLink.league, enabled: Boolean(raw.espnLink.enabled) } : existingEvent?.espnLink,
       title: cleanTitle,

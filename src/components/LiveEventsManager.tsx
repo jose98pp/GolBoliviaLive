@@ -1,3 +1,4 @@
+import { fromBoliviaDateTimeInput, toBoliviaDateTimeInput, normalizeScheduledAt } from '../utils/eventSchedule';
 import { SPORTS_STATE_LABELS } from '../utils/sportsEvents';
 import { SportsEventEditor } from './SportsEventEditor';
 import React, { useState, useEffect, useRef } from 'react';
@@ -246,6 +247,7 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
       homeTeam: sanitizeClubId(formData.homeTeam),
       awayTeam: sanitizeClubId(formData.awayTeam),
       espnLink: formData.espnLink || null,
+      scheduledAt: normalizeScheduledAt(formData.scheduledAt),
       sports: formData.sports || null,
       isLive: formData.isLive,
       primaryProvider: formData.primaryProvider,
@@ -534,9 +536,13 @@ export const LiveEventsManager: React.FC<LiveEventsManagerProps> = ({
           </div>
         </div>
 
-        <SportsEventEditor key={formData.id || 'new'} value={formData.sports || null} onChange={(data, title) => {
+        <label className="block text-sm text-slate-300">Fecha y hora de inicio (Bolivia, UTC−4)
+          <input type="datetime-local" value={toBoliviaDateTimeInput(formData.scheduledAt)} onChange={e => { isDirtyRef.current = true; setFormData({ ...formData, scheduledAt: fromBoliviaDateTimeInput(e.target.value) }); }} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white" />
+          <span className="text-xs text-slate-400">Visible durante la previa. Vacío: horario por confirmar.</span>
+        </label>
+        <SportsEventEditor key={formData.id || 'new'} value={formData.sports || null} onChange={(data, title, importedStart) => {
           isDirtyRef.current = true;
-          setFormData({ ...formData, sports: data, ...(data ? { espnLink: null, tournamentName: data.competition, homeTeam: 'participant_a', awayTeam: 'participant_b', isClockRunning: false, isLive: data.state === 'live' || data.state === 'break', homeScore: 0, awayScore: 0, matchMinute: 0 } : { homeTeam: 'bolivar', awayTeam: 'strongest' }), ...(title ? { title } : {}) });
+          setFormData({ ...formData, ...(importedStart !== undefined ? { scheduledAt: importedStart } : {}), sports: data, ...(data ? { espnLink: null, tournamentName: data.competition, homeTeam: 'participant_a', awayTeam: 'participant_b', isClockRunning: false, isLive: data.state === 'live' || data.state === 'break', homeScore: 0, awayScore: 0, matchMinute: 0 } : { homeTeam: 'bolivar', awayTeam: 'strongest' }), ...(title ? { title } : {}) });
         }} />
         {!formData.sports && <>
         {/* Selector Rápido de Partidos Clásicos (España, Inglaterra, Bolivia) */}

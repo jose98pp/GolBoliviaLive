@@ -48,3 +48,19 @@ se agrupan en «Otros equipos» del país hasta asignarles su liga real.
 Este cambio corresponde al proyecto React/Express. Un despliegue cPanel requiere
 recompilar el frontend y disponer de las rutas ESPN equivalentes en su API PHP;
 subir solo los archivos TypeScript no actualiza una web ya compilada.
+
+## Fecha y hora de inicio
+
+El formulario del partido y el administrador de eventos permiten definir
+**Fecha y hora de inicio (Bolivia, UTC−4)**. Se guarda un instante UTC, independiente
+de la zona horaria del navegador. La importación ESPN trae la fecha del encuentro;
+en MMA se usa la fecha de la pelea concreta cuando está disponible.
+Las actualizaciones oficiales pueden corregir el horario si cambia en ESPN.
+
+Las tarjetas públicas se ordenan por inicio, del más antiguo al más reciente,
+con los eventos sin fecha al final. En previa se muestra fecha, hora y «hora
+Bolivia». Al empezar, durante el descanso y al finalizar se oculta ese horario
+sin borrar la fecha guardada. Sin fecha se muestra «Horario por confirmar».
+El filtro «Próximos» incluye los eventos en previa; no implica que sean hoy.
+Los eventos anteriores sin fecha requieren asignarla manualmente o consultar
+su vínculo ESPN. No se usa la hora de creación como hora de comienzo.

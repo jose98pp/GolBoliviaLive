@@ -32,7 +32,7 @@ export function useEspnLiveEvents(events: LiveEvent[]): LiveEvent[] {
   return events.map(event => {
     if (event.sports) {
       const update = sportsUpdates[event.id];
-      return event.sports.source?.enabled && update?.key === JSON.stringify(event.sports.source) ? { ...event, sports: { ...update.data, competition: event.sports.competition, competitionLogo: event.sports.competitionLogo || update.data.competitionLogo, participants: update.data.participants.map((participant, index) => ({ ...participant, imageUrl: event.sports!.participants[index].name === participant.name ? event.sports!.participants[index].imageUrl || participant.imageUrl : participant.imageUrl })) as SportsEvent['participants'], source: event.sports.source }, isLive: update.data.state === 'live' || update.data.state === 'break' } : event;
+      return event.sports.source?.enabled && update?.key === JSON.stringify(event.sports.source) ? { ...event, ...(update.data.scheduledAt ? { scheduledAt: update.data.scheduledAt } : {}), sports: { ...update.data, competition: event.sports.competition, competitionLogo: event.sports.competitionLogo || update.data.competitionLogo, participants: update.data.participants.map((participant, index) => ({ ...participant, imageUrl: event.sports!.participants[index].name === participant.name ? event.sports!.participants[index].imageUrl || participant.imageUrl : participant.imageUrl })) as SportsEvent['participants'], source: event.sports.source }, isLive: update.data.state === 'live' || update.data.state === 'break' } : event;
     }
     const update = updates[event.id];
     return event.espnLink?.enabled && update?.key === `${event.espnLink.league}:${event.espnLink.eventId}` ? { ...event, ...update.data } : event;

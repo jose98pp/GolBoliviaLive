@@ -1,3 +1,4 @@
+import { normalizeScheduledAt } from '../src/utils/eventSchedule';
 import { buildEventSourcesPatch } from '../src/utils/eventSources';
 import { sanitizeSportsEvent } from '../src/utils/sportsEvents';
 import { FOOTBALL_COMPETITIONS } from '../src/data/footballLeagues';
@@ -139,8 +140,8 @@ const eventRoute = server.slice(server.indexOf("app.post(\n  ['/api/live-events'
 const eventHandler = eventRoute.slice(eventRoute.indexOf('async (req:'), eventRoute.lastIndexOf('\n);')).trim();
 const eventCode = await transform(`export const handle = ${eventHandler};`, { loader: 'ts', format: 'cjs' });
 const eventModule = { exports: {} as any };
-new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', 'FOOTBALL_COMPETITIONS', 'sanitizeSportsEvent', 'buildEventSourcesPatch', eventCode.code)(eventModule, eventModule.exports,
-  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {}, FOOTBALL_COMPETITIONS, sanitizeSportsEvent, buildEventSourcesPatch);
+new Function('module', 'exports', 'state', 'normalizeMatchIptvSource', 'normalizeExternalPlayerUrl', 'saveLiveEventToFirebase', 'logConfirmationToFirebase', 'persistState', 'broadcastSseEvent', 'FOOTBALL_COMPETITIONS', 'sanitizeSportsEvent', 'buildEventSourcesPatch', 'normalizeScheduledAt', eventCode.code)(eventModule, eventModule.exports,
+  state, normalizeMatchIptvSource, normalizeExternalPlayerUrl, saveLiveEventToFirebase, async () => {}, () => {}, () => {}, FOOTBALL_COMPETITIONS, sanitizeSportsEvent, buildEventSourcesPatch, normalizeScheduledAt);
 const postEvent = async (body: LiveEvent) => {
   let status = 200; let response: any;
   const res: any = { status: (code: number) => { status = code; return res; }, json: (data: any) => { response = data; return res; } };
@@ -202,3 +203,17 @@ for (const league of ['arg.copa_arg', 'bra.copa_do_brazil', 'esp.copa_del_rey', 
   assert.deepEqual(load().espnLink, payload.espnLink, 'El vínculo de la copa sobrevive al guardado y recarga');
 }
 assert.equal((await postEvent({ ...load(), version: load().version, espnLink: { eventId: '123456', league: 'unknown.cup', enabled: true } })).status, 400);
+
+const startPayload = { ...load(), version: load().version, scheduledAt: '2026-11-01T20:30:00-04:00' } as LiveEvent;
+assert.equal((await postEvent(startPayload)).status, 200);
+assert.equal(load().scheduledAt, '2026-11-02T00:30:00.000Z');
+assertConfirmedMatchSignal(startPayload, load());
+assert.throws(() => assertConfirmedMatchSignal(startPayload, { ...load(), scheduledAt: null }), /fecha y hora/);
+assert.equal((await postEvent({ ...load(), version: load().version, scheduledAt: '2026-02-30T20:00:00Z' })).status, 400);
+assert.equal(load().scheduledAt, '2026-11-02T00:30:00.000Z');
+const withoutStart = { ...load(), version: load().version }; delete withoutStart.scheduledAt;
+assert.equal((await postEvent(withoutStart)).status, 200);
+assert.equal(load().scheduledAt, '2026-11-02T00:30:00.000Z', 'Una actualización parcial conserva la fecha');
+assert.equal((await postEvent({ ...load(), version: load().version, scheduledAt: null })).status, 200);
+assert.equal(load().scheduledAt, null, 'El administrador puede quitar un horario no confirmado');
+console.log('Horario: normalización UTC, guardado/recarga, confirmación, fecha inválida, preservación parcial y borrado comprobados.');

@@ -1,3 +1,4 @@
+import { fromBoliviaDateTimeInput, toBoliviaDateTimeInput } from '../utils/eventSchedule';
 import { EventSourcesEditor } from './EventSourcesEditor';
 import { buildEventSourcesPatch, getEventSources, getDefaultSourceId } from '../utils/eventSources';
 import { SportsEventEditor } from './SportsEventEditor';
@@ -100,6 +101,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   const defaultAwayClubId = activeEvent?.awayTeam || streamSettings?.awayClubId || clubKeys[1] || 'strongest';
 
   // Internal form fields
+  const [scheduledAt, setScheduledAt] = useState(toBoliviaDateTimeInput(activeEvent?.scheduledAt));
   const [title, setTitle] = useState(activeEvent?.title || streamSettings?.title || '');
   const [tournamentName, setTournamentName] = useState(activeEvent?.tournamentName || streamSettings?.tournamentName || '');
   const [homeClubId, setHomeClubId] = useState(defaultHomeClubId);
@@ -215,6 +217,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setSportsEvent(activeEvent?.sports || null);
       setEspnLink(activeEvent?.espnLink);
       setTitle(srcTitle);
+      setScheduledAt(toBoliviaDateTimeInput(activeEvent?.scheduledAt));
       setTournamentName(srcTourn);
       setHomeClubId(srcHome);
       setAwayClubId(srcAway);
@@ -291,6 +294,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       setHomeClubId(homeId); setAwayClubId(awayId);
       setTitle(`${match.homeTeam.displayName} vs ${match.awayTeam.displayName}`);
       setTournamentName(FOOTBALL_COMPETITIONS[apiLeague]);
+      setScheduledAt(toBoliviaDateTimeInput(match.date));
       if (match.venue) setStadiumName(match.venue);
       setLocalHomeScore(match.homeTeam.score); setLocalAwayScore(match.awayTeam.score);
       setLocalMinute(match.minute || 0);
@@ -394,6 +398,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         onSelectEvent?.(remaining[0].id);
       } else {
         setTitle('');
+        setScheduledAt('');
         setTournamentName('');
         setStadiumName('');
         setPeriod('1T');
@@ -423,7 +428,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
   };
 
   const formKey = JSON.stringify([
-    sourceList, initialSourceId, sportsEvent, title, tournamentName, homeClubId, awayClubId, stadiumName, altitudeMeters, officialAnnouncement,
+    sourceList, initialSourceId, sportsEvent, scheduledAt, title, tournamentName, homeClubId, awayClubId, stadiumName, altitudeMeters, officialAnnouncement,
     isLiveMatch, period, localHomeScore, localAwayScore, localMinute, externalUrl, matchPrimaryProvider, matchFallbackOrder, iptvSource, broadcastMode, matchActiveSource,
   ]);
   const formKeyRef = useRef(formKey);
@@ -441,6 +446,8 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     const cleanTitle = title.trim();
     const cleanTournament = tournamentName.trim();
     const cleanStadium = stadiumName.trim();
+    let normalizedStart: string | null;
+    try { normalizedStart = fromBoliviaDateTimeInput(scheduledAt); } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Revisa la fecha.'); return false; }
     let sports: SportsEvent | null;
     try { sports = sanitizeSportsEvent(sportsEvent); } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Revisa los participantes.'); return false; }
     const effectiveHomeId = sports ? 'participant_a' : (homeClubId || defaultHomeClubId).trim().toLowerCase();
@@ -477,6 +484,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
       id: activeId,
       sports,
       espnLink: espnLink || null,
+      scheduledAt: normalizedStart,
       title: cleanTitle,
       homeTeam: effectiveHomeId,
       awayTeam: effectiveAwayId,
@@ -630,8 +638,13 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         </div>
       </div>
 
-      <SportsEventEditor key={activeEventId || 'new-event'} value={sportsEvent} onChange={(data, importedTitle) => {
+      <label className="block my-4 text-sm text-slate-300">Fecha y hora de inicio (Bolivia, UTC−4)
+        <input type="datetime-local" value={scheduledAt} onChange={e => { setScheduledAt(e.target.value); setIsDirty(true); }} className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white" />
+        <span className="text-xs text-slate-400">Se muestra al público durante la previa. Deja vacío si aún no se confirmó.</span>
+      </label>
+      <SportsEventEditor key={activeEventId || 'new-event'} value={sportsEvent} onChange={(data, importedTitle, importedStart) => {
         setSportsEvent(data); setIsDirty(true);
+        if (importedStart !== undefined) setScheduledAt(toBoliviaDateTimeInput(importedStart));
         if (data) { setEspnLink(null); setTournamentName(data.competition); if (importedTitle) setTitle(importedTitle); }
         else if (sportsEvent) {
           setEspnLink(null);

@@ -792,6 +792,7 @@ function cleanForFirestore<T extends Record<string, any>>(obj: T): T {
     const safePayload: LiveEvent = {
       id: safeId,
       sources: event.sources,
+      scheduledAt: event.scheduledAt,
       defaultSourceId: event.defaultSourceId,
       sports: event.sports === undefined ? undefined : event.sports,
       espnLink: event.espnLink === undefined ? undefined : event.espnLink,
@@ -914,6 +915,7 @@ function hydrateLiveEventDoc(d: any): LiveEvent | null {
   return {
     id: safeId,
     sources: raw.sources,
+    scheduledAt: raw.scheduledAt,
     defaultSourceId: raw.defaultSourceId,
     sports: raw.sports,
     espnLink: raw.espnLink,
