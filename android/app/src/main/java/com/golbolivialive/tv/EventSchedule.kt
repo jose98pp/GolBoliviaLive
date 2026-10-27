@@ -12,9 +12,9 @@ object EventSchedule {
     fun timestamp(value: String): Long? {
         val parts = Regex("^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2})(?::(\\d{2})(?:\\.(\\d{1,3}))?)?(Z|[+-]\\d{2}:\\d{2})$").matchEntire(value) ?: return null
         val normalized = parts.groupValues[1] + ":" + parts.groupValues[2].ifBlank { "00" } + "." +
-            parts.groupValues[3].padEnd(3, '0') + parts.groupValues[4]
+            parts.groupValues[3].padEnd(3, '0') + parts.groupValues[4].let { if (it == "Z") "+0000" else it.replace(":", "") }
         val position = ParsePosition(0)
-        val parsed = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply { isLenient = false }.parse(normalized, position)
+        val parsed = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.ROOT).apply { isLenient = false }.parse(normalized, position)
         return parsed?.time?.takeIf { position.index == normalized.length }
     }
 
