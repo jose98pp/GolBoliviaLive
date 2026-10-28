@@ -950,20 +950,22 @@ function hydrateLiveEventDoc(d: any): LiveEvent | null {
   };
 }
 
-export async function getLiveEventsFromFirebase(): Promise<LiveEvent[]> {
+export async function getLiveEventsFromFirebase(options: { strict?: boolean } = {}): Promise<LiveEvent[]> {
   try {
     const colRef = collection(db, 'liveEvents');
-    const snap = await getDocs(colRef);
+    const snap = await (options.strict ? getDocsFromServer(colRef) : getDocs(colRef));
     if (!snap.empty) {
       const list: LiveEvent[] = [];
       snap.forEach((d) => {
         const item = hydrateLiveEventDoc(d);
         if (item) list.push(item);
+        else if (options.strict) throw new Error("Invalid live event document");
       });
       return list;
     }
   } catch (err) {
     console.warn('[Firebase] Error al leer liveEvents:', err);
+    if (options.strict) throw err;
   }
   return [];
 }

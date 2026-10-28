@@ -1,3 +1,4 @@
+import { createLiveEventCatalog } from './src/services/liveEventCatalog';
 import { normalizeScheduledAt } from './src/utils/eventSchedule';
 import { buildEventSourcesPatch } from './src/utils/eventSources';
 import { SPORTS_COMPETITIONS, sanitizeSportsEvent } from './src/utils/sportsEvents';
@@ -482,6 +483,12 @@ function loadPersistedStateSync(): void {
   }
 }
 
+const liveEventCatalog = createLiveEventCatalog<LiveEvent>({
+  read: () => getLiveEventsFromFirebase({ strict: true }),
+  get: () => state.liveEvents,
+  set: events => { state.liveEvents = events; },
+});
+
 let stateInitialized = false;
 let stateInitPromise: Promise<void> | null = null;
 
@@ -519,19 +526,7 @@ async function ensureStateLoaded(): Promise<void> {
               state.chatMessages = fbChat;
             }
           }),
-          getLiveEventsFromFirebase().then((fbEvents) => {
-            if (Array.isArray(fbEvents) && fbEvents.length > 0) {
-              const validEvents = fbEvents.filter((e) => e && e.id && e.homeTeam && e.awayTeam && e.title);
-              if (validEvents.length > 0) {
-                state.liveEvents = validEvents;
-                console.log(`[GolBolivia Backend] Partidos cargados desde Firestore: ${validEvents.length}`);
-              } else {
-                state.liveEvents = [];
-              }
-            } else {
-              state.liveEvents = [];
-            }
-          }),
+          liveEventCatalog.load(),
         ]);
       } catch (err: any) {
         console.warn('[GolBolivia Backend] Advertencia al sincronizar estado desde Firebase:', err?.message || err);
@@ -1051,23 +1046,27 @@ app.post(
 
 // 6.5 Multi-Provider Live Events API (Paso 9 & 10: Cloudflare, YouTube, Kick)
 app.get(['/api/live-events', '/live-events'], async (_req: Request, res: Response) => {
-  await ensureStateLoaded();
+  const snapshot = await liveEventCatalog.load();
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.json({
-    success: true,
-    events: state.liveEvents || [],
-    updatedAt: Date.now(),
-  });
+  if (!snapshot.catalogConfirmed && snapshot.events.length === 0) {
+    return res.status(503).json({ success: false, ...snapshot, error: 'El catálogo aún no está confirmado. Reintenta en unos segundos.' });
+  }
+  return res.json({ success: true, ...snapshot });
 });
 
 app.get(['/api/live-events/:id', '/live-events/:id'], async (req: Request, res: Response) => {
-  await ensureStateLoaded();
-  const event = state.liveEvents.find((e) => e.id === req.params.id);
+  const snapshot = await liveEventCatalog.load();
+  res.setHeader('Cache-Control', 'no-store');
+  const event = snapshot.events.find((e) => e.id === req.params.id);
   if (!event) {
+    if (!snapshot.catalogConfirmed) {
+      res.status(503).json({ error: 'El catálogo aún no está confirmado. Reintenta en unos segundos.' });
+      return;
+    }
     res.status(404).json({ error: 'Partido no encontrado' });
     return;
   }
-  res.json({ success: true, event });
+  res.json({ success: true, event, stale: snapshot.stale, catalogConfirmed: snapshot.catalogConfirmed });
 });
 
 app.post(
