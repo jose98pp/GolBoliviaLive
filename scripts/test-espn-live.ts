@@ -28,7 +28,8 @@ assert.equal(clubLeague({ ...BOLIVIAN_CLUBS.real_madrid, country: 'Bolivia', lea
 assert.equal(clubLeague({ ...BOLIVIAN_CLUBS.bolivar, id: 'unknown', name: 'Club externo', country: 'Ecuador', league: '' }), FOOTBALL_LEAGUES['ecu.1']);
 assert(!Object.values(groups).flat().some((c, i, list) => list.findIndex(t => t.id === c.id) !== i));
 assert(Object.values(groups).every(teams => teams.every((team, i) => !i || teams[i - 1].name.localeCompare(team.name, 'es') <= 0)));
-assert.equal(Object.keys(FOOTBALL_CUPS).length, 13);
+assert.equal(FOOTBALL_CUPS['usa.open'], 'Estados Unidos (U.S. Open Cup)');
+assert.equal(FOOTBALL_LEAGUES['mex.1'], 'México (Liga MX)');
 assert.equal(FOOTBALL_COMPETITIONS['arg.copa_arg'], 'Argentina (Copa Argentina)');
 assert.equal(FOOTBALL_COMPETITIONS['eng.fa'], 'Inglaterra (FA Cup)');
 assert.deepEqual(Object.fromEntries(Object.keys(FOOTBALL_LEAGUES).map(id => [id, FOOTBALL_COMPETITIONS[id]])), FOOTBALL_LEAGUES);

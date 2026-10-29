@@ -1,3 +1,4 @@
+import { ChannelLogo } from './ChannelLogo';
 import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import {
   Tv,
@@ -288,24 +289,7 @@ export const IptvChannelsView: React.FC<IptvChannelsViewProps> = ({
                 <div className="space-y-3">
                   {/* Top row: Logo + Favorite Button */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-slate-950/80 border border-slate-800/80 p-1 flex items-center justify-center shrink-0 overflow-hidden">
-                      {channel.logo ? (
-                        <img
-                          src={channel.logo}
-                          loading="lazy"
-                          decoding="async"
-                          alt={channel.name}
-                          referrerPolicy="no-referrer"
-                          onError={(e) => {
-                            e.currentTarget.onerror = null;
-                            e.currentTarget.src = '/favicon.svg';
-                          }}
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <Tv className="w-5 h-5 text-slate-600" />
-                      )}
-                    </div>
+                    <ChannelLogo src={channel.logo} name={channel.name} />
 
                     <div className="flex items-center gap-1">
                       <button

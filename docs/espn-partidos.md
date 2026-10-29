@@ -64,3 +64,22 @@ sin borrar la fecha guardada. Sin fecha se muestra «Horario por confirmar».
 El filtro «Próximos» incluye los eventos en previa; no implica que sean hoy.
 Los eventos anteriores sin fecha requieren asignarla manualmente o consultar
 su vínculo ESPN. No se usa la hora de creación como hora de comienzo.
+
+## México, Estados Unidos, femenino y juveniles
+
+El formulario incluye Liga MX, Liga de Expansión MX, MLS y USL Championship;
+Copa MX y U.S. Open Cup; CONCACAF Champions Cup, Leagues Cup, Copa Oro,
+Copa América y Mundial masculino. Los nuevos grupos **Fútbol femenino** y
+**Juveniles / Sub-17 / Sub-20** incluyen Liga MX Femenil, NWSL, WSL, Liga F,
+Mundial femenino, Copa América y Libertadores femeninas, mundiales Sub-17 y
+Sub-20 masculinos/femeninos y sudamericanos Sub-17 y Sub-20 masculinos.
+
+La disponibilidad depende de la temporada y cobertura de ESPN. Copa MX puede
+no tener calendario actual; el catálogo no implica que todas las categorías
+jueguen hoy o cuenten con cobertura. No se inventan partidos ante una respuesta
+vacía. El acceso externo de este entorno bloquea ESPN, por lo que los códigos
+se integran con pruebas controladas y deben comprobarse en el despliegue.
+
+Los equipos importados distinguen femenino, masculino, Sub-17 y Sub-20 incluso
+si coinciden en nombre. Se conservan IDs anteriores de clubes masculinos y se
+usan IDs separados para nuevas categorías para no sobrescribirlos.

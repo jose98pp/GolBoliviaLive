@@ -1,3 +1,4 @@
+import { normalizeChannelLogoUrl } from '../utils/channelLogos';
 import { normalizePlaylistUrl, fetchPlaylistPreview } from './playlistImport';
 import express, { Request, Response } from 'express';
 import { lookup } from 'node:dns/promises';
@@ -311,6 +312,8 @@ iptvRouter.post('/custom', async (req: Request, res: Response) => {
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ success: false, error: 'El nombre del canal es requerido.' });
     }
+    const normalizedLogo = normalizeChannelLogoUrl(logo);
+    if (logo && !normalizedLogo) return res.status(400).json({ success: false, error: 'Logo no compatible. Usa una imagen HTTPS o una ruta local que comience con /.' });
     const normalizedSource = normalizeChannelSource(streamUrl, sourceType);
     if (!normalizedSource) return res.status(400).json({ success: false, error: 'Fuente no compatible. Usa una URL HLS HTTP/HTTPS o un reproductor externo HTTPS.' });
 
@@ -336,7 +339,7 @@ iptvRouter.post('/custom', async (req: Request, res: Response) => {
       countryName: cCountryName,
       group: group?.trim() || 'Fútbol Boliviano',
       resolution: resolution?.trim() || '1080p',
-      logo: logo?.trim() || '',
+      logo: normalizedLogo,
       isCustom: true,
       isDemoFeed: false,
       notes: notes?.trim() || 'Canal configurado manualmente desde el panel de administración.',

@@ -1,3 +1,4 @@
+import { normalizeChannelLogoUrl } from './channelLogos';
 import type { IptvChannel } from '../types/iptv';
 import { normalizeExternalPlayerUrl } from './streamUtils';
 
@@ -44,8 +45,10 @@ export function parseChannelPlaylist(text: string, baseUrl?: string): IptvChanne
     if (!streamUrl || seen.has(streamUrl)) continue;
     seen.add(streamUrl);
     const attribute = (key: string) => metadata.match(new RegExp(key + '="([^"\\n]*)"', 'i'))?.[1] || '';
+    let logo = attribute('tvg-logo');
+    try { if (baseUrl && logo) logo = new URL(logo, baseUrl).href; } catch { logo = ''; }
     channels.push({ id: `import-${channels.length + 1}`, name: metadata.slice(metadata.lastIndexOf(',') + 1).trim() || 'Canal',
-      streamUrl, sourceType, logo: attribute('tvg-logo'), group: attribute('group-title') || 'Importados',
+      streamUrl, sourceType, logo: normalizeChannelLogoUrl(logo), group: attribute('group-title') || 'Importados',
       country: attribute('tvg-country') || 'INT', countryName: attribute('tvg-country') || 'Internacional' });
     if (channels.length >= 500) break;
   }

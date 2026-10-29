@@ -1,6 +1,8 @@
 import type { Club } from '../types/football';
 
 export const FOOTBALL_LEAGUES: Record<string, string> = {
+  'mex.1': 'México (Liga MX)', 'mex.2': 'México (Liga de Expansión MX)',
+  'usa.1': 'Estados Unidos (MLS)', 'usa.usl.1': 'Estados Unidos (USL Championship)',
   'arg.2': 'Argentina (Primera Nacional)', 'bra.2': 'Brasil (Série B)',
   'bol.1': 'Bolivia (División Profesional)', 'arg.1': 'Argentina (Liga Profesional)', 'bra.1': 'Brasil (Brasileirão Série A)',
   'esp.1': 'España (LaLiga EA Sports)', 'eng.1': 'Inglaterra (Premier League)', 'ita.1': 'Italia (Serie A)', 'ger.1': 'Alemania (Bundesliga)', 'fra.1': 'Francia (Ligue 1)',
@@ -8,6 +10,8 @@ export const FOOTBALL_LEAGUES: Record<string, string> = {
   'uefa.champions': 'UEFA Champions League', 'uefa.europa': 'UEFA Europa League', 'conmebol.libertadores': 'Copa CONMEBOL Libertadores', 'conmebol.sudamericana': 'Copa CONMEBOL Sudamericana',
 };
 export const FOOTBALL_CUPS: Record<string, string> = {
+  'mex.copa_mx': 'México (Copa MX)',
+  'usa.open': 'Estados Unidos (U.S. Open Cup)',
   'arg.copa_arg': 'Argentina (Copa Argentina)',
   'arg.copa_lpf': 'Argentina (Copa de la Liga Profesional)',
   'bra.copa_do_brazil': 'Brasil (Copa do Brasil)',
@@ -22,7 +26,31 @@ export const FOOTBALL_CUPS: Record<string, string> = {
   'col.copa': 'Colombia (Copa Colombia)',
   'chi.copa_chi': 'Chile (Copa Chile)',
 };
-export const FOOTBALL_COMPETITIONS: Record<string, string> = { ...FOOTBALL_LEAGUES, ...FOOTBALL_CUPS };
+export const FOOTBALL_REGIONAL: Record<string, string> = {
+  'concacaf.champions': 'CONCACAF Champions Cup',
+  'concacaf.leagues.cup': 'Leagues Cup (MLS / Liga MX)',
+  'concacaf.gold': 'CONCACAF Copa Oro',
+  'conmebol.america': 'CONMEBOL Copa América',
+  'fifa.world': 'FIFA Copa Mundial masculina',
+};
+export const FOOTBALL_WOMENS: Record<string, string> = {
+  'mex.women': 'México (Liga MX Femenil)',
+  'usa.nwsl': 'Estados Unidos (NWSL femenina)',
+  'eng.w.1': 'Inglaterra (Women’s Super League femenina)',
+  'esp.w.1': 'España (Liga F femenina)',
+  'fifa.wwc': 'FIFA Copa Mundial femenina',
+  'conmebol.america_femenina': 'CONMEBOL Copa América Femenina',
+  'conmebol.libertadores_femenina': 'CONMEBOL Libertadores Femenina',
+};
+export const FOOTBALL_YOUTH: Record<string, string> = {
+  'fifa.world_u20': 'FIFA Mundial Sub-20 masculino',
+  'fifa.world_u17': 'FIFA Mundial Sub-17 masculino',
+  'fifa.world_u20_womens': 'FIFA Mundial Sub-20 femenino',
+  'fifa.world_u17_womens': 'FIFA Mundial Sub-17 femenino',
+  'conmebol.sudamericano.sub20': 'CONMEBOL Sudamericano Sub-20 masculino',
+  'conmebol.sudamericano.sub17': 'CONMEBOL Sudamericano Sub-17 masculino',
+};
+export const FOOTBALL_COMPETITIONS: Record<string, string> = { ...FOOTBALL_LEAGUES, ...FOOTBALL_CUPS, ...FOOTBALL_REGIONAL, ...FOOTBALL_WOMENS, ...FOOTBALL_YOUTH };
 
 const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 export const clubNameKey = normalize;
@@ -48,6 +76,7 @@ const originalLeagueIds: Record<string, string[]> = {
   'eng.1': ['man_city', 'arsenal', 'liverpool', 'man_united', 'chelsea', 'tottenham', 'aston_villa', 'newcastle'],
 };
 export function clubLeague(club: Club): string {
+  if (club.league && Object.values({ ...FOOTBALL_WOMENS, ...FOOTBALL_YOUTH }).some(label => club.league === label || club.league === `Internacionales · ${label}`)) return club.league;
   const original = Object.entries(originalLeagueIds).find(([, ids]) => ids.includes(club.id));
   if (original) return FOOTBALL_LEAGUES[original[0]];
   const known = ADDITIONAL_CLUBS[club.id] || Object.values(ADDITIONAL_CLUBS).find(c => normalize(c.name) === normalize(club.name));

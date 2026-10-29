@@ -1,3 +1,5 @@
+import { ChannelLogo } from './ChannelLogo';
+import { normalizeChannelLogoUrl } from '../utils/channelLogos';
 import { authService } from '../services/auth';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -169,6 +171,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
       return;
     }
 
+    if (logo.trim() && !normalizeChannelLogoUrl(logo)) { setFormError('Usa una URL HTTPS directa de imagen para el logo, o una ruta local que comience con /.'); return; }
     setIsSubmitting(true);
     try {
       const countryObj = IPTV_COUNTRIES.find((c) => c.code === country);
@@ -181,7 +184,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
         countryName: countryObj ? countryObj.label : editingChannel?.country === country ? editingChannel.countryName : country,
         group: group.trim() || 'Fútbol Boliviano',
         resolution,
-        logo: logo.trim(),
+        logo: normalizeChannelLogoUrl(logo),
         notes: notes.trim(),
       });
 
@@ -489,12 +492,14 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                 URL del Logo (Opcional)
               </label>
               <input
-                type="url"
+                type="text"
+                inputMode="url"
                 placeholder="https://.../logo.png"
                 value={logo}
                 onChange={(e) => setLogo(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500"
               />
+              <div className="mt-2 flex items-center gap-3"><ChannelLogo src={logo} name={name || 'Canal'} className="w-24 h-16" /><p className="text-xs text-slate-400">Vista previa del logo. Usa un enlace HTTPS directo a la imagen; si no carga, revisa la URL o cambia de alojamiento.</p></div>
             </div>
 
             <div>
@@ -606,20 +611,7 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      {channel.logo ? (
-                        <img
-                          src={channel.logo}
-                          alt={channel.name}
-                          className="w-9 h-9 object-contain rounded-lg bg-slate-950 p-1 border border-slate-800 shrink-0"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
-                          {channel.country}
-                        </div>
-                      )}
+                      <ChannelLogo src={channel.logo} name={channel.name} />
 
                       <div className="min-w-0">
                         <h4 className="text-xs font-bold text-white truncate font-display">

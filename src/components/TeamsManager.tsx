@@ -1,5 +1,6 @@
+import { findFootballImportClub, footballImportClubId } from '../utils/footballImports';
 import { groupClubsByLeague } from '../data/bolivianFootballData';
-import { FOOTBALL_LEAGUES, clubLeague, clubNameKey } from '../data/footballLeagues';
+import { FOOTBALL_LEAGUES, clubLeague } from '../data/footballLeagues';
 import { normalizeCrestUrl } from '../utils/clubCrests';
 import { ClubCrest } from './ClubCrest';
 import React, { useState } from 'react';
@@ -80,10 +81,10 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
       let added = 0;
       for (const team of data.teams) {
         if (!/^\d+$/.test(team.id) || !team.names?.[0]) continue;
-        const existing = Object.values(clubs).find(c => c.id === `espn_${team.id}` || team.names.some((name: string) => clubNameKey(name) === clubNameKey(c.name) || clubNameKey(name) === clubNameKey(c.shortName)));
+        const existing = findFootballImportClub(clubs, team.id, team.names, importLeague);
         const league = FOOTBALL_LEAGUES[importLeague];
         const domestic = league.includes(' (');
-        await onSaveClub({ ...(existing || { id: `espn_${team.id}`, name: team.names[0], shortName: team.names[1] || team.names[0], city: '', stadium: '', altitudeMeters: 0, primaryColor: '#334155', secondaryColor: '#ffffff', textColor: '#ffffff', badgeEmoji: '' }), logoUrl: existing?.logoUrl || team.logoUrl || '', league: domestic ? league : existing?.league || `Internacionales · ${league}`, country: domestic ? league.split(' (')[0] : existing?.country || '' });
+        await onSaveClub({ ...(existing || { id: footballImportClubId(team.id, importLeague), name: team.names[0], shortName: team.names[1] || team.names[0], city: '', stadium: '', altitudeMeters: 0, primaryColor: '#334155', secondaryColor: '#ffffff', textColor: '#ffffff', badgeEmoji: '' }), logoUrl: existing?.logoUrl || team.logoUrl || '', league: domestic ? league : existing?.league || `Internacionales · ${league}`, country: domestic ? league.split(' (')[0] : existing?.country || '' });
         added++;
       }
       setFeedback({ message: `${added} equipos actualizados desde ESPN. Se conservaron los equipos guardados de otras temporadas.`, type: 'success' });

@@ -1,4 +1,4 @@
-import { FOOTBALL_LEAGUES } from '../data/footballLeagues';
+import { FOOTBALL_COMPETITIONS } from '../data/footballLeagues';
 import type { Club } from '../types/football';
 
 const localCrests = new Set(["real_madrid", "barcelona", "atletico_madrid", "athletic_club", "sevilla", "real_betis", "real_sociedad", "villarreal", "valencia", "man_city", "arsenal", "liverpool", "man_united", "chelsea", "tottenham", "aston_villa", "newcastle", "girona"]);
@@ -17,11 +17,13 @@ export function normalizeClubName(value: string): string {
     .replace(/\b(club|deportivo|de|futbol|football|fc|cf|ca|afc|cd)\b/g, '').replace(/[^a-z0-9]/g, '');
 }
 export function getClubLeague(club: Partial<Club>): string {
-  const exact = Object.entries(FOOTBALL_LEAGUES).find(([, name]) => name === club.league);
+  const exact = Object.entries(FOOTBALL_COMPETITIONS).find(([, name]) => name === club.league || `Internacionales · ${name}` === club.league);
   if (exact) return exact[0];
-  const codes: Record<string, string> = { BO: 'bol.1', ES: 'esp.1', GB: 'eng.1', ENG: 'eng.1', AR: 'arg.1', BR: 'bra.1', CO: 'col.1', PE: 'per.1', CL: 'chi.1', UY: 'uru.1' };
+  const codes: Record<string, string> = { MX: 'mex.1', US: 'usa.1', USA: 'usa.1', BO: 'bol.1', ES: 'esp.1', GB: 'eng.1', ENG: 'eng.1', AR: 'arg.1', BR: 'bra.1', CO: 'col.1', PE: 'per.1', CL: 'chi.1', UY: 'uru.1' };
   if (codes[club.country?.toUpperCase() || '']) return codes[club.country!.toUpperCase()];
   const source = [club.country, club.league].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/mexico/.test(source)) return 'mex.1';
+  if (/estados unidos|united states|mls/.test(source)) return 'usa.1';
   if (/bolivia/.test(source)) return 'bol.1';
   if (/espana|spain|laliga/.test(source)) return 'esp.1';
   if (/inglaterra|england|premier/.test(source)) return 'eng.1';

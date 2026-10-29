@@ -1,10 +1,11 @@
+import { findFootballImportClub, footballImportClubId } from '../utils/footballImports';
 import { fromBoliviaDateTimeInput, toBoliviaDateTimeInput } from '../utils/eventSchedule';
 import { EventSourcesEditor } from './EventSourcesEditor';
 import { buildEventSourcesPatch, getEventSources, getDefaultSourceId } from '../utils/eventSources';
 import { SportsEventEditor } from './SportsEventEditor';
 import { sanitizeSportsEvent } from '../utils/sportsEvents';
 import type { SportsEvent } from '../types/sports';
-import { FOOTBALL_COMPETITIONS, FOOTBALL_LEAGUES, FOOTBALL_CUPS, clubNameKey } from '../data/footballLeagues';
+import { FOOTBALL_COMPETITIONS, FOOTBALL_LEAGUES, FOOTBALL_CUPS, FOOTBALL_REGIONAL, FOOTBALL_WOMENS, FOOTBALL_YOUTH } from '../data/footballLeagues';
 import { ClubCrest } from './ClubCrest';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -279,12 +280,12 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
     setIsImportingApi(true);
     try {
       const resolveTeam = async (team: ApiMatchSummary['homeTeam']) => {
-        const existing = Object.values(clubs).find(c => clubNameKey(c.name) === clubNameKey(team.displayName) || clubNameKey(c.shortName) === clubNameKey(team.displayName));
+        const existing = findFootballImportClub(clubs, team.id, [team.displayName, team.name], apiLeague);
         if (existing) return existing.id;
         if (!team.id) throw new Error('ESPN no devolvió un identificador de equipo.');
         const league = FOOTBALL_COMPETITIONS[apiLeague];
         const domestic = league.includes(' (');
-        const id = `espn_${team.id}`;
+        const id = footballImportClubId(team.id, apiLeague);
         await saveClub({ id, name: team.displayName, shortName: team.name, logoUrl: team.logo || '', league: FOOTBALL_CUPS[apiLeague] ? `${league.split(' (')[0]} (Otros equipos)` : domestic ? league : `Internacionales · ${league}`, country: domestic ? league.split(' (')[0] : '', city: '', stadium: '', altitudeMeters: 0, primaryColor: '#334155', secondaryColor: '#ffffff', textColor: '#ffffff', badgeEmoji: '' });
         return id;
       };
@@ -1324,6 +1325,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                 <optgroup label="Copas nacionales">
                   {Object.entries(FOOTBALL_CUPS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                 </optgroup>
+                {[['Norteamérica y selecciones', FOOTBALL_REGIONAL], ['Fútbol femenino', FOOTBALL_WOMENS], ['Juveniles / Sub-17 / Sub-20', FOOTBALL_YOUTH]].map(([label, entries]) => <optgroup key={String(label)} label={String(label)}>{Object.entries(entries).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</optgroup>)}
               </select>
             </div>
 
