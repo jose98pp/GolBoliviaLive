@@ -437,7 +437,7 @@ async function runTests() {
     path.join(__dirname, '../src/components/MatchStats.tsx'),
     'utf-8'
   );
-  assert(matchStatsSource.includes('findMatchByTeams'), 'MatchStats: consulta automática a API de fútbol por nombres de equipos');
+  assert(matchStatsSource.includes('getMatchDetails(eventId, league)') && matchStatsSource.includes('detailKey'), 'MatchStats: consulta por ID y competición exactos, sin buscar partidos por nombres');
   assert(matchStatsSource.includes('showSubstitutes'), 'MatchStats: conmutador para ver titulares o suplentes de cada equipo');
   assert(matchStatsSource.includes('Sin eventos registrados'), 'MatchStats: mensaje elegante cuando los eventos han sido limpiados');
   assert(matchStatsSource.includes('Datos Oficiales API ESPN'), 'MatchStats: badge indicador de datos oficiales en tiempo real');

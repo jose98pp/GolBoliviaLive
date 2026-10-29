@@ -26,6 +26,9 @@ export interface Club {
 }
 
 export interface MatchEvent {
+  displayClock?: string;
+  source?: 'espn' | 'manual';
+  teamName?: string;
   id: string;
   minute: number;
   type: 'goal' | 'yellow_card' | 'red_card' | 'substitution' | 'var' | 'commentary' | 'corner';

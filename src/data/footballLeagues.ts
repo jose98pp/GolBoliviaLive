@@ -42,7 +42,7 @@ export const FOOTBALL_WOMENS: Record<string, string> = {
   'esp.w.1': 'España (Liga F femenina)',
   'fifa.world_u17_womens': 'FIFA Mundial femenino Sub-17',
   'fifa.world_u20_womens': 'FIFA Mundial femenino Sub-20',
-  'fifa.wwc': 'FIFA Copa Mundial femenina',
+  'fifa.wwc': 'FIFA Copa Mundial femenina (mayores)',
   'conmebol.america_femenina': 'CONMEBOL Copa América Femenina',
   'conmebol.libertadores_femenina': 'CONMEBOL Libertadores Femenina',
 };

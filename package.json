@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx scripts/test-player-frontend.ts && tsx scripts/test-iptv.ts && tsx scripts/test-iptv-cache.ts && tsx scripts/test-hls.ts && node scripts/test-cloud-dns.mjs && tsx scripts/test-match-iptv.ts && tsx scripts/test-external-player.tsx && tsx scripts/test-match-persistence.ts && tsx scripts/test-club-crests.tsx && tsx scripts/test-match-audience.ts && tsx scripts/test-espn-live.ts && tsx scripts/test-sports-events.tsx && tsx scripts/test-event-sources.ts && tsx scripts/test-event-schedule.tsx && tsx scripts/test-playlist-import.ts && tsx scripts/test-football-categories-logos.tsx",
+    "test": "tsx scripts/test-player-frontend.ts && tsx scripts/test-iptv.ts && tsx scripts/test-iptv-cache.ts && tsx scripts/test-hls.ts && node scripts/test-cloud-dns.mjs && tsx scripts/test-match-iptv.ts && tsx scripts/test-external-player.tsx && tsx scripts/test-match-persistence.ts && tsx scripts/test-club-crests.tsx && tsx scripts/test-match-audience.ts && tsx scripts/test-espn-live.ts && tsx scripts/test-sports-events.tsx && tsx scripts/test-event-sources.ts && tsx scripts/test-event-schedule.tsx && tsx scripts/test-playlist-import.ts && tsx scripts/test-football-categories-logos.tsx && tsx scripts/test-espn-details.ts",
     "test:rules": "bun run --cwd security_rules_test_firestore test",
     "test:streams": "tsx scripts/test-live-streams.ts",
     "test:cloud-dns": "node scripts/test-cloud-dns.mjs"

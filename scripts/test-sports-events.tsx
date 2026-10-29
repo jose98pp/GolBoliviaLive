@@ -52,7 +52,8 @@ try {
   assert.equal(await getSportsLive(nba.source!), null);
 } finally { globalThis.fetch = originalFetch; }
 const source = await readFile(new URL('../serverApp.ts', import.meta.url), 'utf8');
-const route = source.slice(source.indexOf("app.get(['/api/sports-api/events'"), source.indexOf("app.get(['/api/football-api/matches'"));
+const routeStart = source.indexOf("app.get(['/api/sports-api/events'");
+const route = source.slice(routeStart, source.indexOf("\n});", routeStart) + 4);
 const handler = route.slice(route.indexOf('async (req:'), route.lastIndexOf('\n});') + 2);
 const compiled = await transform(`export const handle = ${handler};`, { loader: 'ts', format: 'cjs' });
 const module = { exports: {} as any }; const urls: string[] = [];

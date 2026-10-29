@@ -1,3 +1,4 @@
+import { EspnStandings } from './EspnStandings';
 import { ClubCrest } from './ClubCrest';
 import React, { useState, useEffect } from 'react';
 import {
@@ -15,9 +16,7 @@ import {
 } from 'lucide-react';
 import { MatchStats as IMatchStats, MatchEvent, StreamSettings, LiveEvent } from '../types/football';
 import {
-  BOLIVIAN_CLUBS,
-  STANDINGS_DATA,
-  LINEUPS_DATA
+  BOLIVIAN_CLUBS
 } from '../data/bolivianFootballData';
 import { useClubs } from '../hooks/useClubs';
 import { espnFootballApi, ApiMatchDetails } from '../services/espnFootballApi';
@@ -61,34 +60,39 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
 }) => {
   const [statsTab, setStatsTab] = useState<'timeline' | 'stats' | 'lineups' | 'table'>('timeline');
   const [matchStats] = useState<IMatchStats>(EMPTY_MATCH_STATS);
-  const events = propEvents ?? [];
   const { clubs } = useClubs();
 
   const homeClub = (streamSettings && clubs[streamSettings.homeClubId]) || clubs.bolivar || BOLIVIAN_CLUBS.bolivar;
   const awayClub = (streamSettings && clubs[streamSettings.awayClubId]) || clubs.strongest || BOLIVIAN_CLUBS.strongest;
 
-  const [apiDetails, setApiDetails] = useState<ApiMatchDetails | null>(null);
-  const [isLoadingApi, setIsLoadingApi] = useState<boolean>(false);
-  const [showSubstitutes, setShowSubstitutes] = useState<boolean>(false);
-
+  const detailKey = espnLink?.enabled ? `${espnLink.league}:${espnLink.eventId}` : '';
+  const [detailRecord, setDetailRecord] = useState<{ key: string; data: ApiMatchDetails; updatedAt: number } | null>(null);
+  const apiDetails = detailRecord?.key === detailKey ? detailRecord.data : null;
+  const [isLoadingApi, setIsLoadingApi] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [showSubstitutes, setShowSubstitutes] = useState(false);
   useEffect(() => {
-    let isMounted = true;
-    setIsLoadingApi(true);
-
-    setApiDetails(null);
-    const lookup = espnLink?.enabled
-      ? Promise.resolve({ id: espnLink.eventId })
-      : espnFootballApi.findMatchByTeams(homeClub.name, awayClub.name);
-    lookup.then(async matched => {
-      if (!isMounted || !matched) return;
-      const details = await espnFootballApi.getMatchDetails(matched.id, espnLink?.league || 'bol.1');
-      if (isMounted) setApiDetails(details);
-    }).catch(() => {}).finally(() => { if (isMounted) setIsLoadingApi(false); });
-
-    return () => {
-      isMounted = false;
+    let cancelled = false; let busy = false;
+    setDetailError(''); setIsLoadingApi(false);
+    if (!espnLink?.enabled) return;
+    const { eventId, league } = espnLink;
+    const refresh = async () => {
+      if (busy || document.visibilityState === 'hidden') return;
+      busy = true; setIsLoadingApi(true);
+      try {
+        const details = await espnFootballApi.getMatchDetails(eventId, league);
+        if (!cancelled) {
+          if (details) { setDetailRecord({ key: detailKey, data: details, updatedAt: Date.now() }); setDetailError(''); }
+          else setDetailError('No se pudieron actualizar los detalles de ESPN. Se conservan los últimos datos del partido.');
+        }
+      } catch { if (!cancelled) setDetailError('ESPN no está disponible.'); }
+      finally { busy = false; if (!cancelled) setIsLoadingApi(false); }
     };
-  }, [homeClub.name, awayClub.name, espnLink?.eventId, espnLink?.league, espnLink?.enabled]);
+    void refresh(); const timer = setInterval(refresh, 30000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { cancelled = true; clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+  }, [detailKey]);
+  const events = [...new Map([...(propEvents || []), ...(apiDetails?.events || [])].map(event => [`${event.source || 'manual'}:${event.id}`, event])).values()].sort((a, b) => a.minute - b.minute);
 
   const activeStats: IMatchStats = apiDetails?.stats || matchStats;
   const hasApiLineups = Boolean(apiDetails?.homeLineup?.starting?.length && apiDetails?.awayLineup?.starting?.length);
@@ -104,7 +108,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
               {streamSettings?.tournamentName || 'División Profesional'}
             </span>
             <span>·</span>
-            <span>Fecha 22 / Torneo Clausura</span>
+            <span>Datos del partido</span>
           </div>
           <div
             className={`flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-lg border ${
@@ -137,7 +141,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
                 <span>{homeClub.city}</span>
                 <span>·</span>
                 <span className="text-sky-400 font-medium">
-                  {homeClub.league ? (homeClub.league.includes('España') ? '🇪🇸 LaLiga' : homeClub.league.includes('Inglaterra') ? '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier' : '🇧🇴 Bolivia') : 'Titular'}
+                  {homeClub.league || 'Equipo local'}
                 </span>
               </div>
             </div>
@@ -170,9 +174,9 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
                 {awayClub.name}
               </h3>
               <div className="flex items-center gap-1 text-[11px] text-slate-400 justify-center md:justify-start">
-                <span className="text-amber-400 font-medium">Atigrado</span>
+                <span className="text-amber-400 font-medium">{awayClub.league || 'Equipo visitante'}</span>
                 <span>·</span>
-                <span>La Paz</span>
+                <span>{awayClub.city}</span>
               </div>
             </div>
           </div>
@@ -239,10 +243,13 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
             <span className="font-semibold uppercase tracking-wider text-[11px]">Eventos Destacados del Partido</span>
             <span className="text-emerald-400 font-mono flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Actualizado en vivo</span>
+              <span>{apiDetails ? 'Eventos ESPN' : 'Eventos del administrador'}</span>
             </span>
           </div>
 
+          {isLoadingApi && <p role="status" className="text-xs text-slate-400">Consultando detalles ESPN…</p>}
+          {detailError && <p role="alert" className="text-xs text-amber-300">{detailError}</p>}
+          {apiDetails && <p className="text-xs text-slate-400">ESPN · Última actualización: {new Date(detailRecord!.updatedAt).toLocaleTimeString()} · consulta cada 30 segundos. La cobertura de acciones depende del torneo.</p>}
           {events.length === 0 ? (
             <div className="p-8 text-center bg-[#0d1424] rounded-xl border border-slate-800">
               <Clock className="w-8 h-8 text-slate-500 mx-auto mb-2 opacity-50" />
@@ -262,10 +269,11 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
                     className="p-3 rounded-xl bg-[#0d1424] border border-slate-800/80 hover:border-slate-700 transition-colors flex items-start gap-3"
                   >
                     <div className="px-2 py-1 bg-slate-900 border border-slate-700 rounded-lg text-emerald-400 font-mono font-bold text-xs tabular-nums shrink-0">
-                      {ev.minute}&apos;
+                      {ev.displayClock || `${ev.minute}'`}
                     </div>
 
                     <div className="flex-1 text-xs">
+                      <span className="text-[10px] text-slate-400">{ev.source === 'espn' ? 'ESPN' : 'Administrador'}</span>
                       <div className="flex items-center gap-2 mb-1">
                         {ev.type === 'goal' && (
                           <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-bold border border-emerald-500/40 text-[10px]">
@@ -293,9 +301,9 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
                           </span>
                         )}
 
-                        {club && (
+                        {(club || ev.teamName) && (
                           <span className="font-semibold text-slate-300">
-                            {club.shortName}
+                            {ev.teamName || club?.shortName}
                           </span>
                         )}
                         {ev.player && (
@@ -322,7 +330,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
       )}
 
       {/* TAB CONTENT 2: LIVE STATISTICS BARS */}
-      {statsTab === 'stats' && (
+      {statsTab === 'stats' && (!apiDetails?.stats ? <p className="p-4 text-sm text-slate-400">ESPN no ha informado estadísticas para este partido.</p> : (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-slate-800/60">
             <div className="flex items-center justify-between sm:justify-start gap-4 text-xs font-bold text-slate-300 w-full sm:w-auto">
@@ -388,7 +396,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
             ))}
           </div>
         </div>
-      )}
+      ))}
 
       {/* TAB CONTENT 3: LINEUPS & TACTICAL FORMATIONS */}
       {statsTab === 'lineups' && (
@@ -415,6 +423,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
             )}
           </div>
 
+          {!hasApiLineups && <p className="text-sm text-slate-400">ESPN aún no informó las alineaciones completas de este encuentro.</p>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Home Lineup */}
             <div className="p-3.5 bg-[#0d1424] rounded-xl border border-sky-500/30">
@@ -424,18 +433,18 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
                     {hasApiLineups ? apiDetails!.homeLineup!.teamName : homeClub.name}
                   </h4>
                   <span className="text-[11px] text-slate-400">
-                    DT: {hasApiLineups ? apiDetails!.homeLineup!.coach : (homeClub.id === 'bolivar' ? 'Flavio Robatto' : 'Director Técnico')}
+                    DT: {hasApiLineups ? apiDetails!.homeLineup!.coach : 'No informado'}
                   </span>
                 </div>
                 <span className="px-2 py-0.5 bg-sky-950 text-sky-400 font-mono font-bold text-xs rounded border border-sky-800">
-                  {hasApiLineups ? apiDetails!.homeLineup!.formation : '4-3-3'}
+                  {hasApiLineups ? apiDetails!.homeLineup!.formation : '—'}
                 </span>
               </div>
 
               <div className="space-y-1.5 text-xs">
                 {(hasApiLineups
                   ? (showSubstitutes ? apiDetails!.homeLineup!.substitutes : apiDetails!.homeLineup!.starting)
-                  : LINEUPS_DATA.home.starting
+                  : []
                 ).map((p) => (
                   <div key={p.number + '-' + p.name} className="flex items-center justify-between py-1 border-b border-slate-800/50">
                     <div className="flex items-center gap-2">
@@ -458,18 +467,18 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
                     {hasApiLineups ? apiDetails!.awayLineup!.teamName : awayClub.name}
                   </h4>
                   <span className="text-[11px] text-slate-400">
-                    DT: {hasApiLineups ? apiDetails!.awayLineup!.coach : (awayClub.id === 'strongest' ? 'Ismael Rescalvo' : 'Director Técnico')}
+                    DT: {hasApiLineups ? apiDetails!.awayLineup!.coach : 'No informado'}
                   </span>
                 </div>
                 <span className="px-2 py-0.5 bg-amber-950 text-amber-400 font-mono font-bold text-xs rounded border border-amber-800">
-                  {hasApiLineups ? apiDetails!.awayLineup!.formation : '4-2-3-1'}
+                  {hasApiLineups ? apiDetails!.awayLineup!.formation : '—'}
                 </span>
               </div>
 
               <div className="space-y-1.5 text-xs">
                 {(hasApiLineups
                   ? (showSubstitutes ? apiDetails!.awayLineup!.substitutes : apiDetails!.awayLineup!.starting)
-                  : LINEUPS_DATA.away.starting
+                  : []
                 ).map((p) => (
                   <div key={p.number + '-' + p.name} className="flex items-center justify-between py-1 border-b border-slate-800/50">
                     <div className="flex items-center gap-2">
@@ -488,55 +497,8 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
       )}
 
       {/* TAB CONTENT 4: LEAGUE STANDINGS TABLE */}
-      {statsTab === 'table' && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 text-[11px] text-slate-400 font-mono uppercase tracking-wider">
-                <th className="py-2.5 px-2">#</th>
-                <th className="py-2.5 px-3">Club</th>
-                <th className="py-2.5 px-2 text-center">PJ</th>
-                <th className="py-2.5 px-2 text-center">G</th>
-                <th className="py-2.5 px-2 text-center">E</th>
-                <th className="py-2.5 px-2 text-center">P</th>
-                <th className="py-2.5 px-2 text-center">DG</th>
-                <th className="py-2.5 px-2 text-right font-bold text-white">PTS</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono">
-              {STANDINGS_DATA.map((row) => {
-                const isSelectedMatch = row.clubId === 'bolivar' || row.clubId === 'strongest';
-                const club = clubs[row.clubId] || BOLIVIAN_CLUBS[row.clubId];
+      {statsTab === 'table' && <EspnStandings league={espnLink?.league} />}
 
-                return (
-                  <tr
-                    key={row.clubId}
-                    className={`hover:bg-slate-800/40 transition-colors ${
-                      isSelectedMatch ? 'bg-slate-800/20' : ''
-                    }`}
-                  >
-                    <td className="py-2.5 px-2 font-bold text-slate-400 tabular-nums">
-                      {row.position}
-                    </td>
-                    <td className="py-2.5 px-3 font-sans font-medium text-white flex items-center gap-2">
-                      <span><ClubCrest club={club} /></span>
-                      <span>{row.name}</span>
-                    </td>
-                    <td className="py-2.5 px-2 text-center text-slate-300 tabular-nums">{row.played}</td>
-                    <td className="py-2.5 px-2 text-center text-slate-300 tabular-nums">{row.won}</td>
-                    <td className="py-2.5 px-2 text-center text-slate-300 tabular-nums">{row.drawn}</td>
-                    <td className="py-2.5 px-2 text-center text-slate-300 tabular-nums">{row.lost}</td>
-                    <td className="py-2.5 px-2 text-center text-slate-300 tabular-nums">{row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}</td>
-                    <td className="py-2.5 px-2 text-right font-bold text-emerald-400 tabular-nums text-sm">
-                      {row.points}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 };

@@ -1837,6 +1837,16 @@ app.get(['/api/sports-api/events', '/api/sports-api/event'], async (req: Request
   } catch { return res.status(503).set('Cache-Control', 'no-store').json({ error: 'No se pudo consultar ESPN.' }); }
 });
 
+app.get('/api/football-api/standings', async (req: Request, res: Response) => {
+  const league = String(req.query.league || '').trim();
+  if (!Object.hasOwn(FOOTBALL_COMPETITIONS, league)) return res.status(400).json({ error: 'Competición no compatible.' });
+  try {
+    const response = await fetchEspn(`https://site.api.espn.com/apis/v2/sports/soccer/${encodeURIComponent(league)}/standings`);
+    if (!response.ok) return res.status(502).set('Cache-Control', 'no-store').json({ error: 'Clasificación no disponible en ESPN.' });
+    return res.set('Cache-Control', 'public, max-age=15').json(await response.json());
+  } catch { return res.status(503).set('Cache-Control', 'no-store').json({ error: 'No se pudo consultar ESPN.' }); }
+});
+
 app.get(['/api/football-api/matches', '/football-api/matches'], async (req: Request, res: Response) => {
   const league = String(req.query.league || 'bol.1').trim();
   if (!Object.hasOwn(FOOTBALL_COMPETITIONS, league)) return res.status(400).json({ error: 'Liga no compatible.' });

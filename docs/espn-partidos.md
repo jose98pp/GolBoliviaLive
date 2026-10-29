@@ -93,3 +93,33 @@ usan IDs separados para nuevas categorías para no sobrescribirlos.
 
 Se usa la misma importación, guardado y actualización oficial que en las demás
 competiciones. La cobertura en vivo depende de ESPN y de la fecha consultada.
+
+## Mundial femenino, minuto a minuto y clasificación
+
+El Mundial femenino de mayores figura en **Fútbol femenino** como **FIFA Copa
+Mundial femenina (mayores)** (`fifa.wwc`), separado de los Sub-17/Sub-20.
+
+Al importar un partido y dejar habilitada la actualización ESPN, **Minuto a
+minuto** consulta su resumen por ID y competición cada 30 segundos mientras
+la página está visible. Muestra goles, tarjetas, sustituciones y los destacados
+que ESPN publique; si no hay `keyEvents`, usa los comentarios disponibles.
+Conserva también los eventos del administrador e identifica la fuente de cada
+acción. No garantiza relato completo ni cobertura para todas las competiciones.
+El tiempo añadido se conserva y los relojes numéricos se convierten de segundos
+a minutos. Las acciones tienen identificadores estables para no duplicarse en
+cada consulta. Una respuesta de otro ID se rechaza.
+
+**Tabla Liga** muestra la clasificación actual de la competición del vínculo
+ESPN del formulario, incluso si se desactiva el marcador automático. Consulta
+cada 60 segundos mientras esa pestaña está abierta y la página está visible.
+Se muestran los grupos disponibles y guiones para valores no informados.
+Una copa eliminatoria puede no ofrecer tabla. Sin vínculo ESPN se solicita
+importar o vincular el partido; no se sustituye por la tabla de Bolivia.
+
+Los fallos de red conservan los últimos datos del mismo vínculo y muestran
+un aviso. Cambiar de partido o de competición no mezcla respuestas anteriores.
+No se muestran alineaciones de demostración ni estadísticas inventadas como
+respaldo de datos ausentes. Estas consultas no escriben periódicamente en Firebase.
+La tabla es la clasificación actual de ESPN; no reconstruye tablas históricas
+correspondientes a partidos antiguos. El despliegue PHP de cPanel necesita rutas
+compatibles para estas consultas, además de actualizar el frontend.

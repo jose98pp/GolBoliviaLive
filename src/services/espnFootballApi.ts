@@ -1,3 +1,4 @@
+import { parseEspnHighlights, parseEspnStandings, type EspnStandingGroup } from '../utils/espnDetails';
 import { parseEspnMatch } from '../utils/espnMatch';
 import type { LiveEvent } from '../types/football';
 import { MatchStats, MatchEvent } from '../types/football';
@@ -64,6 +65,12 @@ function normalizePosition(posName?: string, abbreviation?: string): string {
 }
 
 class EspnFootballApiService {
+  async getStandings(league: string): Promise<EspnStandingGroup[]> {
+    const response = await fetch(`/api/football-api/standings?league=${encodeURIComponent(league)}`, { signal: AbortSignal.timeout(12000) });
+    if (!response.ok) throw new Error('No se pudo consultar la clasificación de ESPN.');
+    return parseEspnStandings(await response.json());
+  }
+
   async getLiveMatch(eventId: string, league: string): Promise<Partial<LiveEvent> | null> {
     try {
       const response = await fetch(`/api/football-api/match/${encodeURIComponent(eventId)}?league=${encodeURIComponent(league)}`, { signal: AbortSignal.timeout(12000) });
@@ -103,17 +110,17 @@ class EspnFootballApiService {
   async getMatchDetails(eventId: string, league = 'bol.1'): Promise<ApiMatchDetails | null> {
     try {
       let data: any = null;
-      const res = await fetch(`/api/football-api/match/${encodeURIComponent(eventId)}?league=${encodeURIComponent(league)}`);
+      const res = await fetch(`/api/football-api/match/${encodeURIComponent(eventId)}?league=${encodeURIComponent(league)}`, { signal: AbortSignal.timeout(12000) });
       if (res.ok) {
         data = await res.json();
       } else {
-        const fallbackRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/summary?event=${encodeURIComponent(eventId)}`);
+        const fallbackRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/summary?event=${encodeURIComponent(eventId)}`, { signal: AbortSignal.timeout(12000) });
         if (fallbackRes.ok) {
           data = await fallbackRes.json();
         }
       }
 
-      if (!data) return null;
+      if (!data || String(data.header?.id) !== eventId) return null;
       return this.parseMatchSummary(eventId, data);
     } catch (err) {
       console.warn(`[EspnFootballApi] Error al obtener detalles del evento ${eventId}:`, err);
@@ -189,7 +196,7 @@ class EspnFootballApiService {
     const awayComp = comp?.competitors?.find((c: any) => c.homeAway === 'away') || comp?.competitors?.[1];
 
     const title = `${homeComp?.team?.displayName || 'Local'} vs ${awayComp?.team?.displayName || 'Visitante'}`;
-    const venue = raw.gameInfo?.venue?.fullName || 'Estadio Departamental';
+    const venue = raw.gameInfo?.venue?.fullName || '';
 
     // Parse Rosters / Lineups
     let homeLineup: ApiLineup | undefined;
@@ -216,8 +223,8 @@ class EspnFootballApiService {
 
         const lineupObj: ApiLineup = {
           teamName: r.team?.displayName || (isHome ? 'Local' : 'Visitante'),
-          formation: r.formation || '4-3-3',
-          coach: r.coach?.[0]?.displayName || 'Director Técnico',
+          formation: r.formation || '',
+          coach: r.coach?.[0]?.displayName || '',
           starting,
           substitutes,
         };
@@ -229,7 +236,7 @@ class EspnFootballApiService {
 
     // Parse Statistics from boxscore
     let stats: MatchStats | undefined;
-    if (raw.boxscore?.teams && Array.isArray(raw.boxscore.teams)) {
+    if (Array.isArray(raw.boxscore?.teams) && raw.boxscore.teams.some((team: any) => Array.isArray(team.statistics) && team.statistics.length)) {
       const tHome = raw.boxscore.teams.find((t: any) => t.team?.id === homeComp?.team?.id) || raw.boxscore.teams[0];
       const tAway = raw.boxscore.teams.find((t: any) => t.team?.id === awayComp?.team?.id) || raw.boxscore.teams[1];
 
@@ -239,8 +246,8 @@ class EspnFootballApiService {
         return parseFloat(String(item.displayValue).replace('%', '')) || 0;
       };
 
-      const hPoss = getStatVal(tHome, 'possessionPct') || 50;
-      const aPoss = getStatVal(tAway, 'possessionPct') || 50;
+      const hPoss = getStatVal(tHome, 'possessionPct');
+      const aPoss = getStatVal(tAway, 'possessionPct');
 
       stats = {
         possession: [Math.round(hPoss), Math.round(aPoss)],
@@ -251,36 +258,12 @@ class EspnFootballApiService {
         yellowCards: [getStatVal(tHome, 'yellowCards') || 0, getStatVal(tAway, 'yellowCards') || 0],
         redCards: [getStatVal(tHome, 'redCards') || 0, getStatVal(tAway, 'redCards') || 0],
         offsides: [getStatVal(tHome, 'offsides') || 0, getStatVal(tAway, 'offsides') || 0],
-        passes: [getStatVal(tHome, 'passes') || 300, getStatVal(tAway, 'passes') || 300],
-        passAccuracy: [getStatVal(tHome, 'passAccuracy') || 80, getStatVal(tAway, 'passAccuracy') || 80],
+        passes: [getStatVal(tHome, 'passes'), getStatVal(tAway, 'passes')],
+        passAccuracy: [getStatVal(tHome, 'passAccuracy'), getStatVal(tAway, 'passAccuracy')],
       };
     }
 
-    // Parse Key Timeline Events
-    const events: MatchEvent[] = [];
-    if (Array.isArray(raw.keyEvents)) {
-      raw.keyEvents.forEach((ke: any, idx: number) => {
-        const isGoal = Boolean(ke.scoringPlay);
-        const isYellow = Boolean(ke.yellowCard);
-        const isRed = Boolean(ke.redCard);
-        const isSub = Boolean(ke.substitution);
-
-        let type: MatchEvent['type'] = 'commentary';
-        if (isGoal) type = 'goal';
-        else if (isYellow) type = 'yellow_card';
-        else if (isRed) type = 'red_card';
-        else if (isSub) type = 'substitution';
-
-        events.push({
-          id: `espn-ev-${idx}-${Date.now()}`,
-          minute: ke.clock?.value || 0,
-          type,
-          clubId: ke.team?.id || 'fbf',
-          player: ke.participants?.[0]?.athlete?.displayName || undefined,
-          description: ke.text || ke.shortText || '',
-        });
-      });
-    }
+    const events = parseEspnHighlights(eventId, raw);
 
     return {
       id: eventId,
