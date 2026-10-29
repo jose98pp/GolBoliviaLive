@@ -10,6 +10,11 @@ import { BOLIVIAN_CLUBS } from '../src/data/bolivianFootballData';
 import { parseChannelPlaylist } from '../src/utils/channelSources';
 import type { Club } from '../src/types/football';
 
+assert.equal(FOOTBALL_COMPETITIONS['ksa.1'], 'Arabia Saudita (Saudi Pro League)');
+assert.equal(FOOTBALL_COMPETITIONS['afc.champions'], 'Asia (AFC Champions League Elite)');
+assert.equal(FOOTBALL_WOMENS['fifa.world_u17_womens'], 'FIFA Mundial femenino Sub-17');
+assert.equal(getClubLeague({ country: 'Arabia Saudita' }), 'ksa.1');
+assert.equal(footballCategory('fifa.world_u17_womens'), 'w17');
 assert.equal(FOOTBALL_COMPETITIONS['mex.1'], 'México (Liga MX)');
 assert.equal(FOOTBALL_COMPETITIONS['usa.1'], 'Estados Unidos (MLS)');
 assert.equal(footballCategory('mex.women'), 'w');

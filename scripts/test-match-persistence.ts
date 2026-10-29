@@ -197,7 +197,7 @@ assert.equal(load().sources.length, 0);
 assertConfirmedMatchSignal(emptyPayload, load());
 console.log('Fuentes por evento: guardar/recargar tres opciones, fuente inicial, orden de claves Firestore, validación y eliminación completa comprobados.');
 
-for (const league of ['arg.copa_arg', 'bra.copa_do_brazil', 'esp.copa_del_rey', 'eng.fa', 'mex.1', 'usa.1', 'mex.women', 'usa.nwsl', 'conmebol.america_femenina', 'fifa.world_u17_womens', 'conmebol.sudamericano.sub20']) {
+for (const league of ['arg.copa_arg', 'bra.copa_do_brazil', 'esp.copa_del_rey', 'eng.fa', 'mex.1', 'usa.1', 'mex.women', 'usa.nwsl', 'conmebol.america_femenina', 'fifa.world_u17_womens', 'conmebol.sudamericano.sub20', 'ksa.1', 'afc.champions']) {
   const payload = { ...load(), version: load().version, espnLink: { eventId: '123456', league, enabled: true } } as LiveEvent;
   assert.equal((await postEvent(payload)).status, 200, `El servidor acepta la competición ${league}`);
   assert.deepEqual(load().espnLink, payload.espnLink, 'El vínculo de la copa sobrevive al guardado y recarga');

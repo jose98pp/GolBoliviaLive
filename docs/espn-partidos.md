@@ -83,3 +83,13 @@ se integran con pruebas controladas y deben comprobarse en el despliegue.
 Los equipos importados distinguen femenino, masculino, Sub-17 y Sub-20 incluso
 si coinciden en nombre. Se conservan IDs anteriores de clubes masculinos y se
 usan IDs separados para nuevas categorías para no sobrescribirlos.
+
+## Arabia Saudita, Asia y Mundial femenino Sub-17
+
+- **Arabia Saudita (Saudi Pro League)**: `ksa.1`, en Ligas y torneos internacionales.
+- **Asia (AFC Champions League Elite)**: `afc.champions`, en Copas continentales y selecciones.
+- **FIFA Mundial femenino Sub-17**: `fifa.world_u17_womens`, en Fútbol femenino,
+  junto con el Mundial femenino Sub-20. Se conserva el código y los vínculos ya guardados.
+
+Se usa la misma importación, guardado y actualización oficial que en las demás
+competiciones. La cobertura en vivo depende de ESPN y de la fecha consultada.

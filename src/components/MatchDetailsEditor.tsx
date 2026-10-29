@@ -284,7 +284,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
         if (existing) return existing.id;
         if (!team.id) throw new Error('ESPN no devolvió un identificador de equipo.');
         const league = FOOTBALL_COMPETITIONS[apiLeague];
-        const domestic = league.includes(' (');
+        const domestic = !FOOTBALL_REGIONAL[apiLeague] && league.includes(' (');
         const id = footballImportClubId(team.id, apiLeague);
         await saveClub({ id, name: team.displayName, shortName: team.name, logoUrl: team.logo || '', league: FOOTBALL_CUPS[apiLeague] ? `${league.split(' (')[0]} (Otros equipos)` : domestic ? league : `Internacionales · ${league}`, country: domestic ? league.split(' (')[0] : '', city: '', stadium: '', altitudeMeters: 0, primaryColor: '#334155', secondaryColor: '#ffffff', textColor: '#ffffff', badgeEmoji: '' });
         return id;
@@ -1325,7 +1325,7 @@ export const MatchDetailsEditor: React.FC<MatchDetailsEditorProps> = ({
                 <optgroup label="Copas nacionales">
                   {Object.entries(FOOTBALL_CUPS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                 </optgroup>
-                {[['Norteamérica y selecciones', FOOTBALL_REGIONAL], ['Fútbol femenino', FOOTBALL_WOMENS], ['Juveniles / Sub-17 / Sub-20', FOOTBALL_YOUTH]].map(([label, entries]) => <optgroup key={String(label)} label={String(label)}>{Object.entries(entries).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</optgroup>)}
+                {[['Copas continentales y selecciones', FOOTBALL_REGIONAL], ['Fútbol femenino (mayores, Sub-17 y Sub-20)', FOOTBALL_WOMENS], ['Juveniles / Sub-17 / Sub-20', FOOTBALL_YOUTH]].map(([label, entries]) => <optgroup key={String(label)} label={String(label)}>{Object.entries(entries).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</optgroup>)}
               </select>
             </div>
 

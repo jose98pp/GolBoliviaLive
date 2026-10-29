@@ -19,9 +19,10 @@ export function normalizeClubName(value: string): string {
 export function getClubLeague(club: Partial<Club>): string {
   const exact = Object.entries(FOOTBALL_COMPETITIONS).find(([, name]) => name === club.league || `Internacionales · ${name}` === club.league);
   if (exact) return exact[0];
-  const codes: Record<string, string> = { MX: 'mex.1', US: 'usa.1', USA: 'usa.1', BO: 'bol.1', ES: 'esp.1', GB: 'eng.1', ENG: 'eng.1', AR: 'arg.1', BR: 'bra.1', CO: 'col.1', PE: 'per.1', CL: 'chi.1', UY: 'uru.1' };
+  const codes: Record<string, string> = { SA: 'ksa.1', KSA: 'ksa.1', MX: 'mex.1', US: 'usa.1', USA: 'usa.1', BO: 'bol.1', ES: 'esp.1', GB: 'eng.1', ENG: 'eng.1', AR: 'arg.1', BR: 'bra.1', CO: 'col.1', PE: 'per.1', CL: 'chi.1', UY: 'uru.1' };
   if (codes[club.country?.toUpperCase() || '']) return codes[club.country!.toUpperCase()];
   const source = [club.country, club.league].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/arabia saudita|saudi/.test(source)) return 'ksa.1';
   if (/mexico/.test(source)) return 'mex.1';
   if (/estados unidos|united states|mls/.test(source)) return 'usa.1';
   if (/bolivia/.test(source)) return 'bol.1';

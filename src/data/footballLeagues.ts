@@ -1,6 +1,7 @@
 import type { Club } from '../types/football';
 
 export const FOOTBALL_LEAGUES: Record<string, string> = {
+  'ksa.1': 'Arabia Saudita (Saudi Pro League)',
   'mex.1': 'México (Liga MX)', 'mex.2': 'México (Liga de Expansión MX)',
   'usa.1': 'Estados Unidos (MLS)', 'usa.usl.1': 'Estados Unidos (USL Championship)',
   'arg.2': 'Argentina (Primera Nacional)', 'bra.2': 'Brasil (Série B)',
@@ -27,6 +28,7 @@ export const FOOTBALL_CUPS: Record<string, string> = {
   'chi.copa_chi': 'Chile (Copa Chile)',
 };
 export const FOOTBALL_REGIONAL: Record<string, string> = {
+  'afc.champions': 'Asia (AFC Champions League Elite)',
   'concacaf.champions': 'CONCACAF Champions Cup',
   'concacaf.leagues.cup': 'Leagues Cup (MLS / Liga MX)',
   'concacaf.gold': 'CONCACAF Copa Oro',
@@ -38,6 +40,8 @@ export const FOOTBALL_WOMENS: Record<string, string> = {
   'usa.nwsl': 'Estados Unidos (NWSL femenina)',
   'eng.w.1': 'Inglaterra (Women’s Super League femenina)',
   'esp.w.1': 'España (Liga F femenina)',
+  'fifa.world_u17_womens': 'FIFA Mundial femenino Sub-17',
+  'fifa.world_u20_womens': 'FIFA Mundial femenino Sub-20',
   'fifa.wwc': 'FIFA Copa Mundial femenina',
   'conmebol.america_femenina': 'CONMEBOL Copa América Femenina',
   'conmebol.libertadores_femenina': 'CONMEBOL Libertadores Femenina',
@@ -45,8 +49,6 @@ export const FOOTBALL_WOMENS: Record<string, string> = {
 export const FOOTBALL_YOUTH: Record<string, string> = {
   'fifa.world_u20': 'FIFA Mundial Sub-20 masculino',
   'fifa.world_u17': 'FIFA Mundial Sub-17 masculino',
-  'fifa.world_u20_womens': 'FIFA Mundial Sub-20 femenino',
-  'fifa.world_u17_womens': 'FIFA Mundial Sub-17 femenino',
   'conmebol.sudamericano.sub20': 'CONMEBOL Sudamericano Sub-20 masculino',
   'conmebol.sudamericano.sub17': 'CONMEBOL Sudamericano Sub-17 masculino',
 };
