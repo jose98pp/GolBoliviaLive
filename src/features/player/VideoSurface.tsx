@@ -64,16 +64,25 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       return { type: 'simulation' as const, url: '' };
     }
     const clean = rawStreamUrl.trim();
-    if (normalizeExternalPlayerUrl(clean)) return { type: 'external' as const, url: clean };
-    const ytMatch = clean.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+
+    // Detect supported platforms before generic external URLs. Otherwise
+    // kick.com/channel is treated as a generic iframe and renders the whole site.
+    const ytMatch = clean.match(/(?:youtu\\.be\\/|youtube(?:-nocookie)?\\.com\\/(?:embed\\/|v\\/|live\\/|shorts\\/|watch\\?v=|watch\\?.+&v=))([\\w-]{11})/);
     if (ytMatch) {
       return { type: 'youtube' as const, url: clean, videoId: ytMatch[1] };
     }
-    const kickMatch = clean.match(/kick\.com\/(?:video\/)?([a-zA-Z0-9_-]+)/);
-    if (kickMatch && !clean.includes('.m3u8')) {
+
+    const kickMatch = clean.match(/(?:www\\.)?kick\\.com\\/(?:video\\/)?([a-zA-Z0-9_-]+)/i);
+    if (kickMatch && !/\\.m3u8?(?:$|[?#])/i.test(clean)) {
       return { type: 'kick' as const, url: clean, channel: kickMatch[1] };
     }
-    return { type: 'hls' as const, url: clean };
+
+    // Direct HLS manifests must use the <video> + hls.js playback path.
+    if (/\\.m3u8?(?:$|[?#])/i.test(clean)) {
+      return { type: 'hls' as const, url: clean };
+    }
+
+    if (normalizeExternalPlayerUrl(clean)) return { type: 'external' as const, url: clean };
   }, [rawStreamUrl, streamSettings?.activeStreamSource]);
 
   const hasCustomStream = sourceInfo.type !== 'simulation';
@@ -284,7 +293,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       {/* Kick Embedded Stream if configured (unmuted by default) */}
       {sourceInfo.type === 'kick' && sourceInfo.channel && (
         <iframe
-          src={`https://player.kick.com/${encodeURIComponent(sourceInfo.channel)}?autoplay=true&muted=false`}
+          src={`https://player.kick.com/${encodeURIComponent(sourceInfo.channel)}?autoplay=true&muted=false&parent=${typeof window !== 'undefined' ? window.location.hostname : 'golbolivialive-beta.vercel.app'}`}
           className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           allowFullScreen
