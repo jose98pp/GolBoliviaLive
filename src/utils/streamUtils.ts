@@ -15,6 +15,8 @@ export function normalizeMatchIptvUrl(value: unknown): string | null {
   }
 }
 
+const TVF90_DOMAINS = new Set(['tvf90.com', 'www.tvf90.com']);
+
 const STREAMXHD_DOMAINS = new Set([
   'streamxhd.st',
   'streamxhd.com',
@@ -74,6 +76,16 @@ export function normalizeExternalPlayerUrl(value: unknown): string | null {
     if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
     if (/\.(?:m3u8?|mpd)$/i.test(url.pathname)) return null;
     const host = url.hostname.toLowerCase();
+
+    // TVF90: aceptar únicamente la página pública ESPN MX conocida; no aceptar
+    // URLs de manifiestos HLS ni parámetros adicionales suministrados por terceros.
+    if (TVF90_DOMAINS.has(host)) {
+      if (url.pathname !== '/online.php' || url.searchParams.get('stream') !== 'espnmx' ||
+          [...url.searchParams.keys()].some((key) => key !== 'stream') ||
+          url.searchParams.getAll('stream').length !== 1) return null;
+      url.hash = '';
+      return url.href;
+    }
 
     // StreamXHD validation
     if (STREAMXHD_DOMAINS.has(host)) {

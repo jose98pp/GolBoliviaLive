@@ -110,6 +110,8 @@ export default function App() {
 
   const iptvPlayerRef = useRef<HTMLDivElement | null>(null);
   const [iptvScrollRequest, setIptvScrollRequest] = useState(0);
+  const matchPlayerRef = useRef<HTMLDivElement | null>(null);
+  const [matchScrollRequest, setMatchScrollRequest] = useState(0);
 
   // Las rutas /tv/:id son independientes de los partidos y sus tres señales.
   useEffect(() => {
@@ -131,6 +133,15 @@ export default function App() {
     window.addEventListener('popstate', resolveTvRoute);
     return () => window.removeEventListener('popstate', resolveTvRoute);
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'stream' || !matchScrollRequest) return;
+    const frame = requestAnimationFrame(() => matchPlayerRef.current?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start',
+    }));
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab, matchScrollRequest]);
 
   useEffect(() => {
     if (activeTab !== 'iptv' || !activeIptvChannel || !iptvScrollRequest) return;
@@ -632,6 +643,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
     setActiveIptvChannel(null);
     setActiveTab('stream');
     setActiveEventId(evt.id);
+    setMatchScrollRequest((n) => n + 1);
     const slug = getMatchSlug(evt);
     if (!isLoginRoute && typeof window !== 'undefined' && window.history) {
       try {
@@ -1344,6 +1356,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
                 {currentLiveEvent?.espnLink?.enabled && <p role="status" className="text-xs text-slate-400 px-1">ESPN · {currentLiveEvent.espnUpdatedAt ? `Última actualización: ${new Date(currentLiveEvent.espnUpdatedAt).toLocaleTimeString()}` : 'Esperando datos oficiales…'} · consulta cada 30 segundos</p>}
                 <EventStartTime event={currentLiveEvent} />
+                <div ref={matchPlayerRef} className="scroll-mt-20 space-y-2">
                 {currentLiveEvent ? (
                   <UniversalStreamPlayer
                     key={`${currentLiveEvent.id}-${currentLiveEvent.primaryProvider}-${currentLiveEvent.iptvSource?.channelId || 'no-iptv'}-${signalReloadKey}`}
@@ -1370,6 +1383,7 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
                     </div>
                   </div>
                 )}
+                </div>
 
                 {/* Mobile View Toggle Buttons: Chat or Stats below the video player */}
                 <div className="lg:hidden mt-3 p-1 bg-slate-900/90 border border-slate-800 rounded-xl flex items-center gap-1">
