@@ -22,8 +22,8 @@ export function normalizeChannelSource(value: unknown, type: unknown = 'hls'): s
   } catch { return null; }
 }
 
-export function parseChannelPlaylist(text: string, baseUrl?: string): IptvChannel[] {
-  if (text.length > 1024 * 1024) throw new Error('La lista supera el límite de 1 MB.');
+export function parseChannelPlaylist(text: string, baseUrl?: string, maxChannels = 2000): IptvChannel[] {
+  if (new TextEncoder().encode(text).byteLength > 10 * 1024 * 1024) throw new Error('La lista supera el límite de 10 MB.');
   if (!text.trimStart().startsWith('#EXTM3U')) throw new Error('El archivo no es una lista M3U válida.');
   if (/^#EXT-X-TARGETDURATION/m.test(text) || (/^#EXT-X-/m.test(text) && !/#EXTINF:/m.test(text))) {
     throw new Error('Este archivo es una señal HLS. Guarda su URL como canal HLS; no es un catálogo de canales.');
@@ -50,7 +50,7 @@ export function parseChannelPlaylist(text: string, baseUrl?: string): IptvChanne
     channels.push({ id: `import-${channels.length + 1}`, name: metadata.slice(metadata.lastIndexOf(',') + 1).trim() || 'Canal',
       streamUrl, sourceType, logo: normalizeChannelLogoUrl(logo), group: attribute('group-title') || 'Importados',
       country: attribute('tvg-country') || 'INT', countryName: attribute('tvg-country') || 'Internacional' });
-    if (channels.length >= 500) break;
+    if (channels.length >= maxChannels) break;
   }
   if (!channels.length) throw new Error('No se encontraron canales compatibles en la lista.');
   return channels;
