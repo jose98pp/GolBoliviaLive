@@ -31,7 +31,6 @@ export function EspnStandings({ league }: { league?: string }) {
     <h3 className="text-sm font-bold text-white">Clasificación actual · {FOOTBALL_COMPETITIONS[league] || league}</h3>
     {loading && <p role="status" className="text-xs text-slate-400">Consultando ESPN…</p>}
     {error && <p role="alert" className="text-xs text-amber-300">{error}</p>}
-    {active?.updatedAt && <p className="text-xs text-slate-400">ESPN · Última actualización: {new Date(active.updatedAt).toLocaleTimeString()} · consulta cada 60 segundos</p>}
     {!loading && !error && !active?.groups.length && <p className="text-sm text-slate-400">ESPN no ofrece una tabla para esta competición o etapa. Las copas eliminatorias pueden no tener clasificación.</p>}
     {active?.groups.map((group, index) => <div key={`${group.name}-${index}`} className="space-y-2">
       <h4 className="text-xs font-semibold text-slate-300">{group.name}</h4>

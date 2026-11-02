@@ -77,10 +77,10 @@ export function normalizeExternalPlayerUrl(value: unknown): string | null {
     if (/\.(?:m3u8?|mpd)$/i.test(url.pathname)) return null;
     const host = url.hostname.toLowerCase();
 
-    // TVF90: aceptar únicamente la página pública ESPN MX conocida; no aceptar
+    // TVF90: aceptar páginas públicas ESPN MX conocidas; no aceptar
     // URLs de manifiestos HLS ni parámetros adicionales suministrados por terceros.
     if (TVF90_DOMAINS.has(host)) {
-      if (url.pathname !== '/online.php' || url.searchParams.get('stream') !== 'espnmx' ||
+      if (url.pathname !== '/online.php' || !/^espn[0-9]?mx$/i.test(url.searchParams.get('stream') || '') ||
           [...url.searchParams.keys()].some((key) => key !== 'stream') ||
           url.searchParams.getAll('stream').length !== 1) return null;
       url.hash = '';

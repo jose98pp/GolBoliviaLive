@@ -236,30 +236,14 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
         </button>
       </div>
 
-      {/* TAB CONTENT 1: MINUTO A MINUTO TIMELINE */}
-      {statsTab === 'timeline' && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs text-slate-400 px-1 mb-2">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Eventos Destacados del Partido</span>
-            <span className="text-emerald-400 font-mono flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{apiDetails ? 'Eventos ESPN' : 'Eventos del administrador'}</span>
-            </span>
-          </div>
-
-          {isLoadingApi && <p role="status" className="text-xs text-slate-400">Consultando detalles ESPN…</p>}
-          {detailError && <p role="alert" className="text-xs text-amber-300">{detailError}</p>}
-          {apiDetails && <p className="text-xs text-slate-400">ESPN · Última actualización: {new Date(detailRecord!.updatedAt).toLocaleTimeString()} · consulta cada 30 segundos. La cobertura de acciones depende del torneo.</p>}
-          {events.length === 0 ? (
-            <div className="p-8 text-center bg-[#0d1424] rounded-xl border border-slate-800">
-              <Clock className="w-8 h-8 text-slate-500 mx-auto mb-2 opacity-50" />
-              <p className="text-sm font-semibold text-slate-300">Sin eventos registrados aún para este partido</p>
-              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                Los goles, tarjetas y sustituciones se registrarán desde el panel de control o se sincronizarán en vivo.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
+      {/* FIXED HEIGHT TAB PANELS CONTAINER WITH INTERNAL SCROLL (SHOWS ~4 EVENTS & MAINTAINS CONSISTENT HEIGHT ACROSS ALL VIEWS) */}
+      <div className="h-[375px] overflow-y-auto pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-700/60 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-600">
+        {/* TAB CONTENT 1: MINUTO A MINUTO TIMELINE */}
+        {statsTab === 'timeline' && (
+          <div className="space-y-3">
+            {/* Sin eventos registrados: cronología limpia sin eventos */}
+            {events.length === 0 ? null : (
+              <div className="space-y-2.5">
               {events.slice().reverse().map((ev) => {
                 const club = ev.clubId ? (clubs[ev.clubId] || BOLIVIAN_CLUBS[ev.clubId]) : null;
 
@@ -498,6 +482,7 @@ export const MatchStats: React.FC<MatchStatsProps> = ({
 
       {/* TAB CONTENT 4: LEAGUE STANDINGS TABLE */}
       {statsTab === 'table' && <EspnStandings league={espnLink?.league} />}
+      </div>
 
     </div>
   );

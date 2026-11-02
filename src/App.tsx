@@ -101,6 +101,7 @@ export default function App() {
   };
 
   const handleReloadCurrentSignal = () => {
+    // Recargar Señal de transmisión activa
     setIsReloadingSignal(true);
     setSignalReloadKey((k) => k + 1);
     setTimeout(() => {
@@ -1327,34 +1328,9 @@ function sanitizeClientEvent(e: any, idx = 0): LiveEvent {
 
                     }
 
-                    {/* Canales / Opciones de Señal estilo Fútbol Libre + Recarga y Toggle de Chat */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5">
-                      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar shrink-0 max-w-full">
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">
-                          Señal:
-                        </span>
-                        {/* Botón de Recargar Señal rápida */}
-                        <button
-                          type="button"
-                          onClick={handleReloadCurrentSignal}
-                          disabled={isReloadingSignal}
-                          className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap border border-slate-700/60 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white ${
-                            isReloadingSignal ? 'opacity-70 pointer-events-none' : ''
-                          }`}
-                          title="Si la transmisión se congela o tiene búfer, haz clic para recargar la señal"
-                        >
-                          <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isReloadingSignal ? 'animate-spin' : ''}`} />
-                          <span className="text-[11px] hidden sm:inline">
-                            {isReloadingSignal ? 'Reconectando...' : 'Recargar Señal'}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 )}
 
-
-                {currentLiveEvent?.espnLink?.enabled && <p role="status" className="text-xs text-slate-400 px-1">ESPN · {currentLiveEvent.espnUpdatedAt ? `Última actualización: ${new Date(currentLiveEvent.espnUpdatedAt).toLocaleTimeString()}` : 'Esperando datos oficiales…'} · consulta cada 30 segundos</p>}
                 <EventStartTime event={currentLiveEvent} />
                 <div ref={matchPlayerRef} className="scroll-mt-20 space-y-2">
                 {currentLiveEvent ? (
