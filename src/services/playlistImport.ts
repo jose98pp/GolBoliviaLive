@@ -2,7 +2,13 @@ import { assertPublicHttpUrl } from '../../api/proxy.js';
 import { parseChannelPlaylist } from '../utils/channelSources';
 import type { IptvChannel } from '../types/iptv';
 
-const MAX_BYTES = 1024 * 1024;
+const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_CHANNELS = 2000;
+
+class PlaylistImportError extends Error {
+  status: number;
+  constructor(message: string, status = 400) { super(message); this.name = 'PlaylistImportError'; this.status = status; }
+}
 export function normalizePlaylistUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 4000) return null;
   try {
@@ -14,7 +20,7 @@ export function normalizePlaylistUrl(value: unknown): string | null {
 }
 
 export async function fetchPlaylistPreview(source: string): Promise<IptvChannel[]> {
-  const signal = AbortSignal.timeout(12000);
+  const signal = AbortSignal.timeout(30000);
   let url = normalizePlaylistUrl(source);
   if (!url) throw new Error('Introduce una URL HTTP o HTTPS válida de lista M3U/M3U8.');
   for (let redirects = 0; redirects <= 5; redirects++) {
@@ -29,7 +35,7 @@ export async function fetchPlaylistPreview(source: string): Promise<IptvChannel[
       continue;
     }
     if (!response.ok) { await response.body?.cancel(); throw new Error(`El proveedor de la lista respondió HTTP ${response.status}.`); }
-    if (Number(response.headers.get('content-length')) > MAX_BYTES) { await response.body?.cancel(); throw new Error('La lista supera el límite de 1 MB.'); }
+    if (Number(response.headers.get('content-length')) > MAX_BYTES) { await response.body?.cancel(); throw new PlaylistImportError('La lista supera el límite de 10 MB.', 413); }
     const reader = response.body?.getReader();
     if (!reader) throw new Error('La lista está vacía.');
     const decoder = new TextDecoder();
@@ -48,7 +54,7 @@ export async function fetchPlaylistPreview(source: string): Promise<IptvChannel[
     if (/^#EXT-X-(?:TARGETDURATION|STREAM-INF|MEDIA-SEQUENCE|VERSION):/m.test(text)) {
       return [{ id: 'import-hls', name: `Señal HLS · ${new URL(url).hostname}`, streamUrl: url, sourceType: 'hls', logo: '', group: 'Importados', country: 'INT', countryName: 'Internacional' }];
     }
-    return parseChannelPlaylist(text, url);
+    return parseChannelPlaylist(text, url, MAX_CHANNELS);
   }
   throw new Error('No se pudo descargar la lista.');
 }

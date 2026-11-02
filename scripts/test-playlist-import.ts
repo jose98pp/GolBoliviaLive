@@ -19,8 +19,8 @@ try {
   const before = calls; await assert.rejects(fetchPlaylistPreview('https://93.184.216.34/list.m3u'), /permitido/); assert.equal(calls, before + 1, 'Se valida también el destino de cada redirección');
   globalThis.fetch = (async () => new Response('<html>Acceso</html>')) as typeof fetch;
   await assert.rejects(fetchPlaylistPreview('https://93.184.216.34/list.m3u'), /válida/);
-  globalThis.fetch = (async () => new Response('x'.repeat(1024 * 1024 + 1))) as typeof fetch;
-  await assert.rejects(fetchPlaylistPreview('https://93.184.216.34/list.m3u'), /1 MB/);
+  globalThis.fetch = (async () => new Response('x'.repeat(10 * 1024 * 1024 + 1))) as typeof fetch;
+  await assert.rejects(fetchPlaylistPreview('https://93.184.216.34/list.m3u'), /10 MB/);
   globalThis.fetch = (async () => new Response('forbidden', { status: 403 })) as typeof fetch;
   await assert.rejects(fetchPlaylistPreview('https://93.184.216.34/list.m3u'), /403/);
   globalThis.fetch = (async () => new Response('#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nsegment.ts')) as typeof fetch;

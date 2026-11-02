@@ -231,7 +231,7 @@ iptvRouter.get('/import-preview', async (req: Request, res: Response) => {
     const channels = await fetchPlaylistPreview(source);
     return res.json({ success: true, total: channels.length, channels, persisted: false });
   } catch (error) {
-    const status = (error as any)?.status === 403 ? 403 : 400;
+    const status = [403, 413].includes((error as any)?.status) ? (error as any).status : 400;
     return res.status(status).json({ success: false, error: error instanceof Error ? error.message : 'No se pudo descargar la lista.' });
   }
 });
