@@ -263,11 +263,11 @@ export const IptvChannelsManager: React.FC<IptvChannelsManagerProps> = ({
           <input type="url" value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} aria-label="URL de lista M3U" placeholder="https://tu-proveedor.com/lista.m3u" className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs" />
           <button type="button" onClick={() => { void previewPlaylist(); }} disabled={playlistLoading || !playlistUrl.trim()} className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg disabled:opacity-50">{playlistLoading ? 'Cargando...' : 'Previsualizar'}</button>
         </div>
-        <label className="block text-xs text-slate-300">O cargar archivo de canales M3U / M3U8 (máximo 1 MB, 500 canales)
+        <label className="block text-xs text-slate-300">O cargar archivo de canales M3U / M3U8 (máximo 10 MB, 2.000 canales)
           <input type="file" accept=".m3u,.m3u8" className="block mt-2 text-xs" onChange={async e => {
             const file = e.target.files?.[0]; if (!file) return;
             setPlaylistPreview([]);
-            try { if (file.size > 1024 * 1024) throw new Error('El archivo supera 1 MB.'); const imported = parseChannelPlaylist(await file.text()); setPlaylistPreview(imported); setPlaylistMessage(`Vista previa: ${imported.length} canales. Selecciona cuáles guardar.`); }
+            try { if (file.size > 10 * 1024 * 1024) throw new Error('El archivo supera 10 MB.'); const imported = parseChannelPlaylist(await file.text(), undefined, 2000); setPlaylistPreview(imported); setPlaylistMessage(`Vista previa: ${imported.length} canales. Selecciona cuáles guardar.`); }
             catch (error) { setPlaylistMessage(error instanceof Error ? error.message : 'No se pudo leer el archivo.'); }
             e.target.value = '';
           }} />
