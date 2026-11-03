@@ -51,7 +51,7 @@ assert.equal(imported[0].logo, 'https://example.test/logo.png');
 assert.equal(imported[1].sourceType, 'iframe');
 assert.throws(() => parseChannelPlaylist('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nhttps://example.test/segment.ts'), /señal HLS/);
 assert.throws(() => parseChannelPlaylist('not a playlist'), /válida/);
-assert.throws(() => parseChannelPlaylist('x'.repeat(1024 * 1024 + 1)), /1 MB/);
+assert.throws(() => parseChannelPlaylist('x'.repeat(10 * 1024 * 1024 + 1)), /10 MB/);
 console.log('Catálogo: HLS/M3U, iframe sin HTML ejecutable, importación de listas, deduplicación y rechazo de segmentos comprobados.');
 
 for (const source of ['https://tvf90.com/online.php?stream=espnmx', 'https://tvf90.com/online.php?stream=espn2mx', 'https://tvf90.com/online.php?stream=espn3mx', 'https://tvf90.com/online.php?stream=espn4mx', 'https://otro-proveedor.example/player?id=1', 'https://otro-proveedor.example/', 'https://streamxhd.st.evil.test/player']) {

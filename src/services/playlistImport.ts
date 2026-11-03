@@ -45,7 +45,7 @@ export async function fetchPlaylistPreview(source: string): Promise<IptvChannel[
         const chunk = await reader.read();
         if (chunk.done) break;
         size += chunk.value.byteLength;
-        if (size > MAX_BYTES) { await reader.cancel(); throw new Error('La lista supera el límite de 1 MB.'); }
+        if (size > MAX_BYTES) { await reader.cancel(); throw new PlaylistImportError('La lista supera el límite de 10 MB.', 413); }
         text += decoder.decode(chunk.value, { stream: true });
       }
       text += decoder.decode();
